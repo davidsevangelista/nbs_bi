@@ -35,7 +35,7 @@ data/cards_simulation/*
 
 # Jupyter
 .ipynb_checkpoints/
-notebooks/*.ipynb
+# notebooks/*.ipynb
 
 # IDEs
 .vscode/
