@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nbs_bi"
+version = "0.1.0"
+description = "Business intelligence and cost simulation platform for Neobankless Brasil"
+requires-python = ">=3.11"
+readme = "README.md"
+
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scikit-learn>=1.4",
+    "python-dotenv>=1.0",
+    "pydantic>=2.6",
+    "rich>=13.7",          # pretty console output for CLI reports
+    "tabulate>=0.9",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "pip-audit>=2.7",
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+]
+
+[project.scripts]
+nbs-cards = "nbs_bi.cards.simulator:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nbs_bi*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["nbs_bi"]
+
+[tool.coverage.run]
+source = ["nbs_bi"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
