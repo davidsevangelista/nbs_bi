@@ -35,27 +35,28 @@ nbs_bi/                         ← repo root
 │
 ├── nbs_bi/                     ← installable Python package
 │   ├── config.py               ← global settings (loaded from .env)
-│   │
 │   ├── cards/                  ← card cost center simulation
-│   │   ├── SPEC.md             ← feature spec (edit to request changes)
 │   │   ├── invoice_parser.py   ← parse Rain invoice line items
 │   │   ├── models.py           ← cost model: fixed + variable + linear regression
 │   │   └── simulator.py        ← scenario engine: sensitivity, projections, cost/tx
-│   │
 │   ├── transactions/           ← transaction analytics & KPIs
-│   │   └── SPEC.md
-│   │
 │   ├── onramp/                 ← on/off ramp (buy/sell crypto) analytics
-│   │   └── SPEC.md
-│   │
 │   ├── swaps/                  ← DEX/swap analytics
-│   │   └── SPEC.md
-│   │
 │   ├── ai_usage/               ← AI interaction cost & usage analytics
-│   │   └── SPEC.md
-│   │
 │   └── reporting/              ← cross-module dashboards, exports, projections
-│       └── SPEC.md
+│
+├── docs/
+│   ├── PROGRESS.md             ← task tracking (update when tasks complete)
+│   ├── specs/                  ← feature specs — edit to request changes
+│   │   ├── cards.md
+│   │   ├── transactions.md
+│   │   ├── onramp.md
+│   │   ├── swaps.md
+│   │   ├── ai_usage.md
+│   │   └── reporting.md
+│   └── dev/
+│       ├── scaffold_project.md ← developer workflow guide
+│       └── new_project_prompt.md ← bootstrap template for new projects
 │
 ├── data/
 │   └── invoices/               ← raw invoice PDFs/CSVs (gitignored)
@@ -67,7 +68,6 @@ nbs_bi/                         ← repo root
 │
 ├── pyproject.toml              ← packaging, deps, tooling config
 ├── CLAUDE.md                   ← AI assistant standards and conventions
-├── PROGRESS.md                 ← task tracking
 └── CHANGELOG.md                ← version history
 ```
 
@@ -125,4 +125,5 @@ pytest tests/ -v --cov=nbs_bi --cov-report=term-missing
 ```
 
 See [CLAUDE.md](CLAUDE.md) for full coding standards and conventions.
-See [PROGRESS.md](PROGRESS.md) for current task status.
+See [docs/PROGRESS.md](docs/PROGRESS.md) for current task status.
+See [docs/dev/scaffold_project.md](docs/dev/scaffold_project.md) for the full developer workflow.
