@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-03-26
+
+### Added
+- `docs/` directory with structured project documentation
+- `docs/PROGRESS.md` — phase tracker (moved from root)
+- `docs/specs/` — module specs moved from `nbs_bi/<module>/SPEC.md` into dedicated doc files: `cards.md`, `transactions.md`, `onramp.md`, `swaps.md`, `ai_usage.md`, `reporting.md`
+- `docs/dev/scaffold_project.md` — full developer workflow guide (setup, dev cycle, pre-commit checklist)
+- `docs/dev/new_project_prompt.md` — reusable Claude Code prompt template to bootstrap new projects with the same structure
+
+### Changed
+- `CLAUDE.md`: added Documentation section with a reference table linking to all docs; updated Git Discipline to point to `docs/PROGRESS.md`; updated "What NOT to Do" to reference `docs/specs/` instead of in-module SPEC files
+
+### Removed
+- Root-level `PROGRESS.md` (moved to `docs/PROGRESS.md`)
+- Per-module `SPEC.md` files from `nbs_bi/cards/`, `nbs_bi/transactions/`, `nbs_bi/onramp/`, `nbs_bi/swaps/`, `nbs_bi/ai_usage/`, `nbs_bi/reporting/` (moved to `docs/specs/`)
+
 ## [0.2.0] — 2026-03-25
 
 ### Added

@@ -16,12 +16,14 @@ Tracks the status of all active and planned work.
 - [x] Define project architecture and rationale
 - [x] Create `CLAUDE.md` (standards, security, conventions)
 - [x] Create `README.md` (overview, structure, quickstart)
-- [x] Create `PROGRESS.md` (this file)
 - [x] Create `CHANGELOG.md`
 - [x] Create `pyproject.toml` (package config, deps)
 - [x] Create `.gitignore`, `.env.example`
 - [x] Scaffold all module directories with `__init__.py`
-- [x] Create `SPEC.md` for each module
+- [x] Create module specs in `docs/specs/`
+- [x] Create `docs/PROGRESS.md` (this file)
+- [x] Create `docs/dev/scaffold_project.md` (developer workflow)
+- [x] Create `docs/dev/new_project_prompt.md` (bootstrap template)
 
 ---
 
@@ -51,7 +53,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Phase 2 — Transaction Analytics (`nbs_bi.transactions`)
 
-- [ ] Define schema for transaction data (see SPEC.md)
+- [ ] Define schema for transaction data (see [specs/transactions.md](specs/transactions.md))
 - [ ] Volume KPIs (daily/weekly/monthly)
 - [ ] Transaction pattern analysis
 
@@ -59,19 +61,19 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Phase 3 — On/Off Ramp Analytics (`nbs_bi.onramp`)
 
-- [ ] Define schema and KPIs (see SPEC.md)
+- [ ] Define schema and KPIs (see [specs/onramp.md](specs/onramp.md))
 
 ---
 
 ## Phase 4 — Swap Analytics (`nbs_bi.swaps`)
 
-- [ ] Define schema and KPIs (see SPEC.md)
+- [ ] Define schema and KPIs (see [specs/swaps.md](specs/swaps.md))
 
 ---
 
 ## Phase 5 — AI Usage Analytics (`nbs_bi.ai_usage`)
 
-- [ ] Define schema and KPIs (see SPEC.md)
+- [ ] Define schema and KPIs (see [specs/ai_usage.md](specs/ai_usage.md))
 
 ---
 

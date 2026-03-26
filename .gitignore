@@ -46,3 +46,4 @@ data/cards_simulation/*
 # OS
 .DS_Store
 Thumbs.db
+docs/dev/new_project_prompt.md

@@ -10,6 +10,23 @@ This file governs how Claude Code assists in this repository. Read it fully befo
 
 ---
 
+## Documentation
+
+| File | Purpose |
+|---|---|
+| [`docs/PROGRESS.md`](docs/PROGRESS.md) | Phase tracker — check before starting any task, update when tasks complete |
+| [`docs/dev/scaffold_project.md`](docs/dev/scaffold_project.md) | Developer workflow: setup, branching, dev cycle, pre-commit checklist |
+| [`docs/specs/cards.md`](docs/specs/cards.md) | Spec for `nbs_bi.cards` — card cost simulation |
+| [`docs/specs/transactions.md`](docs/specs/transactions.md) | Spec for `nbs_bi.transactions` — transaction analytics |
+| [`docs/specs/onramp.md`](docs/specs/onramp.md) | Spec for `nbs_bi.onramp` — on/off ramp analytics |
+| [`docs/specs/swaps.md`](docs/specs/swaps.md) | Spec for `nbs_bi.swaps` — swap analytics |
+| [`docs/specs/ai_usage.md`](docs/specs/ai_usage.md) | Spec for `nbs_bi.ai_usage` — AI interaction cost tracking |
+| [`docs/specs/reporting.md`](docs/specs/reporting.md) | Spec for `nbs_bi.reporting` — cross-module reports |
+
+**Before implementing any feature:** read the relevant spec in `docs/specs/`. Open questions in the spec must be resolved before coding begins.
+
+---
+
 ## Non-Negotiable Standards
 
 ### Security
@@ -44,7 +61,7 @@ This file governs how Claude Code assists in this repository. Read it fully befo
 - Commit messages: imperative mood, ≤ 72 chars subject, body explains *why* not *what*.
 - No force-push to `main`. No `--no-verify`.
 - Update `CHANGELOG.md` with every meaningful change.
-- Update `PROGRESS.md` when tasks are completed.
+- Update `docs/PROGRESS.md` when tasks are completed.
 
 ### Python Standards
 - Python ≥ 3.11.
@@ -70,7 +87,7 @@ This file governs how Claude Code assists in this repository. Read it fully befo
 
 ## What NOT to Do
 
-- Do not add features outside the scope of the current `SPEC.md` task.
+- Do not add features outside the scope of the current spec in `docs/specs/`.
 - Do not refactor code that is not related to the current task.
 - Do not create new files unless strictly necessary.
 - Do not use `pandas` where plain Python or `numpy` is sufficient.
