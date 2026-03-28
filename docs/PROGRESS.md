@@ -31,23 +31,23 @@ Tracks the status of all active and planned work.
 
 Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
-- [~] Parse invoice line items into structured data (`invoice_parser.py`)
-- [ ] Implement cost model with all fee categories (`models.py`)
-  - [ ] Fixed costs (Base Program Fee)
-  - [ ] Per-card costs (Virtual Cards Fee)
-  - [ ] Per-transaction costs (Tx Fee + Network Passthrough Tx Cost)
-  - [ ] Volume-based costs (Network Passthrough Volume Fee in bps)
-  - [ ] Product-type costs (Visa Infinite, Visa Platinum)
-  - [ ] Tokenization costs (ApplePay count/amount, GooglePay)
-  - [ ] Compliance costs (Share Token)
-  - [ ] Network extras (cross-border, 3DS, verification, chip auth)
-- [ ] Implement scenario simulator (`simulator.py`)
-  - [ ] Sensitivity analysis: impact of each variable on total cost
-  - [ ] Weighted average cost per transaction
-  - [ ] What-if scenarios (e.g., 2x transactions, different Visa tier mix)
-- [ ] Implement linear regression model for monthly projection
-- [ ] Unit tests for all card cost components
-- [ ] Validate model output against February 2026 invoice ($6,693.58)
+- [x] Parse invoice line items into structured data (`invoice_parser.py`)
+- [x] Implement cost model with all fee categories (`models.py`)
+  - [x] Fixed costs (Base Program Fee)
+  - [x] Per-card costs (Virtual Cards Fee)
+  - [x] Per-transaction costs (Tx Fee + Network Passthrough Tx Cost)
+  - [x] Volume-based costs (Network Passthrough Volume Fee in bps)
+  - [x] Product-type costs (Visa Infinite, Visa Platinum)
+  - [x] Tokenization costs (ApplePay count/amount, GooglePay)
+  - [x] Compliance costs (Share Token)
+  - [x] Network extras (cross-border, 3DS, verification, chip auth)
+- [x] Implement scenario simulator (`simulator.py`)
+  - [x] Sensitivity analysis: impact of each variable on total cost
+  - [x] Weighted average cost per transaction
+  - [x] What-if scenarios (e.g., 2x transactions, different Visa tier mix)
+- [x] Implement linear regression model for monthly projection
+- [x] Unit tests for all card cost components (16 tests)
+- [x] Validate model output against February 2026 invoice ($6,693.58)
 
 ---
 
@@ -61,7 +61,13 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Phase 3 — On/Off Ramp Analytics (`nbs_bi.onramp`)
 
-- [ ] Define schema and KPIs (see [specs/onramp.md](specs/onramp.md))
+- [x] Define schema and KPIs (see [specs/onramp.md](specs/onramp.md))
+- [x] Implement `queries.py` — `OnrampQueries`: DB connection, fixed SQL (schema-grounded), BRL/USDC scaling, Parquet cache
+- [x] Implement `models.py` — `OnrampModel`: KPIs, volume by period, FX stats, position + PnL, top users, active users
+- [x] Implement `report.py` — `OnrampReport`: full pipeline returning summary, conv_daily, pix_daily, fx_stats, active_daily, position, top_users, cohort
+- [x] Unit tests (23 tests, all green, no DB required)
+- [ ] Smoke test against production DB
+- [ ] Validate KPIs against contabil_pipeline dashboard for same period
 
 ---
 
@@ -79,14 +85,28 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Phase 6 — Reporting (`nbs_bi.reporting`)
 
-- [ ] Cross-module cost dashboard
-- [ ] Monthly projection report
-- [ ] Export to CSV/Excel
+- [x] Define spec: 4-tab Streamlit dashboard, platform recommendation, per-tab decisions (see [specs/reporting.md](specs/reporting.md))
+- [ ] `reporting/ramp.py` — Tab 2: on/off ramp visuals (wraps OnrampReport)
+- [ ] `reporting/cards.py` — Tab 3: card cost visuals (wraps CardCostModel)
+- [ ] `reporting/dashboard.py` — Streamlit entry point with date picker and tabs
+- [ ] `reporting/clients.py` — Tab 4 (depends on nbs_bi.clients)
+- [ ] `reporting/overview.py` — Tab 1 monthly KPIs (aggregates from all modules)
+
+---
+
+## Phase 7 — Client Revenue & Behaviour (`nbs_bi.clients`)
+
+- [x] Define spec: per-user revenue model, CPF enrichment, segmentation, cohort LTV (see [specs/clients.md](specs/clients.md))
+- [ ] `clients/queries.py` — fetch users, CPF data, all revenue/cost tables
+- [ ] `clients/models.py` — ClientModel: revenue per user, product adoption, profile join
+- [ ] `clients/segments.py` — champion/active/at-risk/dormant + cohort LTV
+- [ ] Unit tests (fixture-based, no DB)
 
 ---
 
 ## Backlog
 
-- [ ] Jupyter notebook: card cost exploration
+- [x] Jupyter notebook: card cost exploration (`notebooks/cards.ipynb`)
 - [ ] CLI entrypoint for running simulations
-- [ ] Integration with live database (schema TBD)
+- [x] Integration with live database (`OnrampQueries` via `READONLY_DATABASE_URL`)
+- [x] Full DB schema documented in `docs/specs/database.md` (72 tables, column types, scaling rules, row counts)

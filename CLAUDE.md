@@ -21,7 +21,9 @@ This file governs how Claude Code assists in this repository. Read it fully befo
 | [`docs/specs/onramp.md`](docs/specs/onramp.md) | Spec for `nbs_bi.onramp` — on/off ramp analytics |
 | [`docs/specs/swaps.md`](docs/specs/swaps.md) | Spec for `nbs_bi.swaps` — swap analytics |
 | [`docs/specs/ai_usage.md`](docs/specs/ai_usage.md) | Spec for `nbs_bi.ai_usage` — AI interaction cost tracking |
-| [`docs/specs/reporting.md`](docs/specs/reporting.md) | Spec for `nbs_bi.reporting` — cross-module reports |
+| [`docs/specs/reporting.md`](docs/specs/reporting.md) | Spec for `nbs_bi.reporting` — Streamlit dashboard, cross-module reports |
+| [`docs/specs/clients.md`](docs/specs/clients.md) | Spec for `nbs_bi.clients` — per-user revenue, segmentation, CPF enrichment |
+| [`docs/specs/database.md`](docs/specs/database.md) | Full DB schema reference — all 72 tables, column types, scaling rules, key joins |
 
 **Before implementing any feature:** read the relevant spec in `docs/specs/`. Open questions in the spec must be resolved before coding begins.
 
