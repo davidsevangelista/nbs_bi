@@ -47,3 +47,7 @@ data/cards_simulation/*
 .DS_Store
 Thumbs.db
 docs/dev/new_project_prompt.md
+
+# Generated / local tooling
+.codex
+old-card-analysis/

@@ -7,6 +7,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-20
+
+### Added
+- `nbs_bi/cards/analytics.py` — pure data-layer module for card spend analytics (live DB via SQLAlchemy):
+  - `load_card_transactions()` — DB fetch with date filters; `build_daily()`, `bin_transactions()` — aggregations
+  - `fee_comparison()`, `monthly_revenue()` — fee-model comparisons for Models A/B/C/D
+  - `ewma_forecast()` — EWMA demand forecast (span=7) with 95% CI for count and volume
+  - `build_scenarios()`, `threshold_sweep()`, `compute_combinations()` — B2B growth scenarios and Model C optimisation
+  - `flat_pct_monthly_revenue()`, `flat_pct_coverage_metrics()` — invoice-coverage math for flat + percentage card fee structures
+  - Plotly figure builders: `fig_daily_timeline`, `fig_weekly_patterns`, `fig_distribution`, `fig_fee_comparison`, `fig_forecast`, `fig_summary_table`, `fig_b2b_projection`, `fig_threshold_sweep`, `fig_combo_heatmap`, `fig_combo_lines`, `fig_coverage_bar`, `fig_coverage_heatmap`
+- `nbs_bi/reporting/ramp.py` — `RampSection`: Streamlit + Plotly Tab 2 renderer; 7 charts — BRL conversion volume, monthly fee vs spread revenue, implicit FX rate with p10/p90 band, USDC position, cumulative PnL, top users (masked), PIX IN/OUT flows
+- `nbs_bi/reporting/cards.py`:
+  - `CardSection` (Tab 3): cost breakdown, sensitivity (+10%), cost-per-tx trend, top spenders
+  - `CardAnalyticsSection` (Tab 4): 8-tab interactive dashboard (patterns, distribution & models, EWMA forecast, indicators, invoice coverage, B2B projection, Model C threshold, combination grid)
+- `nbs_bi/reporting/dashboard.py` — Streamlit entry point: 5 tabs, global sidebar date picker, 1-hour `@st.cache_data`, DB connection status
+- `OnrampReport._build_revenue_monthly()` — monthly fee vs spread revenue; exposed as `revenue_monthly` key in `build()` return dict
+- `docs/specs/card_usage_forecast.md` — spec for standalone forecast script (HTML output, 7 sections, EWMA + 95% CI)
+- Unit tests: `tests/cards/test_analytics.py`, `tests/onramp/test_report.py` (23 tests), `tests/reporting/test_ramp.py`, `tests/reporting/test_cards.py`
+
+### Changed
+- Card Analytics dashboard expanded from 7 to 8 tabs — "Cobertura Invoice" tab added between Indicators and B2B Projection
+- Monthly card analytics extrapolation uses inclusive observed calendar days (off-by-one fix)
+- `nbs_bi.cards.__init__` lazy-loads `CardCostSimulator` — analytics imports never blocked by absent `scikit-learn`
+- `nbs_bi.reporting.cards` importable in non-UI environments without `streamlit`
+- `pyproject.toml`: added `streamlit>=1.32`, `plotly>=5.20` to runtime dependencies
+
+### Findings
+- Live DB (`2026-02-01` → `2026-04-13`): `$0.30 + 1.00%` → $4,495.99/month → 67.17% coverage of February Rain invoice ($6,693.58)
+- Breakeven: ~1.87% variable (with $0.30 fixed) or ~$0.64 fixed (with 1.00% variable)
+
+## [0.4.0] — 2026-04-09
+
+### Added
+- `nbs_bi/cards/analytics.py` — pure data-layer module for card spend analytics:
+  - `load_card_transactions()` — DB fetch via SQLAlchemy with date filters
+  - `build_daily()`, `bin_transactions()`, `fee_comparison()`, `monthly_revenue()` — aggregations and fee-model comparisons (Models A/B/C/D)
+  - `ewma_forecast()` — EWMA demand forecast with 95% CI for count and volume
+  - `build_scenarios()`, `threshold_sweep()`, `compute_combinations()` — B2B growth scenarios and Model C threshold optimisation
+  - Plotly figure builders: `fig_daily_timeline`, `fig_weekly_patterns`, `fig_distribution`, `fig_fee_comparison`, `fig_forecast`, `fig_summary_table`, `fig_b2b_projection`, `fig_threshold_sweep`, `fig_combo_heatmap`, `fig_combo_lines`
+- `nbs_bi/reporting/ramp.py` — `RampSection`: Streamlit + Plotly rendering for the On/Off Ramp tab (Tab 2); 7 charts covering volume, monthly revenue split, implicit FX rate with p10/p90 band, USDC position, cumulative PnL, top users (user IDs masked), and PIX IN/OUT flows
+- `nbs_bi/reporting/cards.py` — two section classes:
+  - `CardSection` (Tab 3): cost breakdown, sensitivity (+10%), cost-per-tx trend, top spenders
+  - `CardAnalyticsSection` (Tab 4): 7-tab interactive dashboard driven by live DB data — usage patterns, distribution & models, EWMA forecast, indicators, B2B projection, Model C threshold, and combination grid; sidebar controls for threshold slider and editable B2B scenario table
+- `nbs_bi/reporting/dashboard.py` — Streamlit entry point with 5 tabs (Overview, On/Off Ramp, Card Costs, Card Analytics, Clients), global date picker, 1-hour cached DB loads, and DB connection status indicator
+- `OnrampReport._build_revenue_monthly()` — monthly fee vs spread revenue breakdown added to the report output dict as `revenue_monthly`
+- Unit tests for `reporting/ramp.py` figure builders and helpers (`tests/reporting/test_ramp.py`)
+- Unit tests for `reporting/cards.py` figure builders (`tests/reporting/test_cards.py`)
+- Unit tests for `onramp/report.py` (`tests/onramp/test_report.py`)
+
+### Changed
+- `pyproject.toml`: added `sqlalchemy>=2.0`, `psycopg2-binary>=2.9`, `pyarrow>=15.0`, `streamlit>=1.32`, `plotly>=5.20` to runtime dependencies
+- `OnrampReport.build()` return dict now includes `revenue_monthly` key alongside existing keys
+
 ## [0.3.0] — 2026-03-26
 
 ### Added

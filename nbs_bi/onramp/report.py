@@ -76,6 +76,7 @@ class OnrampReport:
         return {
             "summary": self._build_summary(conv_df, dep_df, trf_df),
             "conv_daily": self._build_conv_daily(model),
+            "revenue_monthly": self._build_revenue_monthly(conv_df),
             "pix_daily": self._build_pix_daily(dep_df, trf_df),
             "fx_stats": model.fx_stats(freq="D") if model else pd.DataFrame(),
             "active_daily": self._build_active_daily(dep_df, trf_df),
@@ -152,6 +153,35 @@ class OnrampReport:
             ("Total revenue BRL", revenue_brl, "Fees + spread captured in BRL"),
         ]
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
+
+    @staticmethod
+    def _build_revenue_monthly(conv_df: pd.DataFrame) -> pd.DataFrame:
+        """Monthly revenue split into explicit fees vs spread.
+
+        Args:
+            conv_df: Conversions DataFrame (monetary columns already scaled).
+
+        Returns:
+            DataFrame with columns: month, fee_brl, spread_brl, total_revenue_brl.
+        """
+        if conv_df.empty or "fee_amount_brl" not in conv_df.columns:
+            return pd.DataFrame()
+        df = conv_df.copy()
+        df["month"] = (
+            pd.to_datetime(df["created_at"], errors="coerce")
+            .dt.to_period("M")
+            .dt.to_timestamp()
+        )
+        agg = (
+            df.groupby("month")
+            .agg(
+                fee_brl=("fee_amount_brl", "sum"),
+                spread_brl=("spread_revenue_brl", "sum"),
+            )
+            .reset_index()
+        )
+        agg["total_revenue_brl"] = agg["fee_brl"] + agg["spread_brl"]
+        return agg.sort_values("month")
 
     @staticmethod
     def _build_conv_daily(model: OnrampModel | None) -> pd.DataFrame:

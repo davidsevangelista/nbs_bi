@@ -48,6 +48,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] Implement linear regression model for monthly projection
 - [x] Unit tests for all card cost components (16 tests)
 - [x] Validate model output against February 2026 invoice ($6,693.58)
+- [x] Keep card analytics importable without simulator-only dependencies by lazy-loading `CardCostSimulator`
 
 ---
 
@@ -64,7 +65,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] Define schema and KPIs (see [specs/onramp.md](specs/onramp.md))
 - [x] Implement `queries.py` — `OnrampQueries`: DB connection, fixed SQL (schema-grounded), BRL/USDC scaling, Parquet cache
 - [x] Implement `models.py` — `OnrampModel`: KPIs, volume by period, FX stats, position + PnL, top users, active users
-- [x] Implement `report.py` — `OnrampReport`: full pipeline returning summary, conv_daily, pix_daily, fx_stats, active_daily, position, top_users, cohort
+- [x] Implement `report.py` — `OnrampReport`: full pipeline returning summary, conv_daily, pix_daily, fx_stats, active_daily, position, top_users, cohort, revenue_monthly
 - [x] Unit tests (23 tests, all green, no DB required)
 - [ ] Smoke test against production DB
 - [ ] Validate KPIs against contabil_pipeline dashboard for same period
@@ -86,11 +87,56 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 ## Phase 6 — Reporting (`nbs_bi.reporting`)
 
 - [x] Define spec: 4-tab Streamlit dashboard, platform recommendation, per-tab decisions (see [specs/reporting.md](specs/reporting.md))
-- [ ] `reporting/ramp.py` — Tab 2: on/off ramp visuals (wraps OnrampReport)
-- [ ] `reporting/cards.py` — Tab 3: card cost visuals (wraps CardCostModel)
-- [ ] `reporting/dashboard.py` — Streamlit entry point with date picker and tabs
-- [ ] `reporting/clients.py` — Tab 4 (depends on nbs_bi.clients)
+- [x] `reporting/ramp.py` — Tab 2: on/off ramp visuals (wraps OnrampReport); 7 charts incl. volume, revenue, FX, position/PnL, PIX flows, top users
+- [x] `reporting/cards.py` — Tab 3: card cost visuals (wraps CardCostModel); `CardSection` + `CardAnalyticsSection` (8-tab live DB dashboard)
+- [x] `reporting/dashboard.py` — Streamlit entry point: 5 tabs (Overview, Ramp, Card Costs, Card Analytics, Clients), sidebar date picker, DB connection status
+- [x] `cards/analytics.py` — `CardAnalyticsSection` data layer: DB fetch, daily/weekly aggregations, fee-model comparisons (A/B/C/D), invoice coverage, EWMA forecast, B2B scenarios, threshold sweep, combination grid
+- [x] Add card invoice-coverage decision tooling:
+  - [x] Compute flat + percentage revenue (`flat_fee_usd + pct_fee * amount_usd`) against Rain invoice cost
+  - [x] Show coverage ratio, margin, required variable percentage, and required fixed fee
+  - [x] Render coverage bar and flat/% breakeven heatmap in Card Analytics
+  - [x] Unit-test inclusive observed-day monthly extrapolation and coverage math
+- [x] Unit tests for `reporting/ramp.py` and `reporting/cards.py` figure builders
+- [ ] `reporting/clients.py` — Tab 5 (depends on nbs_bi.clients)
 - [ ] `reporting/overview.py` — Tab 1 monthly KPIs (aggregates from all modules)
+
+---
+
+## Current State — 2026-04-20
+
+### What's been built
+
+The project has a working BI foundation covering card-cost modelling, live card-spend analytics, on/off-ramp analytics, and a 5-tab Streamlit reporting shell.
+
+**Phase 1 — Cards**: `CardCostModel` reproduces the February 2026 Rain invoice (`NKEMEJLO-0008`) at $6,693.58. `CardCostSimulator` runs what-if and linear-projection scenarios. `cards/analytics.py` adds a live DB data layer with daily/weekly aggregations, four fee-model comparisons (A/B/C/D), EWMA demand forecasting, B2B scenarios, threshold sweep, and invoice-coverage math.
+
+**Phase 3 — Onramp**: `OnrampQueries` + `OnrampModel` + `OnrampReport` deliver the full ramp pipeline (conversions, PIX flows, FX stats, position/PnL, active users, top users, monthly revenue split). 23 unit tests, no DB required.
+
+**Phase 6 — Reporting**: Streamlit `dashboard.py` (5 tabs), `reporting/ramp.py` (Tab 2, 7 charts), `reporting/cards.py` (Tab 3 cost breakdown + Tab 4 eight-tab analytics dashboard).
+
+**Card fee coverage finding** (live DB, `2026-02-01` → `2026-04-13`):
+- 15,703 completed card-spend transactions over 72 days; monthlyized: 6,543 tx/month, $253,311.42/month spend
+- `$0.30 + 1.00%` → $4,495.99/month projected revenue → 67.17% coverage; -$2,197.59/month gap
+- Breakeven: ~1.87% variable (with $0.30 fixed) or ~$0.64 fixed (with 1.00% variable)
+
+### What's pending (committed changes not yet in a versioned release)
+
+The following are staged / unstaged changes that will form the next release:
+
+- `nbs_bi/cards/analytics.py` (new) — full data layer + figure builders
+- `nbs_bi/reporting/ramp.py` (new) — Tab 2 ramp visuals
+- `nbs_bi/reporting/cards.py` (new) — Tab 3 + Tab 4 card visuals
+- `nbs_bi/reporting/dashboard.py` (new) — Streamlit entry point
+- `nbs_bi/onramp/report.py` — added `revenue_monthly` key to `build()` output
+- `nbs_bi/cards/__init__.py` — lazy-loads `CardCostSimulator`
+- `pyproject.toml` — added `streamlit>=1.32`, `plotly>=5.20` to runtime deps
+- `tests/cards/test_analytics.py`, `tests/onramp/test_report.py`, `tests/reporting/` — new test suites
+- `docs/specs/card_usage_forecast.md` — spec for standalone forecast script (complete)
+
+### Known environment notes
+
+- `sklearn` absent locally → `CardCostSimulator` is lazy-loaded so analytics imports always work.
+- `streamlit` absent locally → `reporting/cards.py` has an import-time shim so pure figure-builder tests collect without the UI runtime.
 
 ---
 
@@ -107,6 +153,9 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 ## Backlog
 
 - [x] Jupyter notebook: card cost exploration (`notebooks/cards.ipynb`)
-- [ ] CLI entrypoint for running simulations
+- [x] CLI entrypoint for running simulations
 - [x] Integration with live database (`OnrampQueries` via `READONLY_DATABASE_URL`)
 - [x] Full DB schema documented in `docs/specs/database.md` (72 tables, column types, scaling rules, row counts)
+- [ ] Feed uploaded/current Rain invoice cost from Card Costs tab into Card Analytics automatically, instead of using the default February 2026 target unless overridden
+- [ ] Add date-window presets for Card Analytics coverage decisions (last 7d, last 30d, current invoice period, all-time)
+- [ ] Validate dashboard KPIs end-to-end in Streamlit once full runtime dependencies are installed
