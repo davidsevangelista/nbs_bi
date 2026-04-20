@@ -143,10 +143,14 @@ The following are staged / unstaged changes that will form the next release:
 ## Phase 7 — Client Revenue & Behaviour (`nbs_bi.clients`)
 
 - [x] Define spec: per-user revenue model, CPF enrichment, segmentation, cohort LTV (see [specs/clients.md](specs/clients.md))
-- [ ] `clients/queries.py` — fetch users, CPF data, all revenue/cost tables
-- [ ] `clients/models.py` — ClientModel: revenue per user, product adoption, profile join
-- [ ] `clients/segments.py` — champion/active/at-risk/dormant + cohort LTV
-- [ ] Unit tests (fixture-based, no DB)
+- [x] `clients/queries.py` — 11 SQL queries: cohort base (attribution inference), onramp revenue + monthly time-series, card fees, card txs, billing_charges (actual card tx fee revenue), cashback, revenue share, swaps, payouts, FX rate; Parquet cache
+- [x] `clients/models.py` — `ClientModel`: master join of all revenue/cost streams → unified USD LTV; pro-rata Rain invoice card cost; `revenue_leaderboard`, `product_adoption`, `acquisition_summary`, `referral_code_summary`, `founders_report`, `at_risk_users`, `cohort_ltv`, `ltv_by_source`, `cac_breakeven`
+- [x] `clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant + `referral_performance` + `founders_vs_non_founders`
+- [x] `clients/report.py` — `ClientReport.build()` → structured dict; `to_json_api()` for future API layer
+- [x] Unit tests (38 tests, fixture-based, no DB)
+- [x] Smoke test against production DB (11,478 users, 9-cohort LTV matrix, 4 acquisition sources)
+- [x] `reporting/clients.py` — 5-tab `ClientSection`: LTV & Cohorts (heatmap + CAC slider), Acquisition, Segments, Founders Club, Product Adoption
+- [x] `reporting/dashboard.py` — Tab 5 wired to `ClientSection`; sidebar adds Rain Invoice Total input
 
 ---
 

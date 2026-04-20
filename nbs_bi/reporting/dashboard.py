@@ -22,9 +22,11 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from nbs_bi.cards.models import CardCostModel
+from nbs_bi.clients.report import ClientReport
 from nbs_bi.config import READONLY_DATABASE_URL
 from nbs_bi.onramp.report import OnrampReport
 from nbs_bi.reporting.cards import CardAnalyticsSection, CardSection
+from nbs_bi.reporting.clients import ClientSection
 from nbs_bi.reporting.ramp import RampSection
 
 load_dotenv()
@@ -49,16 +51,32 @@ def _load_ramp_report(start_date: str, end_date: str, db_url: str) -> dict:
     return OnrampReport(db_url=db_url).build(start_date, end_date)
 
 
+@st.cache_data(ttl=3600, show_spinner="Loading client data…")
+def _load_client_report(start_date: str, end_date: str, db_url: str, invoice_total: float) -> dict:
+    """Fetch and cache the ClientReport result dict.
+
+    Args:
+        start_date: ISO date string.
+        end_date: ISO date string.
+        db_url: Database URL — part of cache key.
+        invoice_total: Rain invoice total for pro-rata card cost allocation.
+
+    Returns:
+        Dict of DataFrames as returned by ClientReport.build().
+    """
+    return ClientReport(start_date, end_date, invoice_total, db_url).build()
+
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
 
-def _sidebar() -> tuple[str, str]:
-    """Render the sidebar and return the selected (start_date, end_date).
+def _sidebar() -> tuple[str, str, float]:
+    """Render the sidebar and return the selected (start_date, end_date, invoice_total).
 
     Returns:
-        Tuple of ISO date strings (start, end).
+        Tuple of (ISO start date string, ISO end date string, Rain invoice total USD).
     """
     with st.sidebar:
         st.header("Filters")
@@ -79,13 +97,23 @@ def _sidebar() -> tuple[str, str]:
             start, end = default_start, today
 
         st.divider()
+        st.caption("Card Cost Allocation")
+        invoice_total = st.number_input(
+            "Rain Invoice Total (USD)",
+            min_value=0.0,
+            value=6693.58,
+            step=100.0,
+            help="Used to allocate card processing cost pro-rata per user.",
+        )
+
+        st.divider()
         st.caption("Database")
         if READONLY_DATABASE_URL:
             st.success("Connected", icon="✅")
         else:
             st.error("READONLY_DATABASE_URL not set", icon="🔴")
 
-    return start.isoformat(), end.isoformat()
+    return start.isoformat(), end.isoformat(), float(invoice_total)
 
 
 # ---------------------------------------------------------------------------
@@ -168,14 +196,21 @@ def _tab_card_analytics(date_from: date | None, date_to: date | None) -> None:
         st.error(f"Failed to load card analytics: {exc}", icon="🔴")
 
 
-def _tab_clients() -> None:
-    st.info(
-        "**Clients tab** is coming soon.\n\n"
-        "It will show: revenue leaderboard, product adoption matrix, "
-        "client segments (Champion / Active / At-Risk / Dormant), "
-        "income band analysis, and cohort LTV.",
-        icon="🚧",
-    )
+def _tab_clients(start_date: str, end_date: str, invoice_total: float) -> None:
+    if not READONLY_DATABASE_URL:
+        st.error(
+            "Set `READONLY_DATABASE_URL` in your `.env` file to load client data.",
+            icon="🔴",
+        )
+        return
+
+    try:
+        report = _load_client_report(start_date, end_date, READONLY_DATABASE_URL, invoice_total)
+    except Exception as exc:
+        st.error(f"Failed to load client data: {exc}", icon="🔴")
+        return
+
+    ClientSection(report).render()
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +229,7 @@ def main() -> None:
     st.title("NBS Business Intelligence")
     st.caption("Internal dashboard — Neobankless Brasil LTDA")
 
-    start_date, end_date = _sidebar()
+    start_date, end_date, invoice_total = _sidebar()
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
@@ -221,7 +256,7 @@ def main() -> None:
     with tab4:
         _tab_card_analytics(_date_from, _date_to)
     with tab5:
-        _tab_clients()
+        _tab_clients(start_date, end_date, invoice_total)
 
 
 if __name__ == "__main__":

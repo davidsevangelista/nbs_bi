@@ -266,13 +266,65 @@ ltv = model.cohort_ltv()
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-- [ ] Is CPF enrichment data available for all users, or only a subset? What is the coverage rate?
-- [ ] Should `estimated_income_brl` use `raw_renda` or `raw_renda_poder_aquisitivo`? They differ.
-- [ ] What FX rate should be used to convert USD revenues to BRL for the unified score?
-- [ ] Is `card_annual_fees.amount_usdc` already in USDC units or in micros?
-- [ ] Should cashback be treated as pure cost or as a retention investment (i.e., excluded from net revenue)?
-- [ ] Are `swap_fee_events` the right source for swap revenue, or should `swap_transactions` be used?
-- [ ] Does `unblockpay_payouts.unblockpay_fee` represent NBS revenue or a pass-through cost?
-- [ ] What is the `user_registrations.source_type` enum? (organic, referral, founder_invite, paid_ad, etc.)
+| Question | Resolution |
+|---|---|
+| FX rate for BRL → USD | `PERCENTILE_CONT(0.5)` of `effective_rate` from `conversion_quotes WHERE used=TRUE AND direction='brl_to_usdc'` over the analysis window. `amount_usd = amount_brl / fx_rate`. |
+| `card_annual_fees.amount_usdc` units | Real USDC (not micros) — no divisor needed. |
+| Swap revenue source | `swap_transactions.platform_fee_bps × input_amount / 10_000 / 1_000_000`. `swap_fee_events` has 0 rows. |
+| `unblockpay_fee` | NBS revenue (not a pass-through cost). |
+| Cashback treatment | Pure cost — deducted from net revenue. |
+| Attribution fallback | `COALESCE(ur.source_type, CASE WHEN f.invite_code IS NOT NULL AND f.invite_code <> '' THEN 'founder_invite' ELSE 'unknown' END)`. Only ~627 of ~11,058 users have `user_registrations` rows. |
+| Card cost allocation | Rain invoice total passed as constructor param (default `$6,693.58` for Feb 2026). `card_cost_allocated_usd = invoice_total × (user_tx_count / total_tx_count)`. |
+| `billing_charges` | Actual per-user card tx fee revenue (NBS charges users). Covers 2026-04-03+. `amount` is USDC micros ÷ 1,000,000. Fee codes: `txn_fixed`, `txn_percentage` (legacy) and `TXN_FEE_FIXED_*`, `TXN_FEE_PCT_*` (new). Filter `WHERE status = 'settled'`. For periods before 2026-04-03, rely on Rain invoice pro-rata only. |
+| CPF enrichment coverage | Unknown — verify at query time; `cpf_validation_data` may have 0 rows. |
+| `source_type` enum | Query at runtime — values not fully documented. |
+
+---
+
+## LTV / CAC Analysis
+
+### Cohort Definition
+
+Cohorts are defined by signup month: `DATE_TRUNC('month', users.created_at)`.
+
+### LTV Metric
+
+`net_revenue_usd` per user = sum of all revenue streams minus costs:
+
+```
+net_revenue_usd =
+    + onramp_revenue_usd          (conversion_quotes: SUM(fee_amount_brl + spread_revenue_brl) / 100 / fx_rate)
+    + card_fee_usd                (card_annual_fees: SUM(amount_usdc) — already real USDC)
+    + card_tx_fee_usd             (billing_charges: SUM(amount) / 1_000_000 WHERE status='settled')
+    + swap_fee_usd                (swap_transactions: SUM(input_amount / 1e6 × platform_fee_bps / 10000))
+    + payout_fee_usd              (unblockpay_payouts: SUM(unblockpay_fee) WHERE status='completed')
+    − cashback_usd                (cashback_rewards: SUM(reward_usd_value) WHERE status='completed')
+    − revenue_share_paid_usd      (revenue_share_rewards: SUM(reward_usd_value) WHERE status='completed', by source_user_id)
+    − card_cost_allocated_usd     (Rain invoice pro-rata: invoice_total × user_tx_count / total_tx_count)
+```
+
+### Cohort Matrix
+
+`cohort_month × months_since_signup → avg cumulative net_revenue_usd, n_users_in_cohort`
+
+- `months_since_signup = 0` = the signup month itself.
+- Revenue is accumulated from onramp monthly time-series (full history, no date filter).
+- Card fees, swap fees, billing charges are period-summed and attached at point-in-time.
+
+### CAC Breakeven
+
+`payback_months = first M where avg_cumulative_ltv(M) ≥ cac_usd`
+
+Used in the dashboard as a slider: input any CAC value → see payback period and ROI per cohort and acquisition source.
+
+### Attribution Inference Rule
+
+1. If `user_registrations` row exists → use `source_type` directly.
+2. Else if `founders.invite_code IS NOT NULL AND invite_code <> ''` → `'founder_invite'`
+3. Else → `'unknown'`
+
+### JSON API Export
+
+`ClientReport.to_json_api()` converts all DataFrames to `{"key": [records], ...}` for consumption by future non-Python dashboards.

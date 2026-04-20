@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-20
+
+### Added
+- `nbs_bi/clients/queries.py` — `ClientQueries`: 11 parameterised SQL queries covering user cohort base (with attribution inference), onramp revenue (period + monthly time-series), card fees, card transactions, billing charges, cashback, revenue share, swaps, payouts, and FX rate; Parquet cache + `_scale_brl` helper
+- `nbs_bi/clients/models.py` — `ClientModel`: master user DataFrame joining all revenue/cost streams; unified USD LTV with BRL→USD FX conversion; pro-rata Rain invoice card cost allocation; `revenue_leaderboard`, `product_adoption`, `acquisition_summary`, `referral_code_summary`, `founders_report`, `at_risk_users`, `cohort_ltv`, `ltv_by_source`, `cac_breakeven` methods
+- `nbs_bi/clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant RFM classification; `segment_summary`, `founders_vs_non_founders`, `referral_performance`
+- `nbs_bi/clients/report.py` — `ClientReport`: orchestrates all analyses into a structured dict; `to_json_api()` for future API consumption
+- `nbs_bi/reporting/clients.py` — `ClientSection`: 5-tab Streamlit dashboard (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); CAC breakeven slider; Plotly figure builders for cohort heatmap, LTV curves, acquisition bars, funnel, segment donut, founders scatter, adoption heatmap
+- `nbs_bi/clients/__init__.py` — exposes `ClientModel`, `ClientReport`
+- `billing_charges` integrated as direct card tx fee revenue (USDC micros ÷ 1,000,000, `status='settled'`)
+- Tests: 38 tests across `test_queries.py`, `test_models.py`, `test_segments.py` (fixture-based, no DB)
+
+### Changed
+- `nbs_bi/reporting/dashboard.py` — Tab 5 wired to `ClientSection`; sidebar adds Rain Invoice Total input; `_sidebar` returns invoice total; new `_load_client_report` cached loader
+- `docs/specs/clients.md` — resolved all 8 open questions; added LTV/CAC Analysis section with cohort matrix spec, CAC breakeven formula, attribution inference rule, and JSON API export note
+
 ## [0.5.0] — 2026-04-20
 
 ### Added
