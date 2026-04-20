@@ -235,6 +235,128 @@ def _fig_founders_scatter(founders: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
+    """Dual-axis chart: daily signups (bar) + ad spend (line) over time."""
+    if _empty(daily):
+        return None
+    fig = go.Figure()
+    campaign_ids = daily["campaign_id"].unique()
+    colors = [ROSE, VIOLET, AMBER, TEAL]
+    for i, cid in enumerate(campaign_ids):
+        if not cid:
+            continue
+        mask = daily["campaign_id"] == cid
+        fig.add_trace(
+            go.Bar(
+                x=daily.loc[mask, "date"],
+                y=daily.loc[mask, "new_signups"],
+                name=f"{cid} signups",
+                marker_color=colors[i % len(colors)],
+                opacity=0.6,
+            )
+        )
+    organic_mask = ~daily["is_campaign"]
+    fig.add_trace(
+        go.Bar(
+            x=daily.loc[organic_mask, "date"],
+            y=daily.loc[organic_mask, "new_signups"],
+            name="Organic signups",
+            marker_color=BLUE,
+            opacity=0.4,
+        )
+    )
+    spend_mask = daily["daily_spend_usd"] > 0
+    fig.add_trace(
+        go.Scatter(
+            x=daily.loc[spend_mask, "date"],
+            y=daily.loc[spend_mask, "daily_spend_usd"],
+            name="Ad spend (USD)",
+            mode="lines+markers",
+            line=dict(color=ROSE, width=2, dash="dot"),
+            yaxis="y2",
+        )
+    )
+    layout = _panel("Daily Signups vs Meta Ad Spend")
+    layout["barmode"] = "stack"
+    layout["yaxis2"] = dict(
+        title="Daily Spend (USD)",
+        overlaying="y",
+        side="right",
+        gridcolor="rgba(0,0,0,0)",
+    )
+    layout["yaxis"]["title"] = "New Signups"
+    layout["xaxis"]["title"] = "Date"
+    layout["legend"] = dict(orientation="h", y=-0.2)
+    fig.update_layout(**layout)
+    return fig
+
+
+def _fig_campaign_roi(summary: pd.DataFrame) -> go.Figure | None:
+    """Grouped bar chart: spend vs revenue per campaign."""
+    if _empty(summary):
+        return None
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=summary["campaign_id"],
+            y=summary["total_spend_usd"],
+            name="Ad Spend",
+            marker_color=ROSE,
+            text=summary["total_spend_usd"].apply(lambda v: f"${v:,.0f}"),
+            textposition="outside",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=summary["campaign_id"],
+            y=summary["total_revenue_usd"],
+            name="Cohort Revenue",
+            marker_color=EMERALD,
+            text=summary["total_revenue_usd"].apply(lambda v: f"${v:,.0f}"),
+            textposition="outside",
+        )
+    )
+    layout = _panel("Ad Spend vs Cohort Revenue by Campaign")
+    layout["barmode"] = "group"
+    layout["yaxis"]["title"] = "USD"
+    fig.update_layout(**layout)
+    return fig
+
+
+def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
+    """CAC comparison: full-cohort vs incremental estimate."""
+    if _empty(summary) or "cac_full" not in summary.columns:
+        return None
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=summary["campaign_id"],
+            y=summary["cac_full"],
+            name="CAC (all cohort users)",
+            marker_color=AMBER,
+            text=summary["cac_full"].apply(lambda v: f"${v:.2f}" if pd.notna(v) else "n/a"),
+            textposition="outside",
+        )
+    )
+    valid_incr = summary["cac_incremental"].notna()
+    if valid_incr.any():
+        fig.add_trace(
+            go.Bar(
+                x=summary.loc[valid_incr, "campaign_id"],
+                y=summary.loc[valid_incr, "cac_incremental"],
+                name="CAC (incremental users est.)",
+                marker_color=VIOLET,
+                text=summary.loc[valid_incr, "cac_incremental"].apply(lambda v: f"${v:.2f}"),
+                textposition="outside",
+            )
+        )
+    layout = _panel("Customer Acquisition Cost (USD)")
+    layout["barmode"] = "group"
+    layout["yaxis"]["title"] = "CAC (USD / User)"
+    fig.update_layout(**layout)
+    return fig
+
+
 def _fig_adoption_heatmap(adoption: pd.DataFrame, segments: pd.DataFrame) -> go.Figure | None:
     """Product × segment heatmap — % users active in each combination."""
     if _empty(adoption) or _empty(segments):
@@ -282,7 +404,7 @@ class ClientSection:
         self._r = report
 
     def render(self) -> None:
-        """Render all 5 sub-tabs."""
+        """Render all 6 sub-tabs."""
         tabs = st.tabs(
             [
                 "LTV & Cohorts",
@@ -290,6 +412,7 @@ class ClientSection:
                 "Segments",
                 "Founders Club",
                 "Product Adoption",
+                "Campaign ROI",
             ]
         )
         with tabs[0]:
@@ -302,6 +425,8 @@ class ClientSection:
             self._render_founders()
         with tabs[4]:
             self._render_adoption()
+        with tabs[5]:
+            self._render_campaigns()
 
     # ------------------------------------------------------------------
     # Tab 1 — LTV & Cohorts
@@ -497,6 +622,113 @@ class ClientSection:
     # ------------------------------------------------------------------
     # Tab 5 — Product Adoption
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Tab 6 — Campaign ROI (Meta Ads)
+    # ------------------------------------------------------------------
+
+    def _render_campaigns(self) -> None:  # noqa: C901
+        """Render the Campaign ROI sub-tab.
+
+        Requires a Rain card CSV upload (or pre-loaded data in the report dict
+        under the key ``campaign_roi``).
+        """
+        st.subheader("Meta Ads (Facebook) Campaign ROI")
+        st.caption(
+            "Upload the Rain company card CSV to analyse Meta Ads spend vs revenue from "
+            "users who signed up during each campaign window.  "
+            "Attribution is date-window based — no UTM tracking in DB."
+        )
+
+        campaign_data = self._r.get("campaign_roi")
+        if campaign_data is None:
+            uploaded = st.file_uploader("Rain Card CSV export", type=["csv"], key="campaign_csv")
+            if uploaded is None:
+                st.info(
+                    "Upload the Rain card CSV (e.g. rain-transactions-export-YYYY-MM-DD.csv) "
+                    "to load Meta Ads spend data."
+                )
+                return
+            import io
+
+            from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend
+
+            raw_bytes = uploaded.read()
+            spend = load_ad_spend(io.StringIO(raw_bytes.decode("utf-8")))
+            db_url = self._r.get("_db_url")
+            analyzer = CampaignAnalyzer(spend, db_url=db_url)
+            campaign_data = {
+                "summary": analyzer.roi_summary(),
+                "daily": analyzer.daily_context(),
+            }
+
+        summary = campaign_data.get("summary", pd.DataFrame())
+        daily = campaign_data.get("daily", pd.DataFrame())
+
+        if _empty(summary):
+            st.warning("No FACEBK spend rows found in the uploaded CSV.")
+            return
+
+        # KPI cards
+        total_spend = float(summary["total_spend_usd"].sum())
+        total_rev = float(summary["total_revenue_usd"].sum())
+        total_users = int(summary["cohort_users"].sum())
+        overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Meta Spend", f"${total_spend:,.2f}")
+        c2.metric("Cohort Revenue", f"${total_rev:,.2f}")
+        c3.metric("Cohort Users", f"{total_users:,}")
+        c4.metric(
+            "ROAS",
+            f"{overall_roas:.2f}×",
+            delta=f"{'above' if overall_roas >= 1 else 'below'} break-even",
+            delta_color="normal" if overall_roas >= 1 else "inverse",
+        )
+
+        st.caption(
+            "⚠️ Revenue is from ALL users who signed up during campaign windows — "
+            "includes organic signups.  CAC (incremental) estimates only Meta-attributed "
+            "uplift above the pre-campaign organic baseline."
+        )
+
+        st.divider()
+
+        # Spend vs revenue chart
+        fig = _fig_campaign_roi(summary)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+        # CAC chart
+        fig2 = _fig_campaign_cac(summary)
+        if fig2:
+            st.plotly_chart(fig2, use_container_width=True)
+
+        # Daily context
+        if not _empty(daily):
+            fig3 = _fig_campaign_daily(daily)
+            if fig3:
+                st.plotly_chart(fig3, use_container_width=True)
+
+        # Summary table
+        st.subheader("Campaign Summary Table")
+        display = summary.copy()
+        for col in [
+            "total_spend_usd",
+            "total_revenue_usd",
+            "cac_full",
+            "cac_incremental",
+            "avg_rev_per_transacting_user",
+        ]:
+            if col in display.columns:
+                display[col] = display[col].apply(lambda v: f"${v:,.2f}" if pd.notna(v) else "n/a")
+        if "transacting_rate" in display.columns:
+            display["transacting_rate"] = display["transacting_rate"].apply(
+                lambda v: f"{v * 100:.1f}%" if pd.notna(v) else "n/a"
+            )
+        if "roas" in display.columns:
+            display["roas"] = display["roas"].apply(lambda v: f"{v:.2f}×" if pd.notna(v) else "n/a")
+        st.dataframe(display, use_container_width=True, hide_index=True)
 
     def _render_adoption(self) -> None:
         adoption = _get(self._r, "product_adoption")

@@ -7,6 +7,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-20
+
+### Added
+- `nbs_bi/clients/campaigns.py` — `CampaignAnalyzer`: Meta Ads ROI analysis from Rain company card CSV:
+  - `load_ad_spend(csv_path, merchant_prefix='FACEBK')` — loads and aggregates daily spend from Rain CSV; filters by merchant name prefix
+  - `_detect_campaigns(spend_df, gap_days=7)` — splits spend into contiguous windows separated by >7-day gaps
+  - `CampaignAnalyzer.roi_summary()` — per-campaign DataFrame: cohort users, transacting rate, total revenue, ROAS, CAC (full cohort), CAC (incremental above organic baseline)
+  - `CampaignAnalyzer.daily_context()` — daily signups + ad spend for dashboard charts; tags campaign vs organic days
+- `nbs_bi/reporting/clients.py` — added 6th sub-tab "Campaign ROI":
+  - `_fig_campaign_daily`: dual-axis chart — daily signups (bar) + ad spend line
+  - `_fig_campaign_roi`: grouped bar — spend vs cohort revenue per campaign
+  - `_fig_campaign_cac`: grouped bar — CAC full vs incremental per campaign
+  - `_render_campaigns()`: KPI cards (total spend, cohort revenue, users, ROAS); file uploader for CSV; summary table with formatted values
+- 17 unit tests in `tests/clients/test_campaigns.py` (DB-free, `_run` injected)
+
+### Findings — Meta Ads ROI (data as of 2026-04-20)
+- 3 campaigns detected from `rain-transactions-export-2026-04-20.csv`: campaign_1 (Feb 15-16, $891), campaign_2 (Feb 26-Mar 4, $501), campaign_3 (Apr 14-20, $715)
+- campaign_2: ROAS 2.10× — only confirmed positive-return campaign; $501 spend → $1,052 cohort revenue from 276 users
+- campaign_1: ROAS 0.12× — $891 spend, 58 cohort users, $111 revenue (cohort still early in lifecycle)
+- campaign_3: ROAS 0.41× (too recent); incremental CAC ~$10.07/user vs ~15/day organic baseline
+
 ## [0.6.0] — 2026-04-20
 
 ### Added

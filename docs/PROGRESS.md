@@ -102,7 +102,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-20
+## Current State — 2026-04-20 (updated)
 
 ### What's been built
 
@@ -133,6 +133,13 @@ The following are staged / unstaged changes that will form the next release:
 - `tests/cards/test_analytics.py`, `tests/onramp/test_report.py`, `tests/reporting/` — new test suites
 - `docs/specs/card_usage_forecast.md` — spec for standalone forecast script (complete)
 
+**Meta Ads (FACEBK) ROI findings** (Rain CSV `2026-04-20`, vs DB revenue all-time):
+- 3 campaigns detected (7-day gap split): Feb 15-16 ($891), Feb 26-Mar 4 ($501), Apr 14-20 ($715)
+- campaign_2 (Feb 26-Mar 4): ROAS 2.10× — the only positive-return campaign so far
+- campaign_1 (Feb 15-16): ROAS 0.12× — $891 spend, only $111 cohort revenue to date (early users may still convert)
+- campaign_3 (Apr 14-20): ROAS 0.41× — too recent; CAC incremental ~$10.07/user (+10 daily signups above ~15/day baseline)
+- Note: revenue counts ALL cohort signups (organic + paid); true Meta ROAS is higher for campaign_2 if organic baseline ~40/day is excluded
+
 ### Known environment notes
 
 - `sklearn` absent locally → `CardCostSimulator` is lazy-loaded so analytics imports always work.
@@ -149,8 +156,9 @@ The following are staged / unstaged changes that will form the next release:
 - [x] `clients/report.py` — `ClientReport.build()` → structured dict; `to_json_api()` for future API layer
 - [x] Unit tests (38 tests, fixture-based, no DB)
 - [x] Smoke test against production DB (11,478 users, 9-cohort LTV matrix, 4 acquisition sources)
-- [x] `reporting/clients.py` — 5-tab `ClientSection`: LTV & Cohorts (heatmap + CAC slider), Acquisition, Segments, Founders Club, Product Adoption
+- [x] `reporting/clients.py` — 6-tab `ClientSection`: LTV & Cohorts (heatmap + CAC slider), Acquisition, Segments, Founders Club, Product Adoption, Campaign ROI
 - [x] `reporting/dashboard.py` — Tab 5 wired to `ClientSection`; sidebar adds Rain Invoice Total input
+- [x] `clients/campaigns.py` — `CampaignAnalyzer`: Meta Ads ROI analysis from Rain CSV; `load_ad_spend()`, `_detect_campaigns()`, `roi_summary()`, `daily_context()`; 17 unit tests
 
 ---
 
