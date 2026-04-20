@@ -41,19 +41,21 @@ def _make_cohort_base(n: int = 4) -> pd.DataFrame:
             "country_code": ["BRA"] * n,
             "preferred_currency": ["BRL"] * n,
             "onboarding_completed": [True] * n,
+            "kyc_level": [1, 1, 0, 0],
         }
     )
 
 
 def _make_onramp(fx: float = 5.80) -> pd.DataFrame:
-    # onramp_revenue_brl already scaled (BRL, not centavos)
+    # onramp_revenue_brl + offramp_revenue_brl already scaled (BRL, not centavos)
     return pd.DataFrame(
         {
             "user_id": ["user_0000-xxxx", "user_0001-xxxx"],
             "onramp_revenue_brl": [116.0, 58.0],  # $20 and $10 at fx=5.80
+            "offramp_revenue_brl": [29.0, 0.0],  # $5 extra for user_0000
             "n_conversions": [5, 2],
             "onramp_volume_brl": [1000.0, 500.0],
-            "offramp_volume_usdc": [0.0, 0.0],
+            "offramp_volume_usdc": [5.0, 0.0],
         }
     )
 
@@ -102,7 +104,7 @@ def _make_empty() -> pd.DataFrame:
 def _make_queries_mock(fx: float = 5.80, invoice_total: float = 6693.58) -> MagicMock:
     q = MagicMock()
     q.cohort_base.return_value = _make_cohort_base()
-    q.onramp_revenue.return_value = _make_onramp(fx)
+    q.conversion_revenue.return_value = _make_onramp(fx)
     q.card_fees.return_value = _make_card_fees()
     q.card_transactions.return_value = _make_card_txs()
     q.billing_charges.return_value = _make_billing()
@@ -111,7 +113,7 @@ def _make_queries_mock(fx: float = 5.80, invoice_total: float = 6693.58) -> Magi
     q.swaps.return_value = _make_empty()
     q.payouts.return_value = _make_empty()
     q.fx_rate.return_value = fx
-    q.onramp_monthly.return_value = _make_empty()
+    q.conversion_monthly.return_value = _make_empty()
     return q
 
 
@@ -178,7 +180,8 @@ def test_net_revenue_calculation():
     df = model.master_df
     u0 = df[df["user_id"].str.startswith("user_0000")].iloc[0]
     expected = (
-        20.0  # onramp_revenue_usd (116 BRL / 5.80)
+        20.0  # onramp_revenue_usd  (116 BRL / 5.80)
+        + 5.0  # offramp_revenue_usd (29 BRL / 5.80)
         + 14.99  # card_fee_usd
         + 3.50  # card_tx_fee_usd
         + 0.0  # swap_fee_usd
@@ -234,7 +237,7 @@ def test_acquisition_summary_has_expected_sources():
 # ---------------------------------------------------------------------------
 
 
-def _make_onramp_monthly() -> pd.DataFrame:
+def _make_conversion_monthly() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "user_id": [
@@ -245,14 +248,14 @@ def _make_onramp_monthly() -> pd.DataFrame:
                 "user_0001-xxxx",
             ],
             "month": pd.to_datetime(["2026-01", "2026-02", "2026-03", "2026-01", "2026-02"]),
-            "onramp_revenue_brl": [58.0, 58.0, 58.0, 29.0, 29.0],
+            "conversion_revenue_brl": [58.0, 58.0, 58.0, 29.0, 29.0],
         }
     )
 
 
 def _build_model_with_monthly(fx: float = 5.80) -> ClientModel:
     mock = _make_queries_mock(fx)
-    mock.onramp_monthly.return_value = _make_onramp_monthly()
+    mock.conversion_monthly.return_value = _make_conversion_monthly()
     return ClientModel("2026-01-01", "2026-04-13", _queries=mock)
 
 
@@ -309,3 +312,73 @@ def test_cac_breakeven_returns_expected_columns():
     assert "acquisition_source" in result.columns
     assert "payback_months" in result.columns
     assert "ltv_at_month_12" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# Activation funnel
+# ---------------------------------------------------------------------------
+
+
+def test_activation_funnel_keys():
+    model = _build_model()
+    funnel = model.activation_funnel()
+    assert "total_users" in funnel
+    assert "kyc_done" in funnel
+    assert "active_users" in funnel
+
+
+def test_activation_funnel_total_equals_master_len():
+    model = _build_model()
+    funnel = model.activation_funnel()
+    assert funnel["total_users"] == len(model.master_df)
+
+
+def test_activation_funnel_kyc_done_uses_kyc_level():
+    # Fixture: kyc_level = [1, 1, 0, 0] → 2 users with KYC done
+    model = _build_model()
+    funnel = model.activation_funnel()
+    assert funnel["kyc_done"] == 2
+
+
+def test_activation_funnel_active_counts_transacting():
+    # user_0000 has conversions + card fees → active; user_0001 has conversions → active
+    # user_0002, user_0003 have nothing → not active
+    model = _build_model()
+    funnel = model.activation_funnel()
+    assert funnel["active_users"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Product adoption — new taxonomy
+# ---------------------------------------------------------------------------
+
+
+def test_product_adoption_has_conversion():
+    model = _build_model()
+    pa = model.product_adoption()
+    assert "has_conversion" in pa.columns
+    # user_0000 and user_0001 both have n_conversions > 0
+    assert pa["has_conversion"].sum() == 2
+
+
+def test_product_adoption_has_offramp():
+    model = _build_model()
+    pa = model.product_adoption()
+    assert "has_offramp" in pa.columns
+    # Only user_0000 has offramp_volume_usdc > 0
+    assert pa["has_offramp"].sum() == 1
+
+
+def test_product_adoption_has_card_merged():
+    model = _build_model()
+    pa = model.product_adoption()
+    assert "has_card" in pa.columns
+    # At least user_0000 has card fees → has_card should be True for at least 1 user
+    assert pa["has_card"].sum() >= 1
+
+
+def test_product_adoption_n_products_uses_four_categories():
+    model = _build_model()
+    pa = model.product_adoption()
+    # n_products counts: conversion, card, swap, crossborder (max 4)
+    assert pa["n_products"].max() <= 4

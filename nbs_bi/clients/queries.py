@@ -60,7 +60,8 @@ SELECT
     f.invite_code,
     up.country_code,
     up.preferred_currency,
-    up.onboarding_completed
+    up.onboarding_completed,
+    u.kyc_level
 FROM users u
 LEFT JOIN user_registrations ur ON ur.user_id = u.id
 LEFT JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
@@ -68,17 +69,20 @@ LEFT JOIN founders f ON f.user_id = u.id
 LEFT JOIN user_profiles up ON up.user_id = u.id
 """
 
-_ONRAMP_REVENUE_SQL = """
+_CONVERSION_REVENUE_SQL = """
 SELECT
-    user_id::TEXT                                           AS user_id,
-    SUM(fee_amount_brl + spread_revenue_brl)                AS onramp_revenue_brl,
-    COUNT(*)                                                AS n_conversions,
+    user_id::TEXT                                                       AS user_id,
+    SUM(CASE WHEN direction = 'brl_to_usdc'
+             THEN fee_amount_brl + spread_revenue_brl ELSE 0 END)      AS onramp_revenue_brl,
+    SUM(CASE WHEN direction = 'usdc_to_brl'
+             THEN fee_amount_brl + spread_revenue_brl ELSE 0 END)      AS offramp_revenue_brl,
+    COUNT(*)                                                            AS n_conversions,
     SUM(CASE WHEN direction = 'brl_to_usdc'
              THEN (from_amount_brl)::FLOAT / 100.0
-             ELSE 0 END)                                    AS onramp_volume_brl,
+             ELSE 0 END)                                                AS onramp_volume_brl,
     SUM(CASE WHEN direction = 'usdc_to_brl'
              THEN (from_amount_usdc)::FLOAT / 1000000.0
-             ELSE 0 END)                                    AS offramp_volume_usdc
+             ELSE 0 END)                                                AS offramp_volume_usdc
 FROM conversion_quotes
 WHERE used = TRUE
   AND created_at >= :start
@@ -86,11 +90,11 @@ WHERE used = TRUE
 GROUP BY user_id
 """
 
-_ONRAMP_MONTHLY_SQL = """
+_CONVERSION_MONTHLY_SQL = """
 SELECT
-    user_id::TEXT                                       AS user_id,
-    DATE_TRUNC('month', created_at)::DATE               AS month,
-    SUM(fee_amount_brl + spread_revenue_brl)            AS onramp_revenue_brl
+    user_id::TEXT                                           AS user_id,
+    DATE_TRUNC('month', created_at)::DATE                   AS month,
+    SUM(fee_amount_brl + spread_revenue_brl)                AS conversion_revenue_brl
 FROM conversion_quotes
 WHERE used = TRUE
 GROUP BY user_id, DATE_TRUNC('month', created_at)
@@ -319,7 +323,7 @@ class ClientQueries:
         return {"start": self.start_date, "end": self.end_date}
 
     def cohort_base(self) -> pd.DataFrame:
-        """All users with attribution, founders, and profile data.
+        """All users with attribution, founders, profile, and KYC data.
 
         No date filter — returns every user ever registered.
 
@@ -329,28 +333,35 @@ class ClientQueries:
             referral_code, referral_code_name, commission_rate_bps,
             referral_code_type, is_founder, founder_number,
             founder_network_size, invites_remaining, invite_code,
-            country_code, preferred_currency, onboarding_completed.
+            country_code, preferred_currency, onboarding_completed,
+            kyc_level.
         """
         return self._run("cohort_base", _COHORT_BASE_SQL, {})
 
-    def onramp_revenue(self) -> pd.DataFrame:
-        """Per-user onramp/offramp revenue aggregated over the analysis window.
+    def conversion_revenue(self) -> pd.DataFrame:
+        """Per-user on/off-ramp revenue aggregated over the analysis window.
+
+        Both directions (BRL→USDC onramp and USDC→BRL offramp) are returned
+        as separate columns so callers can analyse each independently.
 
         Returns:
             DataFrame with columns: user_id, onramp_revenue_brl,
-            n_conversions, onramp_volume_brl, offramp_volume_usdc.
+            offramp_revenue_brl, n_conversions, onramp_volume_brl,
+            offramp_volume_usdc.
         """
-        return self._run("onramp_rev", _ONRAMP_REVENUE_SQL, self._date_params())
+        return self._run("conv_rev", _CONVERSION_REVENUE_SQL, self._date_params())
 
-    def onramp_monthly(self) -> pd.DataFrame:
-        """Full-history monthly onramp revenue per user (no date filter).
+    def conversion_monthly(self) -> pd.DataFrame:
+        """Full-history monthly conversion revenue per user (no date filter).
 
-        Used to build the cohort LTV time-series.
+        Sums both onramp and offramp directions. Used to build the cohort
+        LTV time-series.
 
         Returns:
-            DataFrame with columns: user_id, month (date), onramp_revenue_brl.
+            DataFrame with columns: user_id, month (date),
+            conversion_revenue_brl.
         """
-        return self._run("onramp_monthly", _ONRAMP_MONTHLY_SQL, {})
+        return self._run("conv_monthly", _CONVERSION_MONTHLY_SQL, {})
 
     def card_fees(self) -> pd.DataFrame:
         """Per-user paid card annual fees over the analysis window.

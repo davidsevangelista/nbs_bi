@@ -60,7 +60,7 @@ class ClientModel:
         """
         base = self._q.cohort_base().set_index("user_id")
         streams = {
-            "onramp_rev": self._q.onramp_revenue(),
+            "conversion_rev": self._q.conversion_revenue(),
             "card_fees": self._q.card_fees(),
             "card_txs": self._q.card_transactions(),
             "billing": self._q.billing_charges(),
@@ -104,8 +104,10 @@ class ClientModel:
         """
         out = df.copy()
         out["onramp_revenue_usd"] = out.get("onramp_revenue_brl", 0) / fx
+        out["offramp_revenue_usd"] = out.get("offramp_revenue_brl", 0) / fx
         out["net_revenue_usd"] = (
             out["onramp_revenue_usd"]
+            + out["offramp_revenue_usd"]
             + out.get("card_fee_usd", 0)
             + out.get("card_tx_fee_usd", 0)
             + out.get("swap_fee_usd", 0)
@@ -168,6 +170,7 @@ class ClientModel:
             "referral_code",
             "net_revenue_usd",
             "onramp_revenue_usd",
+            "offramp_revenue_usd",
             "card_fee_usd",
             "card_tx_fee_usd",
             "swap_fee_usd",
@@ -186,20 +189,54 @@ class ClientModel:
     def product_adoption(self) -> pd.DataFrame:
         """Per-user product activation flags and product count.
 
+        Products are the four top-level categories: conversion (on OR off
+        ramp), card (annual fee OR tx fee), swap, cross-border (unblockpay).
+        Detailed ``has_onramp`` / ``has_offramp`` flags are also included
+        for drill-down analysis.
+
         Returns:
-            DataFrame with columns: user_id (masked), has_onramp,
-            has_card_fee, has_card_tx, has_swap, has_payout, n_products.
+            DataFrame with columns: user_id (masked), has_conversion,
+            has_onramp, has_offramp, has_card, has_swap, has_crossborder,
+            n_products.
         """
         df = self._master[["user_id"]].copy()
         df["user_id"] = df["user_id"].str[:8] + "..."
-        df["has_onramp"] = self._master.get("n_conversions", 0) > 0
-        df["has_card_fee"] = self._master.get("card_fee_usd", 0) > 0
-        df["has_card_tx"] = self._master.get("card_tx_fee_usd", 0) > 0
+        df["has_conversion"] = self._master.get("n_conversions", 0) > 0
+        df["has_onramp"] = self._master.get("onramp_volume_brl", 0) > 0
+        df["has_offramp"] = self._master.get("offramp_volume_usdc", 0) > 0
+        df["has_card"] = (self._master.get("card_fee_usd", 0) > 0) | (
+            self._master.get("card_tx_fee_usd", 0) > 0
+        )
         df["has_swap"] = self._master.get("n_swaps", 0) > 0
-        df["has_payout"] = self._master.get("payout_fee_usd", 0) > 0
-        product_cols = ["has_onramp", "has_card_fee", "has_card_tx", "has_swap", "has_payout"]
+        df["has_crossborder"] = self._master.get("payout_fee_usd", 0) > 0
+        product_cols = ["has_conversion", "has_card", "has_swap", "has_crossborder"]
         df["n_products"] = df[product_cols].sum(axis=1)
         return df
+
+    def activation_funnel(self) -> dict[str, int]:
+        """Counts for the 3-stage user activation funnel.
+
+        Stages:
+          - **total_users**: all registered users
+          - **kyc_done**: users with ``kyc_level >= 1``
+          - **active_users**: users with at least one completed transaction
+            (conversion, card fee, card tx, swap, or cross-border payout)
+
+        Returns:
+            Dict with keys ``total_users``, ``kyc_done``, ``active_users``.
+        """
+        df = self._master
+        total = len(df)
+        kyc_col = df.get("kyc_level", pd.Series(0, index=df.index))
+        kyc_done = int((pd.to_numeric(kyc_col, errors="coerce").fillna(0) >= 1).sum())
+        active_mask = (
+            (df.get("n_conversions", pd.Series(0, index=df.index)) > 0)
+            | (df.get("card_fee_usd", pd.Series(0, index=df.index)) > 0)
+            | (df.get("card_tx_fee_usd", pd.Series(0, index=df.index)) > 0)
+            | (df.get("n_swaps", pd.Series(0, index=df.index)) > 0)
+            | (df.get("payout_fee_usd", pd.Series(0, index=df.index)) > 0)
+        )
+        return {"total_users": total, "kyc_done": kyc_done, "active_users": int(active_mask.sum())}
 
     def acquisition_summary(self) -> pd.DataFrame:
         """Aggregate revenue and conversion metrics by acquisition source.
@@ -330,13 +367,13 @@ class ClientModel:
         Returns:
             Long-format DataFrame for cohort pivot computation.
         """
-        monthly = self._q.onramp_monthly()
+        monthly = self._q.conversion_monthly()
         if monthly.empty:
             return pd.DataFrame(
                 columns=["user_id", "signup_month", "months_since_signup", "cum_ltv"]
             )
         fx = self._q.fx_rate()
-        monthly["revenue_usd"] = monthly["onramp_revenue_brl"] / fx
+        monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx
         monthly["month"] = pd.to_datetime(monthly["month"])
         base = self._master[["user_id", "signup_date", "acquisition_source"]].copy()
         base["signup_month"] = pd.to_datetime(base["signup_date"]).dt.to_period("M")

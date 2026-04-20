@@ -60,6 +60,7 @@ class ClientReport:
         return {
             "leaderboard": self._model.revenue_leaderboard(n=50),
             "product_adoption": self._model.product_adoption(),
+            "activation_funnel": self._model.activation_funnel(),
             "segments": self._segments.classify(),
             "segment_summary": self._segments.segment_summary(),
             "acquisition": self._model.acquisition_summary(),

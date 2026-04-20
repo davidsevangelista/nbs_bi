@@ -357,6 +357,71 @@ def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _fig_activation_funnel(funnel: dict) -> go.Figure | None:
+    """Horizontal 3-bar funnel: All Users → KYC Done → Active."""
+    if not funnel:
+        return None
+    labels = ["All Users", "KYC Done", "Active (any txn)"]
+    values = [
+        funnel.get("total_users", 0),
+        funnel.get("kyc_done", 0),
+        funnel.get("active_users", 0),
+    ]
+    colors = [BLUE, EMERALD, AMBER]
+    total = values[0] or 1
+    texts = [f"{v:,}  ({100 * v / total:.1f}%)" for v in values]
+    fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker_color=colors,
+            text=texts,
+            textposition="inside",
+            insidetextanchor="middle",
+        )
+    )
+    layout = _panel("User Activation Funnel")
+    layout["xaxis"]["title"] = "Users"
+    fig.update_layout(**layout)
+    return fig
+
+
+def _fig_product_adoption_bars(adoption: pd.DataFrame) -> go.Figure | None:
+    """Horizontal bar chart: product → % of all users who used it."""
+    if _empty(adoption):
+        return None
+    products = {
+        "has_conversion": ("Conversion (On/Off Ramp)", TEAL),
+        "has_card": ("Card", BLUE),
+        "has_swap": ("Swap", VIOLET),
+        "has_crossborder": ("Cross-border (Unblock)", AMBER),
+    }
+    labels, rates, colors = [], [], []
+    for col, (label, color) in products.items():
+        if col in adoption.columns:
+            labels.append(label)
+            rates.append(float(adoption[col].mean() * 100))
+            colors.append(color)
+    if not labels:
+        return None
+    fig = go.Figure(
+        go.Bar(
+            x=rates,
+            y=labels,
+            orientation="h",
+            marker_color=colors,
+            text=[f"{r:.1f}%" for r in rates],
+            textposition="outside",
+        )
+    )
+    layout = _panel("Product Adoption Rate (% of all users)")
+    layout["xaxis"]["title"] = "% Users"
+    layout["xaxis"]["range"] = [0, max(rates) * 1.25] if rates else [0, 100]
+    fig.update_layout(**layout)
+    return fig
+
+
 def _fig_adoption_heatmap(adoption: pd.DataFrame, segments: pd.DataFrame) -> go.Figure | None:
     """Product × segment heatmap — % users active in each combination."""
     if _empty(adoption) or _empty(segments):
@@ -366,14 +431,14 @@ def _fig_adoption_heatmap(adoption: pd.DataFrame, segments: pd.DataFrame) -> go.
         on="user_id",
         how="left",
     ).dropna(subset=["segment"])
-    products = ["has_onramp", "has_card_fee", "has_card_tx", "has_swap", "has_payout"]
+    products = ["has_conversion", "has_card", "has_swap", "has_crossborder"]
     segs = ["champion", "active", "at_risk", "dormant"]
     z = []
     for seg in segs:
         grp = merged[merged["segment"] == seg]
         row = [grp[p].mean() * 100 if p in grp.columns else 0.0 for p in products]
         z.append(row)
-    labels = ["Onramp", "Card Fee", "Card Tx", "Swap", "Payout"]
+    labels = ["Conversion", "Card", "Swap", "Cross-border"]
     fig = go.Figure(
         go.Heatmap(
             z=z,
@@ -733,40 +798,70 @@ class ClientSection:
     def _render_adoption(self) -> None:
         adoption = _get(self._r, "product_adoption")
         segments = _get(self._r, "segments")
+        funnel = self._r.get("activation_funnel", {})
+
+        # -- Activation funnel --
+        st.subheader("User Activation Funnel")
+        fig_funnel = _fig_activation_funnel(funnel)
+        if fig_funnel:
+            st.plotly_chart(fig_funnel, use_container_width=True)
+            if funnel:
+                total = funnel.get("total_users", 1) or 1
+                kyc = funnel.get("kyc_done", 0)
+                active = funnel.get("active_users", 0)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Users", f"{total:,}")
+                c2.metric("KYC Done", f"{kyc:,}", delta=f"{100 * kyc / total:.1f}% of total")
+                c3.metric(
+                    "Active (any txn)",
+                    f"{active:,}",
+                    delta=f"{100 * active / total:.1f}% of total",
+                )
+        else:
+            st.info("No activation funnel data — run ClientReport.build() with DB access.")
 
         if _empty(adoption):
             st.info("No product adoption data available.")
             return
 
-        product_cols = ["has_onramp", "has_card_fee", "has_card_tx", "has_swap", "has_payout"]
-        present_products = [c for c in product_cols if c in adoption.columns]
+        st.divider()
 
-        rates = {c: adoption[c].mean() * 100 for c in present_products}
-        cols = st.columns(len(rates))
-        labels = {
-            "has_onramp": "Onramp",
-            "has_card_fee": "Card Annual Fee",
-            "has_card_tx": "Card Tx",
+        # -- Product adoption rates --
+        st.subheader("Product Adoption")
+        fig_bars = _fig_product_adoption_bars(adoption)
+        if fig_bars:
+            st.plotly_chart(fig_bars, use_container_width=True)
+
+        # KPI row
+        kpi_map = {
+            "has_conversion": "Conversion (On/Off Ramp)",
+            "has_card": "Card",
             "has_swap": "Swap",
-            "has_payout": "Payout",
+            "has_crossborder": "Cross-border",
         }
-        for i, (col, pct) in enumerate(rates.items()):
-            cols[i].metric(f"{labels.get(col, col)} Users", f"{pct:.1f}%")
+        present_kpis = [(col, label) for col, label in kpi_map.items() if col in adoption.columns]
+        if present_kpis:
+            cols = st.columns(len(present_kpis))
+            for i, (col, label) in enumerate(present_kpis):
+                cols[i].metric(f"{label}", f"{adoption[col].mean() * 100:.1f}%")
 
-        fig = _fig_adoption_heatmap(adoption, segments)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
+        st.divider()
+
+        # -- Segment heatmap --
+        fig_heat = _fig_adoption_heatmap(adoption, segments)
+        if fig_heat:
+            st.plotly_chart(fig_heat, use_container_width=True)
 
         if "n_products" in adoption.columns:
             st.subheader("Product Combination Distribution")
             combo_counts = adoption["n_products"].value_counts().sort_index()
-            fig2 = go.Figure(
+            fig_combo = go.Figure(
                 go.Bar(
                     x=[f"{n} product(s)" for n in combo_counts.index],
                     y=combo_counts.values,
                     marker_color=TEAL,
                 )
             )
-            fig2.update_layout(**_panel("Users by Number of Products Used"))
-            fig2.update_yaxes(title="User Count")
-            st.plotly_chart(fig2, use_container_width=True)
+            fig_combo.update_layout(**_panel("Users by Number of Products Used"))
+            fig_combo.update_yaxes(title="User Count")
+            st.plotly_chart(fig_combo, use_container_width=True)
