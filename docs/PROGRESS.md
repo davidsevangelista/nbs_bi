@@ -90,11 +90,13 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] `reporting/theme.py` — shared visual module: colour palette, `panel()`, formatters, `mask_user_id()`, `rgba()`; `panel()` uses `legend y=-0.2, b=60` to prevent title/legend overlap
 - [x] `reporting/overview.py` — Tab 1: dark CSS KPI cards; 6-metric strip (users, KYC rate, active rate, conversions, volume BRL, revenue BRL); 4 charts (monthly revenue, monthly volume with MoM deltas, daily active users, activation funnel)
 - [x] `reporting/ramp.py` — Tab 2: 4 subtabs (Visão Geral, Receita, Clientes, FX & Volume); granularity toggle; 8+ charts
-- [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity, trend), Padrões de Uso, Faixas de Preço, Evolução (aggregate cross-invoice trend + stacked driver + delta chart + summary table)
+- [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity, trend), Padrões de Uso, Faixas de Preço, Evolução (cross-invoice trend + stacked driver + Δ vs prior + **evolution vs first** + summary table)
 - [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs (avg LTV, best source, FX rate, multi-product users %, top-10% revenue concentration) + revenue-per-user histogram (log scale)
 - [x] `reporting/marketing.py` — Tab 5: `MetaAdsSection`; auto-loads most-recent Rain CSV from `data/nbs_corp_card/`; shows only most-recent campaign; 3-chart stack (cumulative spend vs cohort revenue; cumulative contribution margin with dual-axis card txns + conversions; stacked revenue breakdown by source); KPI strip (spend, revenue, ROAS, CAC, net contribution margin); referral selectbox filters entire cohort analysis; tracking start gated at `2026-04-12`
-- [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); sidebar date picker + reference invoice display; invoice total auto-loaded from latest parsed JSON (no hardcoded constant)
+- [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed
 - [x] `use_container_width=True` → `width="stretch"` everywhere (Streamlit deprecation)
+- [x] Dark NBS green theme: Plotly charts, `theme.py` constants, and `overview.py` CSS all aligned to dark shell (`#0D1117` bg / `#161B22` plot bg / `#00E676` accent)
+- [x] Deployed to **Streamlit Community Cloud** (personal GitHub mirror); viewer auth via email whitelist; `READONLY_DATABASE_URL` injected as secret
 
 ---
 
@@ -115,31 +117,38 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-22 (v1.2.0)
+## Current State — 2026-04-22 (v1.3.0)
 
 ### What's been built
 
-`nbs_bi` is a fully operational BI platform. All 5 dashboard tabs are live. Data flows from the Neon PostgreSQL read-only replica through module-specific query/model/report pipelines into a Streamlit dashboard with Plotly visualisations.
+`nbs_bi` is a fully operational BI platform deployed on Streamlit Community Cloud. All 5 dashboard tabs are live. Data flows from the Neon PostgreSQL read-only replica through module-specific query/model/report pipelines into a dark-themed Streamlit dashboard with Plotly visualisations.
 
 **Phase 1 — Cards** (`nbs_bi.cards`):
 - `CardCostModel` validates against Feb 2026 invoice ($6,693.58). March 2026 invoice ($7,857.40) also parsed and loaded.
-- `invoice_total_usd` field now stored in each actuals JSON; `nbs-invoices --force` re-parses all PDFs to populate it.
+- `invoice_total_usd` field stored in each actuals JSON; `nbs-invoices --force` re-parses all PDFs to populate it.
 - Known gap: `CardFeeRates` model accounts for ~$6,357 of the March invoice but Rain billed $7,857.40; ~$1,500 is unmodelled ("Outros"). Visible in the Evolução stacked-driver chart.
 
 **Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention.
 
-**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard fully wired:
+**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard, deployed and accessible:
 - Tab 1 — Overview: headline KPIs, revenue trend, volume, daily active users, activation funnel
 - Tab 2 — Conversions: 4 subtabs, 8+ charts, granularity toggle
-- Tab 3 — Cards: 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity), Padrões de Uso, Faixas de Preço, Evolução (cross-invoice evolution)
+- Tab 3 — Cards: 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity), Padrões de Uso, Faixas de Preço, Evolução (cross-invoice trend + stacked driver + Δ vs prior + **evolution vs first invoice** + summary table)
 - Tab 4 — Clients: LTV cohorts, acquisition, segments, founders, product adoption
-- Tab 5 — Marketing - Ads: full cohort P&L — cumulative spend vs revenue chart; contribution margin chart with dual-axis card txns + BRL↔USDC conversions; stacked revenue breakdown by source; referral filter selectbox
+- Tab 5 — Marketing - Ads: cohort P&L — cumulative spend vs revenue; contribution margin with dual-axis txn counts; stacked revenue breakdown; referral code filter
+- Dark NBS green theme throughout: `#0D1117` background, `#161B22` chart bg, `#00E676` primary accent; all 7 figure builders in `cards.py` fixed for dark background; `overview.py` CSS card palette aligned
+- No sidebar panel — date range computed inline; sidebar fully collapsed
 
 **Phase 7 — Clients** (`nbs_bi.clients`): Full per-user revenue pipeline + Meta Ads cohort P&L:
 - Discriminated revenue SQL: conversion spread, card fees, billing charges, swap fees (revenue); cashback + rev share cohort-scoped (costs)
 - Per-transaction card COGS: `cost_per_txn = invoice_total / invoice_txn_count` × daily cohort txn count
 - Contribution margin = Revenue − Card Program COGS (Meta Ads spend is acquisition cost, tracked separately)
 - Referral filter on all cohort queries; `referral_code_options()` populates UI selectbox dynamically
+
+**Deployment**:
+- Live on Streamlit Community Cloud (personal GitHub mirror at `davidsevangelista/nbs_bi`)
+- Viewer auth via email whitelist; `READONLY_DATABASE_URL` injected as secret
+- `requirements.txt` with `-e .` ensures package install; no Poetry dependency
 
 ### Key metrics from live DB (as of 2026-04-22)
 
@@ -153,9 +162,9 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ### What's next (priority order)
 
-1. **Deploy to Streamlit Community Cloud** — push to GitHub; configure `READONLY_DATABASE_URL` secret; DB must be reachable from AWS us-east-1 (whitelist IPs or use Railway if DB is firewalled)
-2. **Watch campaign_3 ROAS** — cohort too new (Apr 14–); revisit at 30-day mark; use GOOGLE referral filter to isolate Meta-attributed users
-3. **Investigate unmodelled $1,500 gap in NKEMEJLO-0009** — compare March PDF line items against `CardFeeRates`; identify which fee lines Rain charged that the model doesn't account for
+1. **Watch campaign_3 ROAS** — cohort started Apr 14; revisit at ~May 14 (30-day mark); use referral filter to isolate Meta-attributed users vs organic
+2. **Investigate unmodelled $1,500 gap in NKEMEJLO-0009** — compare March PDF line items against `CardFeeRates`; identify which fee lines Rain charged that the model doesn't account for; close with a new fee category or adjust rates
+3. **Add April 2026 invoice** — parse NKEMEJLO-0010 when available; evolution chart will automatically pick it up
 4. **Onramp smoke test** — validate `OnrampModel` KPIs against prod DB for a known period
 5. **Phase 2** (`nbs_bi.transactions`) — schema definition required first
 6. **Phase 4** (`nbs_bi.swaps`) — schema definition required first
@@ -164,15 +173,15 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 - `sklearn` absent locally → `CardCostSimulator` lazy-loaded so analytics imports always work
 - `streamlit` absent locally → `reporting/cards.py` has an import-time shim so figure-builder tests collect without the UI runtime
-- `tests/cards/test_simulator.py` and `tests/reporting/test_ramp.py` fail to collect in test env (missing `streamlit`/`sklearn`) — pre-existing, not blocking
+- 7 pre-existing test failures: `test_simulator.py` (4, missing `sklearn`), `test_campaigns.py` (1, referral DB error mock), `test_marketing.py` (2, profit chart shape assertions) — non-blocking
 
 ---
 
 ## Backlog
 
-- [ ] Deploy to Streamlit Community Cloud (or Railway if DB is not publicly reachable)
-- [ ] Watch campaign_3 ROAS at 30-day cohort mark; compare GOOGLE referral filter vs all-users
+- [ ] Watch campaign_3 ROAS at ~30-day cohort mark (~May 14); compare referral filter vs all-users
 - [ ] Investigate and close the ~$1,500 unmodelled fee gap in NKEMEJLO-0009 (March 2026)
+- [ ] Parse April 2026 invoice (NKEMEJLO-0010) when available
 - [ ] Onramp smoke test: compare KPIs against contabil_pipeline for same date window
 - [ ] Phase 2 — transactions analytics (schema definition first)
 - [ ] Phase 4 — swaps analytics (schema definition first)

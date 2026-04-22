@@ -378,7 +378,7 @@ def _fig_driver_evolution(history: list[tuple[str, CardCostModel]]) -> go.Figure
     _period_colors = [BLUE, AMBER, TEAL, VIOLET, EMERALD, ROSE]
 
     fig = go.Figure()
-    for i, (period, model) in enumerate(history):
+    for i, (period, model) in enumerate(history[1:], start=1):
         d = model.cost_breakdown().as_dict()
         deltas = [d.get(k, 0.0) - first_d.get(k, 0.0) for k in line_items]
         texts = [f"{'+' if v >= 0 else ''}{v:,.2f}" for v in deltas]

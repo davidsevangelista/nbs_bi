@@ -7,6 +7,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-04-22
+
+Dark NBS green theme, Streamlit Community Cloud deployment, sidebar removal, and a new cost-driver evolution chart in the Cards tab.
+
+### Added
+- `reporting/cards.py` — `_fig_driver_evolution(history)`: grouped horizontal bar chart showing each cost driver's Δ USD vs the **first** invoice period across all periods; one color-coded bar group per period; renders below `_fig_driver_delta` in the Evolução sub-tab; gives a cumulative drift view vs the existing Δ vs prior-period chart
+- `requirements.txt` — runtime dependency list with `-e .` for Streamlit Cloud editable install; avoids Poetry resolver (which choked on `pip-audit`'s Python <4.0 constraint)
+- `data/logo/Logo.png` — NBS brand logo committed for favicon use
+
+### Changed
+- `.streamlit/config.toml` — theme aligned to NBS brand: `primaryColor="#00E676"`, `backgroundColor="#0D1117"`, `secondaryBackgroundColor="#161B22"`, `textColor="#E6EDF3"`
+- `reporting/theme.py` — dark structural constants: `PLOT_BG="#161B22"`, `BG="#0D1117"`, `GRID="#30363D"`, `TEXT="#E6EDF3"`, `TEXT_MUTED="#8B949E"`; accent colors bumped to Tailwind 500 for dark-bg visibility (`BLUE="#3B82F6"`, `EMERALD="#10B981"`, `AMBER="#F59E0B"`, `ROSE="#F43F5E"`, `TEAL="#14B8A6"`, `VIOLET="#8B5CF6"`)
+- `reporting/overview.py` — `_CSS` KPI card palette updated to match new dark theme; removed unused `signups_daily` variable (ruff F841)
+- `reporting/dashboard.py` — added `page_icon=str(_logo)` (NBS logo as browser tab favicon, falls back to 📊 if missing); changed `initial_sidebar_state="collapsed"`; replaced `_sidebar()` with `_default_date_range()` — date range now computed inline (rolling ~3 months ending today), no user input required
+- `reporting/cards.py` — 7 figure builders fixed for dark background: `_fig_breakdown`, `_fig_trend`, `_fig_cost_driver_stacked`, `_fig_driver_delta`, `_fig_sensitivity`, `_fig_tx_histogram`, `_fig_tier_revenue` — hardcoded light colors replaced with `PLOT_BG`, `BG`, `GRID`, `TEXT`; `TEAL` and `VIOLET` added to theme imports
+
+### Removed
+- `reporting/dashboard.py` — `_sidebar()` function deleted; left panel with date pickers is gone
+- `reporting/cards.py` — `st.caption("Which cost line should I negotiate with Rain first?")` removed from `_render_breakdown`
+
+### Fixed
+- **White charts on dark shell** — all Plotly figures were using light-mode defaults (`#FFFFFF` paper bg, `#F8FAFC` plot bg) while the Streamlit shell was dark navy; every chart appeared as a bright white box. Fixed by updating `theme.py` constants and patching the 7 figure builders in `cards.py` that bypassed `panel()`.
+
 ## [1.2.0] — 2026-04-22
 
 Full cohort P&L for the Marketing Ads tab: discriminated revenue streams, per-transaction card COGS, contribution margin chart with dual-axis transaction counts, stacked revenue breakdown chart, and referral code filter.
