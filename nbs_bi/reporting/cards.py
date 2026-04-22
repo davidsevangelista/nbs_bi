@@ -881,8 +881,7 @@ class CardAnalyticsSection:
         billed_str = f"  ·  billed ${actual:,.2f}" if actual > 0 else ""
         st.caption(
             f"Invoice {selected_model.inputs.invoice_id} ({selected_period}) — "
-            f"modelled ${total:,.2f} USD{billed_str}. "
-            "Drop a new PDF in data/invoices/ and run nbs-invoices to update."
+            f"modelled ${total:,.2f} USD{billed_str}."
         )
         CardSection(selected_model, history=history).render()
 
