@@ -324,17 +324,49 @@ class OverviewSection:
 
     def render(self) -> None:
         """Render all overview components."""
+        self._render_volume_kpis()
         col_left, col_right = st.columns(2)
         with col_left:
-            self._render_active_users()
+            self._render_funnel()
             self._render_revenue_trend()
         with col_right:
-            self._render_funnel()
+            self._render_active_users()
             self._render_volume()
 
     # ------------------------------------------------------------------
     # Private render methods
     # ------------------------------------------------------------------
+
+    def _render_volume_kpis(self) -> None:
+        """Render a 4-metric strip: Conversions, Card Transactions, Volume BRL, Revenue BRL."""
+        summary = _get(self._r, "summary")
+        card_daily = _get(self._r, "card_daily")
+
+        total_conv = int(_kpi(summary, "Total conversions") or 0)
+        card_txns = int(card_daily["n_txns"].sum()) if not _empty(card_daily) else 0
+        volume_brl = float(_kpi(summary, "Onramp volume BRL") or 0) + float(
+            _kpi(summary, "Offramp volume BRL") or 0
+        )
+        revenue_brl = float(_kpi(summary, "Total revenue BRL") or 0)
+
+        st.markdown(_CSS, unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(
+            _kpi_card("Conversions", f"{total_conv:,}", "completed"),
+            unsafe_allow_html=True,
+        )
+        c2.markdown(
+            _kpi_card("Card Transactions", f"{card_txns:,}", "card spend txns"),
+            unsafe_allow_html=True,
+        )
+        c3.markdown(
+            _kpi_card("Volume", fmt_brl(volume_brl), "onramp + offramp"),
+            unsafe_allow_html=True,
+        )
+        c4.markdown(
+            _kpi_card("Revenue", fmt_brl(revenue_brl), "fees + spread"),
+            unsafe_allow_html=True,
+        )
 
     def _render_kpis(self) -> None:
         """Render dark KPI cards (top row) and activity strip (DAU/WAU/MAU/KYC)."""
