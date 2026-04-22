@@ -937,11 +937,15 @@ class CardAnalyticsSection:
                 pass
 
         # Row 1 — revenue KPIs
-        r1, r2, r3, r4 = st.columns(4)
+        r1, r2, r3, r4, r5 = st.columns(5)
         r1.metric("Total Transactions", f"{total_txns:,}")
         r2.metric("Revenue — Annual Fees", fmt_usd(rev["annual_fees_usd"]))
         r3.metric("Revenue — Billing (Txn)", fmt_usd(rev["billing_usd"]))
-        r4.metric("Active Cards", f"{latest_model.inputs.n_active_cards:,}")
+        r4.metric(
+            "Total Revenue",
+            fmt_usd(rev["annual_fees_usd"] + rev["billing_usd"]),
+        )
+        r5.metric("Active Cards", f"{latest_model.inputs.n_active_cards:,}")
 
         # Row 2 — cost KPIs
         c1, c2, c3, c4, c5 = st.columns(5)
