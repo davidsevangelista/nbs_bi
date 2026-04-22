@@ -338,35 +338,35 @@ class OverviewSection:
     # ------------------------------------------------------------------
 
     def _render_volume_kpis(self) -> None:
-        """Render a 4-metric strip: Conversions, Card Transactions, Volume BRL, Revenue BRL."""
+        """Render two labeled KPI rows: Conversions (3 cards) and Cards (4 cards)."""
         summary = _get(self._r, "summary")
         card_daily = _get(self._r, "card_daily")
+        rev_totals = self._c.get("revenue_totals", {})
 
         total_conv = int(_kpi(summary, "Total conversions") or 0)
-        card_txns = int(card_daily["n_txns"].sum()) if not _empty(card_daily) else 0
         volume_brl = float(_kpi(summary, "Onramp volume BRL") or 0) + float(
             _kpi(summary, "Offramp volume BRL") or 0
         )
-        revenue_brl = float(_kpi(summary, "Total revenue BRL") or 0)
+        conv_revenue_brl = float(_kpi(summary, "Total revenue BRL") or 0)
+        card_txns = int(card_daily["n_txns"].sum()) if not _empty(card_daily) else 0
+        card_vol_usd = float(card_daily["amount_usd"].sum()) if not _empty(card_daily) else 0.0
+        card_fee_usd = float(rev_totals.get("card_fee_usd", 0))
+        net_revenue_usd = float(rev_totals.get("net_revenue_usd", 0))
 
         st.markdown(_CSS, unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(
-            _kpi_card("Conversions", f"{total_conv:,}", "completed"),
-            unsafe_allow_html=True,
-        )
-        c2.markdown(
-            _kpi_card("Card Transactions", f"{card_txns:,}", "card spend txns"),
-            unsafe_allow_html=True,
-        )
-        c3.markdown(
-            _kpi_card("Volume", fmt_brl(volume_brl), "onramp + offramp"),
-            unsafe_allow_html=True,
-        )
-        c4.markdown(
-            _kpi_card("Revenue", fmt_brl(revenue_brl), "fees + spread"),
-            unsafe_allow_html=True,
-        )
+
+        st.caption("CONVERSIONS")
+        c1, c2, c3 = st.columns(3)
+        c1.markdown(_kpi_card("Conversions", f"{total_conv:,}", "completed"), unsafe_allow_html=True)
+        c2.markdown(_kpi_card("Volume", fmt_brl(volume_brl), "onramp + offramp"), unsafe_allow_html=True)
+        c3.markdown(_kpi_card("Revenue", fmt_brl(conv_revenue_brl), "fees + spread"), unsafe_allow_html=True)
+
+        st.caption("CARDS")
+        d1, d2, d3, d4 = st.columns(4)
+        d1.markdown(_kpi_card("Card Transactions", f"{card_txns:,}", "card spend txns"), unsafe_allow_html=True)
+        d2.markdown(_kpi_card("Card Volume", fmt_usd(card_vol_usd), "total card spend"), unsafe_allow_html=True)
+        d3.markdown(_kpi_card("Annual Fees", fmt_usd(card_fee_usd), "collected from clients"), unsafe_allow_html=True)
+        d4.markdown(_kpi_card("Revenue", fmt_usd(net_revenue_usd), "all sources", highlight=True), unsafe_allow_html=True)
 
     def _render_kpis(self) -> None:
         """Render dark KPI cards (top row) and activity strip (DAU/WAU/MAU/KYC)."""

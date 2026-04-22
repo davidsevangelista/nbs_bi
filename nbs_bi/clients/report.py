@@ -73,6 +73,7 @@ class ClientReport:
             "signups_daily": self._model.signups_daily(),
             "activity_kpis": self._model._q.activity_kpis(),
             "signups_24h": self._model._q.signups_24h(),
+            "revenue_totals": self._model.revenue_totals(),
         }
 
     def to_json_api(self) -> dict[str, Any]:

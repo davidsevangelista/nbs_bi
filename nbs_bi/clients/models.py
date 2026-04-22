@@ -478,3 +478,20 @@ class ClientModel:
                 }
             )
         return pd.DataFrame(rows).sort_values("payback_months")
+
+    def revenue_totals(self) -> dict[str, float]:
+        """Aggregate revenue columns across all users in the master DataFrame.
+
+        Returns:
+            Dict with keys: card_fee_usd, card_tx_fee_usd, net_revenue_usd.
+        """
+        df = self._master
+
+        def _sum(col: str) -> float:
+            return float(df[col].sum()) if col in df.columns else 0.0
+
+        return {
+            "card_fee_usd": _sum("card_fee_usd"),
+            "card_tx_fee_usd": _sum("card_tx_fee_usd"),
+            "net_revenue_usd": _sum("net_revenue_usd"),
+        }
