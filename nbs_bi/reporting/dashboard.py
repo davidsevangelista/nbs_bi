@@ -206,13 +206,13 @@ def main() -> None:
     """Streamlit app entry point."""
     _logo = Path(__file__).parent.parent.parent / "data" / "logo" / "Logo.png"
     st.set_page_config(
-        page_title="NBS Business Intelligence",
+        page_title="NBS Data Analytics",
         page_icon=str(_logo) if _logo.exists() else "📊",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
 
-    st.title("NBS Business Intelligence")
+    st.title("NBS Data Analytics")
     st.caption("Internal dashboard — NBS SPSAV LTDA")
 
     invoice_total, _invoice_id, _invoice_period = _latest_rain_invoice_total()
