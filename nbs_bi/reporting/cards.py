@@ -43,9 +43,13 @@ from plotly.subplots import make_subplots
 from nbs_bi.cards.models import CardCostModel, CostBreakdown
 from nbs_bi.reporting.theme import (
     AMBER,
+    BG,
     BLUE,
     EMERALD,
+    GRID,
+    PLOT_BG,
     ROSE,
+    TEXT,
     fmt_usd,
     fmt_usd_precise,
     get_streamlit,
@@ -148,11 +152,13 @@ def _fig_breakdown(breakdown: CostBreakdown) -> go.Figure:
     fig.update_layout(
         xaxis_title=None,
         yaxis_title="USD",
-        xaxis=dict(tickangle=-35),
+        xaxis=dict(tickangle=-35, gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
         margin=dict(t=20, b=80, l=60, r=40),
         height=max(380, len(items) * 22 + 120),
-        plot_bgcolor="#F8FAFC",
-        paper_bgcolor="#F8FAFC",
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
         showlegend=False,
     )
     return fig
@@ -208,6 +214,11 @@ def _fig_trend(history: list[tuple[str, CardCostModel]]) -> go.Figure:
         xaxis_title=None,
         legend=dict(orientation="h", y=1.1),
         margin=dict(t=10, b=10),
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
+        xaxis=dict(gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
     )
     return fig
 
@@ -279,8 +290,11 @@ def _fig_cost_driver_stacked(history: list[tuple[str, CardCostModel]]) -> go.Fig
         yaxis_title="USD",
         legend=dict(orientation="h", y=-0.2, font_size=11),
         margin=dict(t=10, b=60, l=60, r=40),
-        plot_bgcolor="#F8FAFC",
-        paper_bgcolor="#F8FAFC",
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
+        xaxis=dict(gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
     )
     return fig
 
@@ -331,8 +345,11 @@ def _fig_driver_delta(history: list[tuple[str, CardCostModel]]) -> go.Figure | N
         xaxis_title=f"Δ USD vs {prev_period}",
         yaxis_title=None,
         margin=dict(t=10, b=40, l=160, r=120),
-        plot_bgcolor="#F8FAFC",
-        paper_bgcolor="#F8FAFC",
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
+        xaxis=dict(gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
         showlegend=False,
     )
     return fig
@@ -364,9 +381,13 @@ def _fig_sensitivity(model: CardCostModel) -> go.Figure:
     )
     fig.update_layout(
         xaxis_title="Additional cost if input +10% (USD)",
-        yaxis=dict(autorange="reversed"),
+        yaxis=dict(autorange="reversed", gridcolor=GRID),
+        xaxis=dict(gridcolor=GRID),
         margin=dict(t=10, b=10, l=180),
         height=max(250, len(items) * 30),
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
     )
     return fig
 
@@ -495,7 +516,11 @@ def _fig_tx_histogram(raw: pd.DataFrame, flat_tiers: pd.DataFrame) -> go.Figure:
         height=300,
         margin=dict(t=20, b=40, l=60, r=40),
         showlegend=False,
-        plot_bgcolor="#F8FAFC",
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
+        xaxis=dict(gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
     )
     return fig
 
@@ -534,7 +559,11 @@ def _fig_tier_revenue(bkdn: pd.DataFrame, rain_cost: float, model_label: str) ->
         yaxis_title="USD (30 dias)",
         height=360,
         margin=dict(t=50, b=40),
-        plot_bgcolor="#F8FAFC",
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
+        xaxis=dict(gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
     )
     return fig
 
@@ -640,7 +669,6 @@ class CardSection:
 
     def _render_breakdown(self) -> None:
         st.subheader("Cost breakdown")
-        st.caption("Which cost line should I negotiate with Rain first?")
         bd = self._model.cost_breakdown()
         st.plotly_chart(_fig_breakdown(bd), width="stretch", key="costs_breakdown")
 
@@ -958,11 +986,19 @@ class CardAnalyticsSection:
 
         st.divider()
         st.subheader("Total Combinado (Flat + Percentual)")
-        st.caption("Receita total se ambas as estruturas de tarifa fossem aplicadas simultaneamente.")
+        st.caption(
+            "Receita total se ambas as estruturas de tarifa fossem aplicadas simultaneamente."
+        )
         flat_clean = flat_edited.dropna(subset=["De (USD)", "Até (USD)"])
         pct_clean = pct_edited.dropna(subset=["De (USD)", "Até (USD)"])
-        flat_bkdn = _tier_breakdown(raw_30d, flat_clean, "flat", n_days_30) if not flat_clean.empty else None
-        pct_bkdn = _tier_breakdown(raw_30d, pct_clean, "pct", n_days_30) if not pct_clean.empty else None
+        flat_bkdn = (
+            _tier_breakdown(raw_30d, flat_clean, "flat", n_days_30)
+            if not flat_clean.empty
+            else None
+        )
+        pct_bkdn = (
+            _tier_breakdown(raw_30d, pct_clean, "pct", n_days_30) if not pct_clean.empty else None
+        )
         flat_total = float(flat_bkdn["Receita 30d (USD)"].sum()) if flat_bkdn is not None else 0.0
         pct_total = float(pct_bkdn["Receita 30d (USD)"].sum()) if pct_bkdn is not None else 0.0
         combined = flat_total + pct_total
@@ -971,7 +1007,11 @@ class CardAnalyticsSection:
         c1.metric("Receita Flat (30d)", fmt_usd(flat_total))
         c2.metric("Receita Percentual (30d)", fmt_usd(pct_total))
         c3.metric("Total Combinado (30d)", fmt_usd(combined))
-        c4.metric("Cobertura da Invoice", f"{coverage * 100:.1f}%", delta=fmt_usd(combined - rain_cost_usd))
+        c4.metric(
+            "Cobertura da Invoice",
+            f"{coverage * 100:.1f}%",
+            delta=fmt_usd(combined - rain_cost_usd),
+        )
 
     @staticmethod
     @st.cache_data(show_spinner="Carregando transações do cartão…")
