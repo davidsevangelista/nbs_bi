@@ -45,29 +45,29 @@ from nbs_bi.reporting.theme import (
 _CSS = """
 <style>
 .nbs-kpi-card {
-    background:#111827;border:1px solid #1f2937;border-radius:10px;
+    background:#161B22;border:1px solid #30363D;border-radius:10px;
     padding:18px 20px;margin-bottom:4px;
 }
 .nbs-kpi-hl {
-    background:#0b1f0e;border:1px solid #1a3d20;border-radius:10px;
+    background:#0D2818;border:1px solid #1A4731;border-radius:10px;
     padding:18px 20px;margin-bottom:4px;
 }
 .nbs-kpi-label {
-    color:#6b7280;font-size:11px;font-weight:600;
+    color:#8B949E;font-size:11px;font-weight:600;
     letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;
 }
-.nbs-kpi-val   { color:#ffffff;font-size:34px;font-weight:700;line-height:1.1; }
-.nbs-kpi-hl .nbs-kpi-val { color:#a3e635; }
-.nbs-kpi-sub   { color:#6b7280;font-size:12px;margin-top:8px; }
+.nbs-kpi-val   { color:#E6EDF3;font-size:34px;font-weight:700;line-height:1.1; }
+.nbs-kpi-hl .nbs-kpi-val { color:#00E676; }
+.nbs-kpi-sub   { color:#8B949E;font-size:12px;margin-top:8px; }
 .nbs-strip {
-    background:#111827;border:1px solid #1f2937;border-radius:10px;
+    background:#161B22;border:1px solid #30363D;border-radius:10px;
     padding:14px 20px;text-align:center;margin-top:8px;
 }
 .nbs-strip-label {
-    color:#6b7280;font-size:11px;font-weight:600;
+    color:#8B949E;font-size:11px;font-weight:600;
     letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;
 }
-.nbs-strip-val { color:#ffffff;font-size:26px;font-weight:600; }
+.nbs-strip-val { color:#E6EDF3;font-size:26px;font-weight:600; }
 </style>
 """
 
@@ -224,8 +224,12 @@ def _fig_volume_monthly(conv_daily: pd.DataFrame) -> go.Figure | None:
         fig.add_trace(go.Bar(x=agg["month"], y=agg[col], name=label, marker_color=color))
     fig.add_trace(
         go.Scatter(
-            x=agg["month"], y=agg["total"], mode="text", text=mom_text,
-            textposition="top center", showlegend=False,
+            x=agg["month"],
+            y=agg["total"],
+            mode="text",
+            text=mom_text,
+            textposition="top center",
+            showlegend=False,
             textfont=dict(size=10, color="#64748B"),
         )
     )
@@ -286,8 +290,13 @@ def _fig_funnel(funnel: dict) -> go.Figure | None:
     texts = [f"{v:,}  ({100 * v / total:.1f}%)" for v in values]
     fig = go.Figure(
         go.Bar(
-            x=values, y=labels, orientation="h", marker_color=colors,
-            text=texts, textposition="inside", insidetextanchor="middle",
+            x=values,
+            y=labels,
+            orientation="h",
+            marker_color=colors,
+            text=texts,
+            textposition="inside",
+            insidetextanchor="middle",
         )
     )
     layout = panel("User Activation Funnel")
@@ -333,7 +342,6 @@ class OverviewSection:
         activity = self._c.get("activity_kpis", {})
         pix_daily = _get(self._r, "pix_daily")
         card_daily = _get(self._r, "card_daily")
-        signups_daily = _get(self._c, "signups_daily")
         summary = _get(self._r, "summary")
 
         total_users = funnel.get("total_users", 0)

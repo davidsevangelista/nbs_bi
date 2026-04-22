@@ -15,6 +15,7 @@ Five tabs:
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -225,8 +226,10 @@ def _tab_marketing(start_date: str, end_date: str, invoice_total: float) -> None
 
 def main() -> None:
     """Streamlit app entry point."""
+    _logo = Path(__file__).parent.parent.parent / "data" / "logo" / "Logo.png"
     st.set_page_config(
         page_title="NBS Business Intelligence",
+        page_icon=str(_logo) if _logo.exists() else "📊",
         layout="wide",
         initial_sidebar_state="expanded",
     )

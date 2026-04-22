@@ -19,18 +19,18 @@ import pandas as pd
 # Colour palette
 # ---------------------------------------------------------------------------
 
-BLUE: str = "#2563EB"
-EMERALD: str = "#059669"
-AMBER: str = "#D97706"
-ROSE: str = "#E11D48"
-TEAL: str = "#0D9488"
-VIOLET: str = "#7C3AED"
+BLUE: str = "#3B82F6"
+EMERALD: str = "#10B981"
+AMBER: str = "#F59E0B"
+ROSE: str = "#F43F5E"
+TEAL: str = "#14B8A6"
+VIOLET: str = "#8B5CF6"
 
-PLOT_BG: str = "#F8FAFC"
-GRID: str = "#E2E8F0"
-TEXT: str = "#1E293B"
-TEXT_MUTED: str = "#64748B"
-BG: str = "#FFFFFF"
+PLOT_BG: str = "#161B22"
+GRID: str = "#30363D"
+TEXT: str = "#E6EDF3"
+TEXT_MUTED: str = "#8B949E"
+BG: str = "#0D1117"
 
 # Acquisition source → colour mapping used across clients tab.
 SOURCE_COLORS: dict[str, str] = {
