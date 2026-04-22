@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from sqlalchemy import create_engine, text
+
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
@@ -313,6 +315,33 @@ def load_ad_spend(csv_path: str | Path, merchant_prefix: str = "FACEBK") -> pd.D
     daily = fb.groupby("date")["amount_abs"].sum().reset_index()
     daily.columns = ["date", "daily_spend_usd"]
     return daily.sort_values("date").reset_index(drop=True)
+
+
+def load_ad_spend_from_db(db_url: str) -> pd.DataFrame | None:
+    """Query meta_ads_spend table and return the same shape as load_ad_spend().
+
+    Args:
+        db_url: PostgreSQL connection string (read-only is sufficient).
+
+    Returns:
+        DataFrame with columns ``date`` (datetime64) and ``daily_spend_usd`` (float),
+        or ``None`` if the table is missing, empty, or the query fails.
+    """
+    try:
+        engine = create_engine(db_url)
+        sql = text(
+            "SELECT date, SUM(amount_usd) AS daily_spend_usd"
+            " FROM meta_ads_spend GROUP BY date ORDER BY date"
+        )
+        with engine.connect() as conn:
+            df = pd.read_sql(sql, conn)
+        if df.empty:
+            return None
+        df["date"] = pd.to_datetime(df["date"])
+        df["daily_spend_usd"] = df["daily_spend_usd"].astype(float)
+        return df.reset_index(drop=True)
+    except Exception:
+        return None
 
 
 # ------------------------------------------------------------------

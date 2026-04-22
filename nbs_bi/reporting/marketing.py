@@ -728,28 +728,41 @@ class MetaAdsSection:
         self._render_summary_table(summary)
 
     def _try_upload(self) -> dict | None:  # pragma: no cover
-        """Load campaign data from local CSV or file uploader.
+        """Load campaign data: DB first, then local CSV, then file uploader.
 
-        Checks ``data/nbs_corp_card/`` for CSV files first (most recent by
-        name).  Falls back to a Streamlit file uploader if none are found.
+        Priority:
+        1. ``meta_ads_spend`` DB table (populated by ``nbs-ads-upload`` CLI).
+        2. Most-recent CSV in ``data/nbs_corp_card/`` (local dev).
+        3. Streamlit file uploader (manual fallback).
         """
-        from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend
+        from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend, load_ad_spend_from_db
         from nbs_bi.config import DATA_DIR
         from nbs_bi.reporting.cards import _load_all_invoice_models
 
-        corp_card_dir = DATA_DIR / "nbs_corp_card"
-        local_csvs = sorted(corp_card_dir.glob("*.csv")) if corp_card_dir.exists() else []
+        spend = None
 
-        if local_csvs:
-            csv_path = local_csvs[-1]  # most recent by filename sort
-            st.caption(f"Loaded spend data from `{csv_path.name}`")
-            spend = load_ad_spend(csv_path)
-        else:
+        # 1. Try DB
+        if self._db_url:
+            spend = load_ad_spend_from_db(self._db_url)
+            if spend is not None:
+                st.caption("Spend data loaded from database.")
+
+        # 2. Try local CSV
+        if spend is None:
+            corp_card_dir = DATA_DIR / "nbs_corp_card"
+            local_csvs = sorted(corp_card_dir.glob("*.csv")) if corp_card_dir.exists() else []
+            if local_csvs:
+                csv_path = local_csvs[-1]
+                st.caption(f"Loaded spend data from `{csv_path.name}`")
+                spend = load_ad_spend(csv_path)
+
+        # 3. File uploader fallback
+        if spend is None:
             uploaded = st.file_uploader("Rain Card CSV export", type=["csv"], key="meta_ads_csv")
             if uploaded is None:
                 st.info(
-                    "No Rain CSV found in data/nbs_corp_card/. "
-                    "Upload rain-transactions-export-YYYY-MM-DD.csv to load spend data."
+                    "No spend data found. Run `nbs-ads-upload` to populate the database, "
+                    "or upload rain-transactions-export-YYYY-MM-DD.csv manually."
                 )
                 return None
             raw = uploaded.read()

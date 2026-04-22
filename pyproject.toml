@@ -39,6 +39,7 @@ dev = [
 [project.scripts]
 nbs-cards = "nbs_bi.cards.simulator:main"
 nbs-invoices = "nbs_bi.cards.preprocess_invoices:main"
+nbs-ads-upload = "nbs_bi.clients.ads_upload:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
