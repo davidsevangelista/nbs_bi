@@ -279,11 +279,11 @@ def _fig_cost_driver_stacked(history: list[tuple[str, CardCostModel]]) -> go.Fig
     if any(v > 0 for v in outros):
         fig.add_trace(
             go.Bar(
-                name="Outros (não modelado)",
+                name="Other (unmodelled)",
                 x=periods,
                 y=outros,
                 marker_color="#B0BEC5",
-                hovertemplate="Outros: $%{y:,.2f}<extra></extra>",
+                hovertemplate="Other: $%{y:,.2f}<extra></extra>",
             )
         )
     fig.update_layout(
@@ -358,10 +358,10 @@ def _fig_driver_delta(history: list[tuple[str, CardCostModel]]) -> go.Figure | N
 
 
 def _fig_driver_evolution(history: list[tuple[str, CardCostModel]]) -> go.Figure | None:
-    """Grouped horizontal bar: each cost driver's delta from the first invoice period.
+    """Line chart: absolute cost per driver over invoice periods (months on X axis).
 
-    One bar group per period, Y axis = cost driver, X = Δ USD vs the first period.
-    The first period bar is always zero; subsequent bars show cumulative drift.
+    One trace per cost driver; drivers with all-zero values across all periods are
+    omitted. Useful for spotting which line items are growing or shrinking over time.
 
     Args:
         history: List of (period_label, CardCostModel) sorted chronologically.
@@ -373,40 +373,39 @@ def _fig_driver_evolution(history: list[tuple[str, CardCostModel]]) -> go.Figure
         return None
 
     line_items = [k for k in _LABELS if k != "total"]
-    labels = [_LABELS.get(k, k) for k in line_items]
-    first_d = history[0][1].cost_breakdown().as_dict()
-    _period_colors = [BLUE, AMBER, TEAL, VIOLET, EMERALD, ROSE]
+    periods = [p for p, _ in history]
+    _colors = [BLUE, AMBER, TEAL, VIOLET, EMERALD, ROSE]
 
     fig = go.Figure()
-    for i, (period, model) in enumerate(history[1:], start=1):
-        d = model.cost_breakdown().as_dict()
-        deltas = [d.get(k, 0.0) - first_d.get(k, 0.0) for k in line_items]
-        texts = [f"{'+' if v >= 0 else ''}{v:,.2f}" for v in deltas]
+    for j, key in enumerate(line_items):
+        values = [m.cost_breakdown().as_dict().get(key, 0.0) for _, m in history]
+        if all(v == 0.0 for v in values):
+            continue
+        label = _LABELS.get(key, key)
+        texts = [fmt_usd(v) for v in values]
         fig.add_trace(
-            go.Bar(
-                name=period,
-                x=deltas,
-                y=labels,
-                orientation="h",
-                marker_color=_period_colors[i % len(_period_colors)],
+            go.Scatter(
+                x=periods,
+                y=values,
+                name=label,
+                mode="lines+markers",
+                line=dict(color=_colors[j % len(_colors)], width=2),
+                marker=dict(size=7),
                 text=texts,
-                textposition="outside",
-                hovertemplate=f"{period} — %{{y}}: %{{text}}<extra></extra>",
+                hovertemplate=f"{label} — %{{x}}: %{{text}}<extra></extra>",
             )
         )
 
-    baseline_label = history[0][0]
     fig.update_layout(
-        barmode="group",
-        xaxis_title=f"Δ USD vs {baseline_label}",
-        yaxis_title=None,
-        margin=dict(t=10, b=40, l=160, r=120),
+        xaxis_title="Period",
+        yaxis_title="Cost (USD)",
+        margin=dict(t=10, b=60, l=60, r=20),
         plot_bgcolor=PLOT_BG,
         paper_bgcolor=BG,
         font=dict(color=TEXT),
-        xaxis=dict(gridcolor=GRID, zeroline=True, zerolinecolor=GRID),
-        yaxis=dict(gridcolor=GRID),
-        legend=dict(orientation="h", y=-0.15),
+        xaxis=dict(gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID, zeroline=True, zerolinecolor=GRID),
+        legend=dict(orientation="h", y=-0.25),
     )
     return fig
 
@@ -567,8 +566,8 @@ def _fig_tx_histogram(raw: pd.DataFrame, flat_tiers: pd.DataFrame) -> go.Figure:
                 annotation_position="top right",
             )
     fig.update_layout(
-        xaxis_title="Valor da Transação (USD)",
-        yaxis_title="Número de Transações",
+        xaxis_title="Transaction Value (USD)",
+        yaxis_title="Number of Transactions",
         height=300,
         margin=dict(t=20, b=40, l=60, r=40),
         showlegend=False,
@@ -610,9 +609,9 @@ def _fig_tier_revenue(bkdn: pd.DataFrame, rain_cost: float, model_label: str) ->
         annotation_position="top right",
     )
     fig.update_layout(
-        title=f"{model_label} — Receita últimos 30 dias por Faixa  (total: {fmt_usd(total)})",
-        xaxis_title="Faixa",
-        yaxis_title="USD (30 dias)",
+        title=f"{model_label} — Revenue last 30 days by Tier  (total: {fmt_usd(total)})",
+        xaxis_title="Tier",
+        yaxis_title="USD (30d)",
         height=360,
         margin=dict(t=50, b=40),
         plot_bgcolor=PLOT_BG,
@@ -711,10 +710,10 @@ class CardSection:
         billed = getattr(self._model.inputs, "invoice_total_usd", 0.0)
         display_total = billed if billed > 0 else bd.total
         gap = billed - bd.total if billed > 0 else None
-        gap_str = f"modelado ${bd.total:,.2f}" if gap is not None and abs(gap) > 0.01 else None
+        gap_str = f"modelled ${bd.total:,.2f}" if gap is not None and abs(gap) > 0.01 else None
 
         cols = st.columns(5)
-        cols[0].metric("Custo Real (Invoice)", fmt_usd(display_total), delta=gap_str)
+        cols[0].metric("Actual Cost (Invoice)", fmt_usd(display_total), delta=gap_str)
         cols[1].metric(
             "Cost / Transaction",
             fmt_usd_precise(cpt) if cpt is not None else "—",
@@ -799,10 +798,10 @@ class CardAnalyticsSection:
 
         t_costs, t_uso, t_faixas, t_evo = st.tabs(
             [
-                "💰 Custos do Programa",
-                "📊 Padrões de Uso",
-                "🎚️ Faixas de Preço",
-                "📈 Evolução",
+                "💰 Program Costs",
+                "📊 Usage Patterns",
+                "🎚️ Pricing Tiers",
+                "📈 Evolution",
             ]
         )
 
@@ -813,7 +812,7 @@ class CardAnalyticsSection:
             self._render_evolution()
 
         raw = self._load(self._db_url, self._date_from, self._date_to)
-        _no_data = "Nenhuma transação encontrada no período selecionado."
+        _no_data = "No transactions found for the selected period."
         if raw.empty:
             with t_uso:
                 st.warning(_no_data)
@@ -830,14 +829,14 @@ class CardAnalyticsSection:
 
         with t_uso:
             st.caption(
-                f"{daily.index.min().strftime('%d/%m/%Y')} a "
-                f"{daily.index.max().strftime('%d/%m/%Y')}  ·  "
-                f"{n_tx:,} transações  ·  ${total_vol:,.2f} volume total"
+                f"{daily.index.min().strftime('%Y-%m-%d')} to "
+                f"{daily.index.max().strftime('%Y-%m-%d')}  ·  "
+                f"{n_tx:,} transactions  ·  ${total_vol:,.2f} total volume"
             )
             k1, k2, k3 = st.columns(3)
-            k1.metric("Transações totais", f"{n_tx:,}")
-            k2.metric("Volume total", f"${total_vol:,.0f}")
-            k3.metric("Ticket médio", f"${mean_amt:.2f}", delta=f"mediana ${median_amt:.2f}")
+            k1.metric("Total Transactions", f"{n_tx:,}")
+            k2.metric("Total Volume", f"${total_vol:,.0f}")
+            k3.metric("Avg Ticket", f"${mean_amt:.2f}", delta=f"median ${median_amt:.2f}")
             st.divider()
             c1, c2 = st.columns(2)
             with c1:
@@ -864,7 +863,7 @@ class CardAnalyticsSection:
                 "Invoice",
                 options=options,
                 index=len(options) - 1,
-                help="Selecione o período da invoice para análise detalhada.",
+                help="Select invoice period for detailed analysis.",
             )
             selected_model = dict(history)[selected_period]
         else:
@@ -889,8 +888,8 @@ class CardAnalyticsSection:
 
         if len(history) < 2:
             st.info(
-                "Apenas 1 invoice disponível. Adicione mais invoices em data/invoices/ "
-                "e execute nbs-invoices para ver tendências."
+                "Only 1 invoice available. Add more PDFs to data/invoices/ "
+                "and run nbs-invoices to see trends."
             )
             latest_model = history[0][1]
             st.plotly_chart(
@@ -913,19 +912,19 @@ class CardAnalyticsSection:
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(
-            "Custo Total (último)",
+            "Total Cost (latest)",
             fmt_usd(latest_total),
             delta=f"{delta_total:+.2f} vs {prev_period}",
             delta_color="inverse",
         )
         c2.metric(
-            "Custo/Transação",
+            "Cost / Transaction",
             fmt_usd_precise(latest_cpt),
             delta=f"{delta_cpt:+.4f} vs {prev_period}",
             delta_color="inverse",
         )
-        c3.metric("Transações (último)", f"{latest_model.inputs.n_transactions:,}")
-        c4.metric("Cartões Ativos (último)", f"{latest_model.inputs.n_active_cards:,}")
+        c3.metric("Transactions (latest)", f"{latest_model.inputs.n_transactions:,}")
+        c4.metric("Active Cards (latest)", f"{latest_model.inputs.n_active_cards:,}")
 
         st.divider()
         st.plotly_chart(_fig_trend(history), width="stretch", key="evo_trend")
@@ -939,7 +938,7 @@ class CardAnalyticsSection:
         if fig_evo:
             st.plotly_chart(fig_evo, width="stretch", key="evo_driver_evolution")
 
-        st.subheader("Detalhe por Invoice")
+        st.subheader("Invoice Detail")
         rows = []
         for p, m in history:
             d = m.cost_breakdown().as_dict()
@@ -983,9 +982,9 @@ class CardAnalyticsSection:
         raw_30d = raw[pd.to_datetime(raw["posted_at"]) >= cutoff]
         n_days_30 = 30
 
-        st.subheader("Distribuição de Valores de Transação")
+        st.subheader("Transaction Value Distribution")
         st.caption(
-            f"Últimos 30 dias · {len(raw_30d):,} transações · "
+            f"Last 30 days · {len(raw_30d):,} transactions · "
             f"${float(raw_30d['amount_usd'].sum()):,.2f} volume"
         )
         st.plotly_chart(
@@ -993,14 +992,14 @@ class CardAnalyticsSection:
         )
 
         st.divider()
-        st.subheader("Cobertura por Faixa com Tarifas Editáveis")
+        st.subheader("Tier Coverage with Editable Rates")
         st.caption(
-            "Receita calculada sobre os **últimos 30 dias** de transações reais (sem projeção). "
-            "Edite os limites e tarifas de cada faixa. "
-            "Use **9999** como 'Até (USD)' para indicar sem limite."
+            "Revenue calculated over the **last 30 days** of real transactions (no extrapolation). "
+            "Edit tier boundaries and rates below. "
+            "Use **9999** as 'To (USD)' for no upper limit."
         )
 
-        t_flat, t_pct = st.tabs(["Flat por Faixa (USD/tx)", "Percentual por Faixa (% do valor)"])
+        t_flat, t_pct = st.tabs(["Flat per Tier (USD/tx)", "Percentage per Tier (% of value)"])
 
         with t_flat:
             flat_edited = st.data_editor(
@@ -1009,15 +1008,15 @@ class CardAnalyticsSection:
                 width="stretch",
                 key="faixas_flat_editor",
                 column_config={
-                    "Tier": st.column_config.TextColumn("Faixa"),
+                    "Tier": st.column_config.TextColumn("Tier"),
                     "De (USD)": st.column_config.NumberColumn(
-                        "De (USD)", min_value=0.0, format="$%.2f"
+                        "From (USD)", min_value=0.0, format="$%.2f"
                     ),
                     "Até (USD)": st.column_config.NumberColumn(
-                        "Até (USD)", format="$%.2f", help="9999 = sem limite"
+                        "To (USD)", format="$%.2f", help="9999 = no upper limit"
                     ),
                     "Taxa Flat (USD/tx)": st.column_config.NumberColumn(
-                        "Taxa Flat (USD/tx)", min_value=0.0, format="$%.2f"
+                        "Flat Rate (USD/tx)", min_value=0.0, format="$%.2f"
                     ),
                 },
             )
@@ -1030,25 +1029,23 @@ class CardAnalyticsSection:
                 width="stretch",
                 key="faixas_pct_editor",
                 column_config={
-                    "Tier": st.column_config.TextColumn("Faixa"),
+                    "Tier": st.column_config.TextColumn("Tier"),
                     "De (USD)": st.column_config.NumberColumn(
-                        "De (USD)", min_value=0.0, format="$%.2f"
+                        "From (USD)", min_value=0.0, format="$%.2f"
                     ),
                     "Até (USD)": st.column_config.NumberColumn(
-                        "Até (USD)", format="$%.2f", help="9999 = sem limite"
+                        "To (USD)", format="$%.2f", help="9999 = no upper limit"
                     ),
                     "Taxa % (%)": st.column_config.NumberColumn(
-                        "Taxa %", min_value=0.0, max_value=100.0, format="%.2f%%"
+                        "Rate %", min_value=0.0, max_value=100.0, format="%.2f%%"
                     ),
                 },
             )
-            _render_tier_results(raw_30d, pct_edited, "pct", n_days_30, rain_cost_usd, "Percentual")
+            _render_tier_results(raw_30d, pct_edited, "pct", n_days_30, rain_cost_usd, "Percentage")
 
         st.divider()
-        st.subheader("Total Combinado (Flat + Percentual)")
-        st.caption(
-            "Receita total se ambas as estruturas de tarifa fossem aplicadas simultaneamente."
-        )
+        st.subheader("Combined Total (Flat + Percentage)")
+        st.caption("Total revenue if both fee structures were applied simultaneously.")
         flat_clean = flat_edited.dropna(subset=["De (USD)", "Até (USD)"])
         pct_clean = pct_edited.dropna(subset=["De (USD)", "Até (USD)"])
         flat_bkdn = (
@@ -1064,17 +1061,17 @@ class CardAnalyticsSection:
         combined = flat_total + pct_total
         coverage = combined / rain_cost_usd if rain_cost_usd > 0 else 0.0
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Receita Flat (30d)", fmt_usd(flat_total))
-        c2.metric("Receita Percentual (30d)", fmt_usd(pct_total))
-        c3.metric("Total Combinado (30d)", fmt_usd(combined))
+        c1.metric("Flat Revenue (30d)", fmt_usd(flat_total))
+        c2.metric("Percentage Revenue (30d)", fmt_usd(pct_total))
+        c3.metric("Combined Total (30d)", fmt_usd(combined))
         c4.metric(
-            "Cobertura da Invoice",
+            "Invoice Coverage",
             f"{coverage * 100:.1f}%",
             delta=fmt_usd(combined - rain_cost_usd),
         )
 
     @staticmethod
-    @st.cache_data(show_spinner="Carregando transações do cartão…")
+    @st.cache_data(show_spinner="Loading card transactions…")
     def _load(
         db_url: str,
         date_from: date | None,
