@@ -6,7 +6,7 @@ components organised into four subtabs:
 * Overview  — volume over time (daily/weekly/monthly toggle) + PIX flows
 * Revenue   — revenue by direction + monthly breakdown with MoM deltas
 * Users     — top N clients (with attribution) + new vs returning
-* FX & Volume — FX rate bands + spread distribution with mean/median overlays
+* FX & Volume — FX rate bands
 
 Usage::
 
@@ -320,62 +320,6 @@ def _fig_new_vs_returning(nvr: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _fig_spread_histogram(spread_stats: pd.DataFrame) -> go.Figure:
-    """Overlapping histograms of spread_percentage by side with mean/median lines.
-
-    Args:
-        spread_stats: DataFrame with columns side, spread_percentage, volume_brl.
-
-    Returns:
-        Plotly Figure.
-    """
-    colors = {"onramp": BLUE, "offramp": AMBER}
-    line_colors = {"onramp": "#1565C0", "offramp": "#E65100"}
-    fig = go.Figure()
-
-    for side in spread_stats["side"].unique():
-        sub = spread_stats[spread_stats["side"] == side]["spread_percentage"].dropna()
-        fig.add_trace(
-            go.Histogram(
-                x=sub,
-                name=side.capitalize(),
-                opacity=0.65,
-                marker_color=colors.get(side, "#888"),
-                nbinsx=30,
-            )
-        )
-        if sub.empty:
-            continue
-        mean_val = float(sub.mean())
-        median_val = float(sub.median())
-        lc = line_colors.get(side, "#333")
-        prefix = side[:2].upper()
-        fig.add_vline(
-            x=mean_val,
-            line_dash="solid",
-            line_color=lc,
-            line_width=1.5,
-            annotation_text=f"{prefix} mean {mean_val:.2f}%",
-            annotation_position="top right",
-            annotation_font_size=10,
-        )
-        fig.add_vline(
-            x=median_val,
-            line_dash="dot",
-            line_color=lc,
-            line_width=1.5,
-            annotation_text=f"{prefix} median {median_val:.2f}%",
-            annotation_position="top left",
-            annotation_font_size=10,
-        )
-
-    layout = panel()
-    layout["barmode"] = "overlay"
-    layout["xaxis"]["title"] = "Spread (%)"
-    layout["yaxis"]["title"] = "Transactions"
-    fig.update_layout(**layout)
-    return fig
-
 
 # ---------------------------------------------------------------------------
 # Section class
@@ -408,7 +352,6 @@ class RampSection:
             self._render_new_vs_returning()
         with tab4:
             self._render_fx_rate()
-            self._render_spread_histogram()
 
     # ------------------------------------------------------------------
     # Private render methods
@@ -530,12 +473,3 @@ class RampSection:
             return
         st.plotly_chart(_fig_fx_rate(fx), width="stretch")
 
-    def _render_spread_histogram(self) -> None:
-        """Render the spread distribution histogram with mean/median overlays."""
-        ss = _get(self._r, "spread_stats")
-        st.subheader("Spread Distribution (%)")
-        st.caption("Is pricing consistent? Any concentrated outliers?")
-        if _empty(ss):
-            st.info("No spread data.")
-            return
-        st.plotly_chart(_fig_spread_histogram(ss), width="stretch")

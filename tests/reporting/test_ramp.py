@@ -18,7 +18,6 @@ from nbs_bi.reporting.ramp import (
     _fig_new_vs_returning,
     _fig_pix,
     _fig_revenue_monthly,
-    _fig_spread_histogram,
     _fig_volume,
     _kpi,
     _mom_annotations,
@@ -103,21 +102,6 @@ def pix_daily() -> pd.DataFrame:
         }
     )
 
-
-@pytest.fixture()
-def spread_stats() -> pd.DataFrame:
-    import numpy as np
-
-    np.random.seed(42)
-    n = 100
-    return pd.DataFrame(
-        {
-            "side": ["onramp"] * n + ["offramp"] * n,
-            "spread_percentage": list(np.random.normal(2.5, 0.3, n))
-            + list(np.random.normal(2.0, 0.25, n)),
-            "volume_brl": list(np.random.uniform(500, 5000, n)) * 2,
-        }
-    )
 
 
 @pytest.fixture()
@@ -275,16 +259,6 @@ def test_fig_pix_missing_column() -> None:
     fig = _fig_pix(df)
     assert len(fig.data) == 1
 
-
-def test_fig_spread_histogram_returns_figure(spread_stats: pd.DataFrame) -> None:
-    fig = _fig_spread_histogram(spread_stats)
-    assert isinstance(fig, go.Figure)
-
-
-def test_fig_spread_histogram_two_histogram_traces(spread_stats: pd.DataFrame) -> None:
-    fig = _fig_spread_histogram(spread_stats)
-    hist_traces = [t for t in fig.data if isinstance(t, go.Histogram)]
-    assert len(hist_traces) == 2
 
 
 def test_fig_new_vs_returning_stacked(new_vs_returning: pd.DataFrame) -> None:
