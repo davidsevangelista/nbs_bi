@@ -213,9 +213,11 @@ def _fig_trend(history: list[tuple[str, CardCostModel]]) -> go.Figure:
     fig.update_yaxes(title_text="Total cost USD", secondary_y=False)
     fig.update_yaxes(title_text="Cost per tx USD", secondary_y=True)
     fig.update_layout(
+        title="Total Cost & Cost per Transaction Trend",
+        title_font_size=14,
         xaxis_title=None,
         legend=dict(orientation="h", y=1.1),
-        margin=dict(t=10, b=10),
+        margin=dict(t=40, b=10),
         plot_bgcolor=PLOT_BG,
         paper_bgcolor=BG,
         font=dict(color=TEXT),
@@ -344,9 +346,11 @@ def _fig_driver_delta(history: list[tuple[str, CardCostModel]]) -> go.Figure | N
         )
     )
     fig.update_layout(
-        xaxis_title=f"Δ USD vs {prev_period}",
+        title=f"Cost Driver Change vs {prev_period}",
+        title_font_size=14,
+        xaxis_title="Δ USD",
         yaxis_title=None,
-        margin=dict(t=10, b=40, l=160, r=120),
+        margin=dict(t=40, b=40, l=160, r=120),
         plot_bgcolor=PLOT_BG,
         paper_bgcolor=BG,
         font=dict(color=TEXT),
@@ -397,9 +401,11 @@ def _fig_driver_evolution(history: list[tuple[str, CardCostModel]]) -> go.Figure
         )
 
     fig.update_layout(
+        title=f"Cost Driver Evolution vs {history[0][0]}",
+        title_font_size=14,
         xaxis_title="Period",
         yaxis_title="Cost (USD)",
-        margin=dict(t=10, b=60, l=60, r=20),
+        margin=dict(t=40, b=60, l=60, r=20),
         plot_bgcolor=PLOT_BG,
         paper_bgcolor=BG,
         font=dict(color=TEXT),
@@ -928,7 +934,6 @@ class CardAnalyticsSection:
 
         st.divider()
         st.plotly_chart(_fig_trend(history), width="stretch", key="evo_trend")
-        st.plotly_chart(_fig_cost_driver_stacked(history), width="stretch", key="evo_stacked")
 
         fig_delta = _fig_driver_delta(history)
         if fig_delta:

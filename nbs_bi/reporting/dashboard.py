@@ -213,7 +213,6 @@ def main() -> None:
     )
 
     st.title("NBS Data Analytics")
-    st.caption("Internal dashboard — NBS SPSAV LTDA")
 
     invoice_total, _invoice_id, _invoice_period = _latest_rain_invoice_total()
     start_date, end_date = _default_date_range()
