@@ -215,7 +215,7 @@ def _fig_founders_scatter(founders: pd.DataFrame) -> go.Figure | None:
 
 
 def _fig_activation_funnel(funnel: dict) -> go.Figure | None:
-    """Horizontal 3-bar funnel: All Users → KYC Done → Active."""
+    """Funnel chart: All Users → KYC Done → Active (any txn)."""
     if not funnel:
         return None
     labels = ["All Users", "KYC Done", "Active (any txn)"]
@@ -228,18 +228,18 @@ def _fig_activation_funnel(funnel: dict) -> go.Figure | None:
     total = values[0] or 1
     texts = [f"{v:,}  ({100 * v / total:.1f}%)" for v in values]
     fig = go.Figure(
-        go.Bar(
-            x=values,
+        go.Funnel(
             y=labels,
-            orientation="h",
+            x=values,
             marker_color=colors,
             text=texts,
             textposition="inside",
-            insidetextanchor="middle",
+            textinfo="text",
         )
     )
     layout = _panel("User Activation Funnel")
-    layout["xaxis"]["title"] = "Users"
+    layout.pop("xaxis", None)
+    layout.pop("yaxis", None)
     fig.update_layout(**layout)
     return fig
 

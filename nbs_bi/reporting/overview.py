@@ -269,7 +269,7 @@ def _fig_active_users(active_daily: pd.DataFrame) -> go.Figure | None:
 
 
 def _fig_funnel(funnel: dict) -> go.Figure | None:
-    """Horizontal bar funnel: Registered → KYC Done → Active.
+    """Funnel chart: All Users → KYC Done → Active (revenue).
 
     Args:
         funnel: Dict with keys total_users, kyc_done, active_users.
@@ -280,7 +280,7 @@ def _fig_funnel(funnel: dict) -> go.Figure | None:
     if not funnel:
         return None
     total = funnel.get("total_users", 0) or 1
-    labels = ["Registered", "KYC Approved", "Active (revenue)"]
+    labels = ["All Users", "KYC Done", "Active (revenue)"]
     values = [
         funnel.get("total_users", 0),
         funnel.get("kyc_done", 0),
@@ -289,18 +289,18 @@ def _fig_funnel(funnel: dict) -> go.Figure | None:
     colors = [BLUE, TEAL, EMERALD]
     texts = [f"{v:,}  ({100 * v / total:.1f}%)" for v in values]
     fig = go.Figure(
-        go.Bar(
-            x=values,
+        go.Funnel(
             y=labels,
-            orientation="h",
+            x=values,
             marker_color=colors,
             text=texts,
             textposition="inside",
-            insidetextanchor="middle",
+            textinfo="text",
         )
     )
     layout = panel("User Activation Funnel")
-    layout["xaxis"]["title"] = "Users"
+    layout.pop("xaxis", None)
+    layout.pop("yaxis", None)
     fig.update_layout(**layout)
     return fig
 
