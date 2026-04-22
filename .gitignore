@@ -27,11 +27,14 @@ coverage.xml
 htmlcov/
 
 # Data (never commit raw or processed financial data)
-data/invoices/*
+data/invoices/*.pdf
 data/processed/*
 data/cards_simulation/*
-!data/invoices/.gitkeep
+data/nbs_corp_card/
 !data/processed/.gitkeep
+
+# Streamlit secrets (configure via Streamlit Cloud UI instead)
+.streamlit/secrets.toml
 
 # Jupyter
 .ipynb_checkpoints/

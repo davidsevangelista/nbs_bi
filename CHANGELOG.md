@@ -7,6 +7,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-04-22
+
+Full cohort P&L for the Marketing Ads tab: discriminated revenue streams, per-transaction card COGS, contribution margin chart with dual-axis transaction counts, stacked revenue breakdown chart, and referral code filter.
+
+### Added
+- `clients/campaigns.py` — `_REFERRAL_CODES_SQL`: fetches distinct referral codes that have attributed users; `referral_code_options()` method returns them as a sorted list, returning `[]` on DB error
+- `clients/campaigns.py` — `_cost_per_txn_from_invoices(invoice_history)`: maps Rain invoice history to a `{period: cost_per_txn}` dict; skips periods with zero transactions
+- `clients/campaigns.py` — `_cogs_for_cohort_txns(txn_df, cost_per_txn)`: multiplies daily cohort txn counts by the period rate; falls back to nearest available rate when the exact period is missing
+- `clients/campaigns.py` — `_COHORT_CARD_TXNS_SQL` / `_COHORT_CONVERSIONS_SQL`: two new SQL queries returning daily card transaction counts and daily BRL↔USDC conversion counts for cohort users from campaign start through today
+- `clients/campaigns.py` — `cumulative_profit(campaign_id, invoice_history, referral_code)`: contribution margin DataFrame with 24 columns — per-day and cumulative revenue by source (conversion, card fees, billing, swap), costs (cashback, rev share, card COGS), ad spend, profit, txn count, and conversion count; contribution margin = revenue − card COGS only (Meta Ads spend is acquisition cost, not deducted here)
+- `reporting/marketing.py` — `_fig_cumulative_profit()`: dual Y-axis chart; left axis: cumulative revenue (EMERALD), cumulative card COGS (ROSE dotted), cumulative contribution margin (VIOLET); right axis: cumulative card transactions (TEAL dotted), cumulative BRL↔USDC conversions (AMBER dotted); breakeven `add_hline(y=0)`
+- `reporting/marketing.py` — `_fig_revenue_breakdown()`: stacked area chart of cumulative revenue by source (4 traces: conversion, card fees, billing, swap); cashback and rev share costs shown as separate negative lines; returns `None` when required columns are absent (graceful degradation)
+- `reporting/marketing.py` — referral filter `st.selectbox` in `render()`: calls `referral_code_options()` and shows "All" + available codes; empty string = no filter; selected value flows into `cumulative_revenue()` and `cumulative_profit()`
+- `tests/clients/test_campaigns.py` — `test_referral_code_options_returns_list`, `test_referral_code_options_on_db_error`; `_fake_run` updated with referral-codes dispatch branch; 30 tests total, all passing
+
+### Changed
+- `clients/campaigns.py` — `_DAILY_COHORT_REVENUE_SQL`: replaced opaque `other_rev` aggregate with labeled UNION subquery; output now has 7 columns (`daily_rev_conversion_usd`, `daily_rev_card_fees_usd`, `daily_rev_billing_usd`, `daily_rev_swap_usd`, `daily_cost_cashback_usd`, `daily_cost_rev_share_usd`, `daily_rev_usd`); cashback and rev share are cohort-scoped only
+- `clients/campaigns.py` — all 4 cohort SQL queries (`_COHORT_REVENUE_SQL`, `_DAILY_COHORT_REVENUE_SQL`, `_COHORT_CARD_TXNS_SQL`, `_COHORT_CONVERSIONS_SQL`) accept `:referral_code` param; `'' = ''` short-circuit means no filter when empty
+- `clients/campaigns.py` — `cumulative_revenue()` and `cumulative_profit()` accept `referral_code: str = ""` and propagate it to all SQL calls
+- `reporting/marketing.py` — `_try_upload()` stores `invoice_history` in returned dict instead of pre-computing `cum_profit_df`; `render()` now recomputes `cum_rev_df` and `cum_profit_df` on every render cycle using the selected referral filter
+- `reporting/marketing.py` — `_render_spend_charts()`: chart order is now (1) cumulative spend vs revenue, (2) `_fig_cumulative_profit`, (3) `_fig_revenue_breakdown`, (4) daily signups, (5) ROAS + CAC side-by-side
+
+### Fixed
+- **Deeply negative profit display** — earlier implementation subtracted cumulative Meta Ads spend (~$1,180) from contribution margin, making profit appear as −$800 even when revenue was +$380. Contribution margin now equals revenue minus card-program COGS only; Meta Ads spend remains visible in the top spend chart as the acquisition cost it represents.
+
 ## [1.1.0] — 2026-04-21
 
 Multi-invoice support for the Cards tab: invoice selector, aggregate evolution sub-tab, auto-detected invoice total. Three missing Clients tab spec items implemented. Two bug fixes (leaderboard missing user_id; billed vs modelled total discrepancy).

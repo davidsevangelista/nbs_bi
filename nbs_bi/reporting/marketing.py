@@ -49,6 +49,7 @@ def _fmt_usd_safe(v: object) -> str:
         return "—"
     return fmt_usd(f) if pd.notna(f) else "—"
 
+
 # Earliest date for which ad spend tracking is considered reliable.
 # Spend before this date is excluded from campaign detection and ROI analysis.
 _TRACKING_START = "2026-04-12"
@@ -89,8 +90,13 @@ def _build_cumulative_spend(
     """
     if spend_df.empty:
         return pd.DataFrame(
-            columns=["date", "daily_spend_usd", "cumulative_spend_usd",
-                     "is_campaign_start", "campaign_id"]
+            columns=[
+                "date",
+                "daily_spend_usd",
+                "cumulative_spend_usd",
+                "is_campaign_start",
+                "campaign_id",
+            ]
         )
     df = spend_df.copy().sort_values("date").reset_index(drop=True)
     df["cumulative_spend_usd"] = df["daily_spend_usd"].cumsum()
@@ -141,9 +147,7 @@ def _build_channel_comparison(
     acq["spend_usd"] = np.nan
     acq["roas"] = np.nan
 
-    return pd.concat(
-        [pd.DataFrame([meta_row]), acq], ignore_index=True
-    )
+    return pd.concat([pd.DataFrame([meta_row]), acq], ignore_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -155,14 +159,17 @@ def _fig_cumulative_spend(
     cum_df: pd.DataFrame,
     campaigns: list[dict],
     cum_rev_df: pd.DataFrame | None = None,
+    cum_profit_df: pd.DataFrame | None = None,
 ) -> go.Figure | None:
-    """Line chart of cumulative spend and cohort revenue with campaign markers.
+    """Line chart of cumulative spend, cohort revenue, and profit with campaign markers.
 
     Args:
         cum_df: Output of :func:`_build_cumulative_spend`.
         campaigns: Campaign dicts from ``CampaignAnalyzer.campaigns``.
         cum_rev_df: Output of ``CampaignAnalyzer.cumulative_revenue()`` — optional
             revenue overlay for the most recent campaign's cohort.
+        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` — optional
+            profit overlay (revenue − COGS − ad spend) for the latest cohort.
 
     Returns:
         Plotly Figure or None if data is empty.
@@ -170,34 +177,71 @@ def _fig_cumulative_spend(
     if cum_df.empty:
         return None
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=cum_df["date"].astype(str),
-        y=cum_df["cumulative_spend_usd"],
-        mode="lines",
-        line=dict(color=ROSE, width=2),
-        name="Cumulative Spend (USD)",
-        hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
-    ))
-    if cum_rev_df is not None and not cum_rev_df.empty and "cum_rev_usd" in cum_rev_df.columns:
-        fig.add_trace(go.Scatter(
-            x=cum_rev_df["date"].astype(str),
-            y=cum_rev_df["cum_rev_usd"],
+    fig.add_trace(
+        go.Scatter(
+            x=cum_df["date"].astype(str),
+            y=cum_df["cumulative_spend_usd"],
             mode="lines",
-            line=dict(color=EMERALD, width=2),
-            name="Cumulative Revenue — latest cohort (USD)",
+            line=dict(color=ROSE, width=2),
+            name="Cumulative Spend (USD)",
             hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
-        ))
+        )
+    )
+    if cum_rev_df is not None and not cum_rev_df.empty and "cum_rev_usd" in cum_rev_df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=cum_rev_df["date"].astype(str),
+                y=cum_rev_df["cum_rev_usd"],
+                mode="lines",
+                line=dict(color=EMERALD, width=2),
+                name="Cumulative Revenue — latest cohort (USD)",
+                hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+            )
+        )
+    _has_profit = (
+        cum_profit_df is not None
+        and not cum_profit_df.empty
+        and "cum_profit_usd" in cum_profit_df.columns
+    )
+    if _has_profit:
+        fig.add_trace(
+            go.Scatter(
+                x=cum_profit_df["date"].astype(str),  # type: ignore[union-attr]
+                y=cum_profit_df["cum_profit_usd"],  # type: ignore[index]
+                mode="lines",
+                line=dict(color=VIOLET, width=2, dash="dot"),
+                name="Cumulative Profit — latest cohort (USD)",
+                hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+            )
+        )
+        fig.add_hline(
+            y=0,
+            line_dash="dash",
+            line_color=TEXT_MUTED,
+            line_width=1,
+            opacity=0.6,
+        )
     for c in campaigns:
         x_str = str(c["start"])
         fig.add_shape(
-            type="line", x0=x_str, x1=x_str, y0=0, y1=1,
-            xref="x", yref="paper",
+            type="line",
+            x0=x_str,
+            x1=x_str,
+            y0=0,
+            y1=1,
+            xref="x",
+            yref="paper",
             line=dict(color=TEXT_MUTED, width=1, dash="dash"),
         )
         fig.add_annotation(
-            x=x_str, y=1, xref="x", yref="paper",
-            text=c["campaign_id"], showarrow=False,
-            yanchor="bottom", font=dict(size=10, color=TEXT_MUTED),
+            x=x_str,
+            y=1,
+            xref="x",
+            yref="paper",
+            text=c["campaign_id"],
+            showarrow=False,
+            yanchor="bottom",
+            font=dict(size=10, color=TEXT_MUTED),
         )
     spend_days = cum_df[cum_df["daily_spend_usd"] > 0]
     for _, row in spend_days.iterrows():
@@ -227,23 +271,251 @@ def _fig_cumulative_spend(
     return fig
 
 
-def _fig_campaign_roi(summary: pd.DataFrame) -> go.Figure | None:
-    """Grouped bar: ad spend vs cohort revenue per campaign."""
+def _fig_campaign_roi(
+    summary: pd.DataFrame,
+    cum_profit_df: pd.DataFrame | None = None,
+) -> go.Figure | None:
+    """Grouped bar: ad spend vs cohort revenue per campaign, with profit line overlay.
+
+    Args:
+        summary: Output of ``CampaignAnalyzer.roi_summary()``.
+        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` — used
+            to compute total net profit for the latest campaign overlay.
+
+    Returns:
+        Plotly Figure or None if data is empty.
+    """
     if summary.empty:
         return None
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=summary["campaign_id"], y=summary["total_spend_usd"],
-        name="Ad Spend", marker_color=ROSE,
-        text=summary["total_spend_usd"].apply(_fmt_usd_safe), textposition="outside",
-    ))
-    fig.add_trace(go.Bar(
-        x=summary["campaign_id"], y=summary["total_revenue_usd"],
-        name="Cohort Revenue", marker_color=EMERALD,
-        text=summary["total_revenue_usd"].apply(_fmt_usd_safe), textposition="outside",
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=summary["campaign_id"],
+            y=summary["total_spend_usd"],
+            name="Ad Spend",
+            marker_color=ROSE,
+            text=summary["total_spend_usd"].apply(_fmt_usd_safe),
+            textposition="outside",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=summary["campaign_id"],
+            y=summary["total_revenue_usd"],
+            name="Cohort Revenue",
+            marker_color=EMERALD,
+            text=summary["total_revenue_usd"].apply(_fmt_usd_safe),
+            textposition="outside",
+        )
+    )
+    _has_profit = (
+        cum_profit_df is not None
+        and not cum_profit_df.empty
+        and "cum_profit_usd" in cum_profit_df.columns
+    )
+    if _has_profit:
+        net_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[union-attr]
+        latest_id = summary["campaign_id"].iloc[-1]
+        fig.add_trace(
+            go.Scatter(
+                x=[latest_id],
+                y=[net_profit],
+                mode="markers+text",
+                marker=dict(color=VIOLET, size=12, symbol="diamond"),
+                text=[_fmt_usd_safe(net_profit)],
+                textposition="top center",
+                name="Net Profit (latest cohort)",
+            )
+        )
+        fig.add_hline(
+            y=0,
+            line_dash="dash",
+            line_color=TEXT_MUTED,
+            line_width=1,
+            opacity=0.6,
+        )
     layout = panel("Ad Spend vs Cohort Revenue by Campaign")
     layout["barmode"] = "group"
+    layout["yaxis"]["title"] = "USD"
+    fig.update_layout(**layout)
+    return fig
+
+
+def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
+    """Line chart of cumulative revenue, card program cost, and net profit.
+
+    Shows three USD lines on the left axis and cumulative card transaction
+    count on a secondary right axis, so the driver of card-program COGS is
+    immediately visible.
+
+    Args:
+        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` —
+            must contain ``date``, ``cum_rev_usd``, ``cum_card_cogs_usd``,
+            ``cum_profit_usd``, and ``cum_txn_count`` columns.
+
+    Returns:
+        Plotly Figure or None if data is empty or missing required columns.
+    """
+    required = {
+        "date",
+        "cum_rev_usd",
+        "cum_card_cogs_usd",
+        "cum_profit_usd",
+        "cum_txn_count",
+        "cum_conversion_count",
+    }
+    if cum_profit_df.empty or not required.issubset(cum_profit_df.columns):
+        return None
+
+    x = cum_profit_df["date"].astype(str)
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=cum_profit_df["cum_rev_usd"],
+            mode="lines",
+            line=dict(color=EMERALD, width=2),
+            name="Cumulative Revenue (USD)",
+            yaxis="y1",
+            hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=cum_profit_df["cum_card_cogs_usd"],
+            mode="lines",
+            line=dict(color=ROSE, width=2, dash="dot"),
+            name="Cumulative Card Program Cost (USD)",
+            yaxis="y1",
+            hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=cum_profit_df["cum_profit_usd"],
+            mode="lines",
+            line=dict(color=VIOLET, width=2),
+            name="Cumulative Contribution Margin (USD)",
+            yaxis="y1",
+            hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=cum_profit_df["cum_txn_count"],
+            mode="lines",
+            line=dict(color=TEAL, width=1, dash="dot"),
+            name="Cumulative Card Transactions",
+            yaxis="y2",
+            hovertemplate="%{x}: %{y:,.0f} txns<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=cum_profit_df["cum_conversion_count"],
+            mode="lines",
+            line=dict(color=AMBER, width=1, dash="dot"),
+            name="Cumulative Conversions (BRL↔USDC)",
+            yaxis="y2",
+            hovertemplate="%{x}: %{y:,.0f} conversions<extra></extra>",
+        )
+    )
+    fig.add_hline(
+        y=0,
+        line_dash="dash",
+        line_color=TEXT_MUTED,
+        line_width=1,
+        opacity=0.6,
+        annotation_text="breakeven",
+        annotation_position="bottom right",
+        annotation_font_size=10,
+        annotation_font_color=TEXT_MUTED,
+    )
+    layout = panel("Cumulative Contribution Margin — Latest Cohort (USD)")
+    layout["xaxis"]["title"] = "Date"
+    layout["yaxis"]["title"] = "USD"
+    layout["yaxis2"] = {
+        "title": "Transactions",
+        "overlaying": "y",
+        "side": "right",
+        "showgrid": False,
+        "tickformat": ",.0f",
+    }
+    fig.update_layout(**layout)
+    return fig
+
+
+def _fig_revenue_breakdown(cum_profit_df: pd.DataFrame) -> go.Figure | None:
+    """Stacked area chart of cumulative revenue by source for the latest cohort.
+
+    Shows four stacked positive revenue streams plus two cost deduction lines
+    (cashback, rev share) so the composition of cohort revenue is visible.
+
+    Args:
+        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` —
+            must contain ``date``, ``cum_rev_conversion_usd``,
+            ``cum_rev_card_fees_usd``, ``cum_rev_billing_usd``,
+            ``cum_rev_swap_usd``, ``cum_cost_cashback_usd``,
+            ``cum_cost_rev_share_usd``.
+
+    Returns:
+        Plotly Figure or None if data is empty or missing required columns.
+    """
+    required = {
+        "date",
+        "cum_rev_conversion_usd",
+        "cum_rev_card_fees_usd",
+        "cum_rev_billing_usd",
+        "cum_rev_swap_usd",
+        "cum_cost_cashback_usd",
+        "cum_cost_rev_share_usd",
+    }
+    if cum_profit_df.empty or not required.issubset(cum_profit_df.columns):
+        return None
+
+    x = cum_profit_df["date"].astype(str)
+    fig = go.Figure()
+
+    for col, color, label in [
+        ("cum_rev_conversion_usd", EMERALD, "Conversion Spread"),
+        ("cum_rev_card_fees_usd", TEAL, "Card Annual Fees"),
+        ("cum_rev_billing_usd", BLUE, "Billing Charges"),
+        ("cum_rev_swap_usd", AMBER, "Swap Fees"),
+    ]:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=cum_profit_df[col],
+                mode="lines",
+                stackgroup="revenue",
+                line=dict(color=color, width=1),
+                name=label,
+                hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+            )
+        )
+
+    for col, color, label in [
+        ("cum_cost_cashback_usd", ROSE, "Cashback Cost"),
+        ("cum_cost_rev_share_usd", VIOLET, "Rev Share Cost"),
+    ]:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=-cum_profit_df[col],
+                mode="lines",
+                line=dict(color=color, width=1, dash="dot"),
+                name=label,
+                hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+            )
+        )
+
+    layout = panel("Cumulative Revenue Breakdown — Latest Cohort (USD)")
+    layout["xaxis"]["title"] = "Date"
     layout["yaxis"]["title"] = "USD"
     fig.update_layout(**layout)
     return fig
@@ -254,20 +526,28 @@ def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
     if summary.empty or "cac_full" not in summary.columns:
         return None
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=summary["campaign_id"], y=summary["cac_full"],
-        name="CAC (all cohort users)", marker_color=AMBER,
-        text=summary["cac_full"].apply(lambda v: f"${v:.2f}" if pd.notna(v) else "n/a"),
-        textposition="outside",
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=summary["campaign_id"],
+            y=summary["cac_full"],
+            name="CAC (all cohort users)",
+            marker_color=AMBER,
+            text=summary["cac_full"].apply(lambda v: f"${v:.2f}" if pd.notna(v) else "n/a"),
+            textposition="outside",
+        )
+    )
     valid = summary["cac_incremental"].notna()
     if valid.any():
-        fig.add_trace(go.Bar(
-            x=summary.loc[valid, "campaign_id"], y=summary.loc[valid, "cac_incremental"],
-            name="CAC (incremental est.)", marker_color=VIOLET,
-            text=summary.loc[valid, "cac_incremental"].apply(lambda v: f"${v:.2f}"),
-            textposition="outside",
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=summary.loc[valid, "campaign_id"],
+                y=summary.loc[valid, "cac_incremental"],
+                name="CAC (incremental est.)",
+                marker_color=VIOLET,
+                text=summary.loc[valid, "cac_incremental"].apply(lambda v: f"${v:.2f}"),
+                textposition="outside",
+            )
+        )
     layout = panel("Customer Acquisition Cost (USD)")
     layout["barmode"] = "group"
     layout["yaxis"]["title"] = "CAC (USD / User)"
@@ -285,32 +565,44 @@ def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
         if not cid:
             continue
         mask = daily["campaign_id"] == cid
-        fig.add_trace(go.Bar(
-            x=daily.loc[mask, "date"].astype(str),
-            y=daily.loc[mask, "new_signups"],
-            name=f"{cid} signups",
-            marker_color=colors[i % len(colors)],
-            opacity=0.6,
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=daily.loc[mask, "date"].astype(str),
+                y=daily.loc[mask, "new_signups"],
+                name=f"{cid} signups",
+                marker_color=colors[i % len(colors)],
+                opacity=0.6,
+            )
+        )
     organic = ~daily["is_campaign"]
-    fig.add_trace(go.Bar(
-        x=daily.loc[organic, "date"].astype(str),
-        y=daily.loc[organic, "new_signups"],
-        name="Organic signups", marker_color=BLUE, opacity=0.4,
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=daily.loc[organic, "date"].astype(str),
+            y=daily.loc[organic, "new_signups"],
+            name="Organic signups",
+            marker_color=BLUE,
+            opacity=0.4,
+        )
+    )
     spending = daily["daily_spend_usd"] > 0
-    fig.add_trace(go.Scatter(
-        x=daily.loc[spending, "date"].astype(str),
-        y=daily.loc[spending, "daily_spend_usd"],
-        name="Ad spend (USD)", mode="lines+markers",
-        line=dict(color=ROSE, width=2, dash="dot"), yaxis="y2",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=daily.loc[spending, "date"].astype(str),
+            y=daily.loc[spending, "daily_spend_usd"],
+            name="Ad spend (USD)",
+            mode="lines+markers",
+            line=dict(color=ROSE, width=2, dash="dot"),
+            yaxis="y2",
+        )
+    )
     layout = panel("Daily Signups vs Meta Ad Spend")
     layout["barmode"] = "stack"
     layout["yaxis"]["title"] = "New Signups"
     layout["xaxis"]["title"] = "Date"
     layout["yaxis2"] = dict(
-        title="Daily Spend (USD)", overlaying="y", side="right",
+        title="Daily Spend (USD)",
+        overlaying="y",
+        side="right",
         gridcolor="rgba(0,0,0,0)",
     )
     fig.update_layout(**layout)
@@ -328,14 +620,16 @@ def _fig_channel_comparison(comparison: pd.DataFrame) -> go.Figure | None:
         if pd.notna(row.get("roas")) and row["acquisition_source"] == "meta_ads":
             label += f"  ROAS {row['roas']:.2f}×"
         texts.append(label)
-    fig = go.Figure(go.Bar(
-        x=comparison["avg_net_revenue_usd"],
-        y=comparison["acquisition_source"],
-        orientation="h",
-        marker_color=colors,
-        text=texts,
-        textposition="outside",
-    ))
+    fig = go.Figure(
+        go.Bar(
+            x=comparison["avg_net_revenue_usd"],
+            y=comparison["acquisition_source"],
+            orientation="h",
+            marker_color=colors,
+            text=texts,
+            textposition="outside",
+        )
+    )
     layout = panel("Avg Net Revenue (USD) by Acquisition Channel")
     layout["xaxis"]["title"] = "Avg Net Revenue (USD)"
     fig.update_layout(**layout)
@@ -399,15 +693,35 @@ class MetaAdsSection:
             daily = daily[pd.to_datetime(daily["date"]) >= cutoff].reset_index(drop=True)
 
         analyzer = campaign_data.get("analyzer")
+        invoice_history: list = campaign_data.get("invoice_history", [])
+
+        referral_code = ""
+        if analyzer is not None:
+            referral_options = analyzer.referral_code_options()
+            if referral_options:
+                options = ["All"] + referral_options
+                selected = st.selectbox(
+                    "Cohort filter — referral source",
+                    options,
+                    key="referral_filter",
+                    help="Filter the cohort to users attributed to a specific referral source.",
+                )
+                referral_code = "" if selected == "All" else selected
+
         cum_rev_df = (
-            analyzer.cumulative_revenue(latest_id)
+            analyzer.cumulative_revenue(latest_id, referral_code=referral_code)
+            if analyzer is not None
+            else pd.DataFrame()
+        )
+        cum_profit_df = (
+            analyzer.cumulative_profit(latest_id, invoice_history, referral_code=referral_code)
             if analyzer is not None
             else pd.DataFrame()
         )
 
-        self._render_kpis(summary)
+        self._render_kpis(summary, cum_profit_df)
         st.divider()
-        self._render_spend_charts(summary, daily, spend_df, campaigns, cum_rev_df)
+        self._render_spend_charts(summary, daily, spend_df, campaigns, cum_rev_df, cum_profit_df)
         st.divider()
         self._render_channel(summary)
         st.divider()
@@ -421,6 +735,7 @@ class MetaAdsSection:
         """
         from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend
         from nbs_bi.config import DATA_DIR
+        from nbs_bi.reporting.cards import _load_all_invoice_models
 
         corp_card_dir = DATA_DIR / "nbs_corp_card"
         local_csvs = sorted(corp_card_dir.glob("*.csv")) if corp_card_dir.exists() else []
@@ -430,9 +745,7 @@ class MetaAdsSection:
             st.caption(f"Loaded spend data from `{csv_path.name}`")
             spend = load_ad_spend(csv_path)
         else:
-            uploaded = st.file_uploader(
-                "Rain Card CSV export", type=["csv"], key="meta_ads_csv"
-            )
+            uploaded = st.file_uploader("Rain Card CSV export", type=["csv"], key="meta_ads_csv")
             if uploaded is None:
                 st.info(
                     "No Rain CSV found in data/nbs_corp_card/. "
@@ -445,16 +758,40 @@ class MetaAdsSection:
         cutoff = pd.Timestamp(_TRACKING_START)
         spend = spend[pd.to_datetime(spend["date"]) >= cutoff].reset_index(drop=True)
         analyzer = CampaignAnalyzer(spend, db_url=self._db_url)
+
+        _, _, _, history = _load_all_invoice_models()
+        invoice_history = [
+            (
+                period,
+                m.inputs.invoice_total_usd or float(m.cost_breakdown().total),
+                m.inputs.n_transactions,
+            )
+            for period, m in history
+        ]
+
+        summary = analyzer.roi_summary()
+
         return {
-            "summary": analyzer.roi_summary(),
+            "summary": summary,
             "daily": analyzer.daily_context(),
             "spend_df": spend,
             "campaigns": analyzer.campaigns,
             "analyzer": analyzer,
+            "invoice_history": invoice_history,
         }
 
-    def _render_kpis(self, summary: pd.DataFrame) -> None:  # pragma: no cover
-        """Render 5-metric KPI strip."""
+    def _render_kpis(  # pragma: no cover
+        self,
+        summary: pd.DataFrame,
+        cum_profit_df: pd.DataFrame | None = None,
+    ) -> None:
+        """Render KPI strip including net profit when profit data is available.
+
+        Args:
+            summary: Output of ``CampaignAnalyzer.roi_summary()``.
+            cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()``
+                — when provided, adds a Net Profit KPI tile.
+        """
         total_spend = float(summary["total_spend_usd"].sum())
         total_rev = float(summary["total_revenue_usd"].sum())
         n_users = int(summary["cohort_users"].sum())
@@ -462,20 +799,35 @@ class MetaAdsSection:
         best_roas = float(summary["roas"].max()) if "roas" in summary.columns else 0.0
         cac_full = total_spend / n_users if n_users > 0 else float("nan")
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Total Meta Spend", fmt_usd(total_spend))
-        c2.metric("Cohort Revenue", fmt_usd(total_rev))
-        c3.metric(
-            "Overall ROAS", f"{overall_roas:.2f}×",
+        has_profit = (
+            cum_profit_df is not None
+            and not cum_profit_df.empty
+            and "cum_profit_usd" in cum_profit_df.columns
+        )
+        cols = st.columns(6 if has_profit else 5)
+        cols[0].metric("Total Meta Spend", fmt_usd(total_spend))
+        cols[1].metric("Cohort Revenue", fmt_usd(total_rev))
+        cols[2].metric(
+            "Overall ROAS",
+            f"{overall_roas:.2f}×",
             delta=f"{'above' if overall_roas >= 1 else 'below'} break-even",
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
-        c4.metric("Best Campaign ROAS", f"{best_roas:.2f}×")
-        c5.metric("Full-Cohort CAC", fmt_usd(cac_full) if not np.isnan(cac_full) else "n/a")
+        cols[3].metric("Best Campaign ROAS", f"{best_roas:.2f}×")
+        cols[4].metric("Full-Cohort CAC", fmt_usd(cac_full) if not np.isnan(cac_full) else "n/a")
+        if has_profit:
+            net_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[union-attr]
+            cols[5].metric(
+                "Net Profit (latest cohort)",
+                fmt_usd(net_profit),
+                delta="profitable" if net_profit >= 0 else "loss",
+                delta_color="normal" if net_profit >= 0 else "inverse",
+            )
 
         st.caption(
             "Revenue is from ALL users who signed up during campaign windows — "
-            "includes organic signups. CAC (incremental) in the table below "
+            "includes organic signups. Net Profit deducts card COGS (Rain invoice) "
+            "and ad spend. CAC (incremental) in the table below "
             "estimates only Meta-attributed uplift."
         )
 
@@ -486,13 +838,22 @@ class MetaAdsSection:
         spend_df: pd.DataFrame,
         campaigns: list[dict],
         cum_rev_df: pd.DataFrame | None = None,
+        cum_profit_df: pd.DataFrame | None = None,
     ) -> None:
         """Render cumulative spend, ROI, CAC, and daily signups charts."""
         if not spend_df.empty:
             cum_df = _build_cumulative_spend(spend_df, campaigns)
-            fig = _fig_cumulative_spend(cum_df, campaigns, cum_rev_df)
+            fig = _fig_cumulative_spend(cum_df, campaigns, cum_rev_df, cum_profit_df)
             if fig:
                 st.plotly_chart(fig, width="stretch")
+
+        if cum_profit_df is not None and not cum_profit_df.empty:
+            fig_profit = _fig_cumulative_profit(cum_profit_df)
+            if fig_profit:
+                st.plotly_chart(fig_profit, width="stretch")
+            fig_breakdown = _fig_revenue_breakdown(cum_profit_df)
+            if fig_breakdown:
+                st.plotly_chart(fig_breakdown, width="stretch")
 
         if not daily.empty:
             fig4 = _fig_campaign_daily(daily)
@@ -501,7 +862,7 @@ class MetaAdsSection:
 
         col1, col2 = st.columns(2)
         with col1:
-            fig2 = _fig_campaign_roi(summary)
+            fig2 = _fig_campaign_roi(summary, cum_profit_df)
             if fig2:
                 st.plotly_chart(fig2, width="stretch")
         with col2:
@@ -546,16 +907,17 @@ class MetaAdsSection:
         """Render formatted campaign summary table."""
         st.subheader("Campaign Summary")
         display = summary.copy()
-        for col in ["total_spend_usd", "total_revenue_usd", "cac_full",
-                    "cac_incremental", "avg_rev_per_transacting_user"]:
+        for col in [
+            "total_spend_usd",
+            "total_revenue_usd",
+            "cac_full",
+            "cac_incremental",
+            "avg_rev_per_transacting_user",
+        ]:
             if col in display.columns:
-                display[col] = display[col].apply(
-                    lambda v: fmt_usd(v) if pd.notna(v) else "n/a"
-                )
+                display[col] = display[col].apply(lambda v: fmt_usd(v) if pd.notna(v) else "n/a")
         if "roas" in display.columns:
-            display["roas"] = display["roas"].apply(
-                lambda v: f"{v:.2f}×" if pd.notna(v) else "n/a"
-            )
+            display["roas"] = display["roas"].apply(lambda v: f"{v:.2f}×" if pd.notna(v) else "n/a")
         if "transacting_rate" in display.columns:
             display["transacting_rate"] = display["transacting_rate"].apply(
                 lambda v: f"{v * 100:.1f}%" if pd.notna(v) else "n/a"

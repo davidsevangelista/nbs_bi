@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -47,12 +48,24 @@ GROUP BY 1
 ORDER BY 1
 """
 
+_REFERRAL_CODES_SQL = """
+SELECT DISTINCT rc.code
+FROM referral_codes rc
+JOIN user_registrations ur ON ur.attributed_referral_code_id = rc.id
+ORDER BY rc.code
+"""
+
 _COHORT_REVENUE_SQL = """
 WITH cohort AS (
     SELECT id::TEXT AS user_id
     FROM users
     WHERE created_at >= :cohort_start
       AND created_at <  :cohort_end
+      AND (:referral_code = '' OR id IN (
+          SELECT ur.user_id FROM user_registrations ur
+          JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+          WHERE rc.code = :referral_code
+      ))
 ),
 onramp_rev AS (
     SELECT user_id::TEXT,
@@ -149,60 +162,126 @@ WITH cohort AS (
     FROM users
     WHERE created_at >= :cohort_start
       AND created_at <  :cohort_end
+      AND (:referral_code = '' OR id IN (
+          SELECT ur.user_id FROM user_registrations ur
+          JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+          WHERE rc.code = :referral_code
+      ))
 ),
 fx AS (
     SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY effective_rate) AS rate
     FROM conversion_quotes
     WHERE used = TRUE AND direction = 'brl_to_usdc'
 ),
-rev_rows AS (
+conversion_rev AS (
     SELECT DATE(cq.created_at AT TIME ZONE 'UTC') AS rev_date,
            (cq.fee_amount_brl + cq.spread_revenue_brl)::FLOAT / 100.0
                / NULLIF(fx.rate, 0) AS rev_usd
     FROM conversion_quotes cq, fx
     WHERE cq.used = TRUE
       AND cq.user_id::TEXT IN (SELECT user_id FROM cohort)
-    UNION ALL
-    SELECT DATE(cf.created_at AT TIME ZONE 'UTC'),
-           cf.amount_usdc::FLOAT
+),
+card_fee_rev AS (
+    SELECT DATE(cf.created_at AT TIME ZONE 'UTC') AS rev_date,
+           cf.amount_usdc::FLOAT AS rev_usd
     FROM card_annual_fees cf
     WHERE cf.status = 'paid'
       AND cf.user_id::TEXT IN (SELECT user_id FROM cohort)
+)
+SELECT
+    rev_date,
+    ROUND(SUM(CASE WHEN src = 'conversion' THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_conversion_usd,
+    ROUND(SUM(CASE WHEN src = 'card_fee'   THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_card_fees_usd,
+    ROUND(SUM(CASE WHEN src = 'billing'    THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_billing_usd,
+    ROUND(SUM(CASE WHEN src = 'swap'       THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_swap_usd,
+    ROUND(-SUM(CASE WHEN src = 'cashback'  THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_cost_cashback_usd,
+    ROUND(-SUM(CASE WHEN src = 'rev_share' THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_cost_rev_share_usd,
+    ROUND(SUM(rev_usd)::NUMERIC, 4) AS daily_rev_usd
+FROM (
+    SELECT rev_date, rev_usd, 'conversion' AS src FROM conversion_rev
     UNION ALL
-    SELECT DATE(bc.created_at AT TIME ZONE 'UTC'),
-           bc.amount::FLOAT / 1000000.0
+    SELECT rev_date, rev_usd, 'card_fee'   AS src FROM card_fee_rev
+    UNION ALL
+    SELECT DATE(bc.created_at AT TIME ZONE 'UTC') AS rev_date,
+           bc.amount::FLOAT / 1000000.0            AS rev_usd,
+           'billing'                               AS src
     FROM billing_charges bc
     WHERE bc.status = 'settled'
       AND bc.user_id::TEXT IN (SELECT user_id FROM cohort)
     UNION ALL
-    SELECT DATE(st."timestamp" AT TIME ZONE 'UTC'),
+    SELECT DATE(st."timestamp" AT TIME ZONE 'UTC')                     AS rev_date,
            st.input_amount::FLOAT / 1000000.0
-               * st.platform_fee_bps::FLOAT / 10000.0
+               * st.platform_fee_bps::FLOAT / 10000.0                 AS rev_usd,
+           'swap'                                                       AS src
     FROM swap_transactions st
     WHERE st.user_id::TEXT IN (SELECT user_id FROM cohort)
     UNION ALL
-    SELECT DATE(pp.created_at AT TIME ZONE 'UTC'),
-           pp.unblockpay_fee::FLOAT
-    FROM unblockpay_payouts pp
-    WHERE pp.status = 'completed'
-      AND pp.user_id::TEXT IN (SELECT user_id FROM cohort)
-    UNION ALL
-    SELECT DATE(cr.created_at AT TIME ZONE 'UTC'),
-           -cr.reward_usd_value::FLOAT
+    SELECT DATE(cr.created_at AT TIME ZONE 'UTC') AS rev_date,
+           -cr.reward_usd_value::FLOAT             AS rev_usd,
+           'cashback'                              AS src
     FROM cashback_rewards cr
     WHERE cr.status = 'completed'
       AND cr.user_id::TEXT IN (SELECT user_id FROM cohort)
     UNION ALL
-    SELECT DATE(rsr.created_at AT TIME ZONE 'UTC'),
-           -rsr.reward_usd_value::FLOAT
+    SELECT DATE(rsr.created_at AT TIME ZONE 'UTC') AS rev_date,
+           -rsr.reward_usd_value::FLOAT             AS rev_usd,
+           'rev_share'                              AS src
     FROM revenue_share_rewards rsr
     WHERE rsr.status = 'completed'
       AND rsr.source_user_id::TEXT IN (SELECT user_id FROM cohort)
-)
-SELECT rev_date, ROUND(SUM(rev_usd)::NUMERIC, 4) AS daily_rev_usd
-FROM rev_rows
+) all_rev
 GROUP BY rev_date
 ORDER BY rev_date
+"""
+
+
+_COHORT_CARD_TXNS_SQL = """
+SELECT
+    DATE(ct.authorized_at AT TIME ZONE 'UTC') AS txn_date,
+    COUNT(*)                                   AS txn_count
+FROM card_transactions ct
+WHERE ct.user_id::TEXT IN (
+    SELECT id::TEXT FROM users
+    WHERE created_at >= :cohort_start
+      AND created_at <  :cohort_end
+      AND (:referral_code = '' OR id IN (
+          SELECT ur.user_id FROM user_registrations ur
+          JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+          WHERE rc.code = :referral_code
+      ))
+)
+  AND ct.status IN ('completed', 'pending')
+  AND ct.transaction_type = 'spend'
+  AND ct.authorized_at >= :cohort_start
+GROUP BY 1
+ORDER BY 1
+"""
+
+_COHORT_CONVERSIONS_SQL = """
+SELECT
+    DATE(cq.created_at AT TIME ZONE 'UTC') AS conv_date,
+    COUNT(*)                                AS conv_count
+FROM conversion_quotes cq
+WHERE cq.used = TRUE
+  AND cq.user_id::TEXT IN (
+      SELECT id::TEXT FROM users
+      WHERE created_at >= :cohort_start
+        AND created_at <  :cohort_end
+        AND (:referral_code = '' OR id IN (
+            SELECT ur.user_id FROM user_registrations ur
+            JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+            WHERE rc.code = :referral_code
+        ))
+  )
+  AND cq.created_at >= :cohort_start
+GROUP BY 1
+ORDER BY 1
 """
 
 
@@ -288,6 +367,77 @@ def _detect_campaigns(
 
 
 # ------------------------------------------------------------------
+# COGS helpers
+# ------------------------------------------------------------------
+
+
+def _cost_per_txn_from_invoices(
+    invoice_history: list[tuple[str, float | Decimal, int]],
+) -> dict[str, float]:
+    """Compute cost-per-transaction for each invoice period.
+
+    Args:
+        invoice_history: List of ``(period, invoice_total_usd, txn_count)``
+            tuples, e.g.
+            ``[("2026-02", 6693.58, 6885), ("2026-03", 7857.40, 6990)]``.
+
+    Returns:
+        Dict mapping period string (``"YYYY-MM"``) to USD cost per transaction.
+        Periods with zero transactions are skipped with a warning.
+    """
+    result: dict[str, float] = {}
+    for period, total_usd, txn_count in invoice_history:
+        if txn_count <= 0:
+            logger.warning("Period %s has zero transactions — skipping cost-per-txn", period)
+            continue
+        result[period] = float(total_usd) / txn_count
+        logger.debug(
+            "Period %s: $%.2f / %d txns = $%.4f/txn",
+            period,
+            float(total_usd),
+            txn_count,
+            result[period],
+        )
+    return result
+
+
+def _cogs_for_cohort_txns(
+    txn_df: pd.DataFrame,
+    cost_per_txn: dict[str, float],
+) -> pd.Series:
+    """Map daily cohort transaction counts to daily card-program COGS.
+
+    Each row's COGS = ``txn_count × cost_per_txn[YYYY-MM]``.  If the period
+    has no entry in ``cost_per_txn``, the most recent prior rate is used as a
+    fallback (or the earliest available rate if no prior period exists).
+
+    Args:
+        txn_df: DataFrame with columns ``txn_date`` (datetime64) and
+            ``txn_count`` (int).
+        cost_per_txn: Output of :func:`_cost_per_txn_from_invoices`.
+
+    Returns:
+        Series of float64 daily COGS values, indexed same as ``txn_df``.
+        Returns all-zero Series when ``cost_per_txn`` is empty.
+    """
+    if not cost_per_txn:
+        logger.warning("cost_per_txn is empty — card COGS treated as zero")
+        return pd.Series(0.0, index=txn_df.index, dtype="float64")
+
+    sorted_periods = sorted(cost_per_txn.keys())
+
+    def _rate_for_dt(dt: pd.Timestamp) -> float:
+        period = dt.strftime("%Y-%m")
+        if period in cost_per_txn:
+            return cost_per_txn[period]
+        earlier = [p for p in sorted_periods if p <= period]
+        return cost_per_txn[earlier[-1]] if earlier else cost_per_txn[sorted_periods[0]]
+
+    rates = pd.to_datetime(txn_df["txn_date"]).apply(_rate_for_dt)
+    return (txn_df["txn_count"].astype("float64") * rates).astype("float64")
+
+
+# ------------------------------------------------------------------
 # Core analyser
 # ------------------------------------------------------------------
 
@@ -349,10 +499,15 @@ class CampaignAnalyzer:
         """Return daily signup counts for the given window (end is exclusive)."""
         return self._run(_DAILY_SIGNUPS_SQL, {"start": start, "end": end})
 
-    def _cohort_revenue(self, cohort_start: str, cohort_end: str) -> dict:
+    def _cohort_revenue(self, cohort_start: str, cohort_end: str, referral_code: str = "") -> dict:
         """Return aggregate revenue metrics for the signup cohort (end exclusive)."""
         df = self._run(
-            _COHORT_REVENUE_SQL, {"cohort_start": cohort_start, "cohort_end": cohort_end}
+            _COHORT_REVENUE_SQL,
+            {
+                "cohort_start": cohort_start,
+                "cohort_end": cohort_end,
+                "referral_code": referral_code,
+            },
         )
         if df.empty:
             return {
@@ -503,7 +658,23 @@ class CampaignAnalyzer:
 
         return merged.sort_values("date").reset_index(drop=True)
 
-    def cumulative_revenue(self, campaign_id: str | None = None) -> pd.DataFrame:
+    def referral_code_options(self) -> list[str]:
+        """Return referral codes that have attributed users in the DB.
+
+        Returns:
+            Sorted list of code strings (e.g. ``["GOOGLE", "INSTAGRAM"]``).
+            Returns an empty list when the DB is unavailable or the table is empty.
+        """
+        try:
+            df = self._run(_REFERRAL_CODES_SQL, {})
+            return df["code"].dropna().tolist() if not df.empty else []
+        except Exception:
+            logger.warning("Could not fetch referral codes", exc_info=True)
+            return []
+
+    def cumulative_revenue(
+        self, campaign_id: str | None = None, referral_code: str = ""
+    ) -> pd.DataFrame:
         """Daily and cumulative revenue generated by users acquired during a campaign.
 
         Revenue is tracked from the campaign start through today, covering all
@@ -513,14 +684,28 @@ class CampaignAnalyzer:
         Args:
             campaign_id: Which campaign's cohort to track. Defaults to the most
                 recent campaign.
+            referral_code: When non-empty, restricts the cohort to users whose
+                signup was attributed to this referral code (e.g. ``"GOOGLE"``).
 
         Returns:
-            DataFrame with columns: ``date`` (datetime), ``daily_rev_usd``,
-            ``cum_rev_usd``.  Sorted by date; days with no revenue are filled
-            with 0.
+            DataFrame with columns: ``date`` (datetime),
+            ``daily_rev_conversion_usd``, ``daily_rev_card_fees_usd``,
+            ``daily_rev_usd``, ``cum_rev_usd``.
+            Sorted by date; days with no revenue are filled with 0.
         """
+        _rev_cols = [
+            "date",
+            "daily_rev_conversion_usd",
+            "daily_rev_card_fees_usd",
+            "daily_rev_billing_usd",
+            "daily_rev_swap_usd",
+            "daily_cost_cashback_usd",
+            "daily_cost_rev_share_usd",
+            "daily_rev_usd",
+            "cum_rev_usd",
+        ]
         if not self._campaigns:
-            return pd.DataFrame(columns=["date", "daily_rev_usd", "cum_rev_usd"])
+            return pd.DataFrame(columns=_rev_cols)
 
         if campaign_id is not None:
             matches = [c for c in self._campaigns if c["campaign_id"] == campaign_id]
@@ -533,18 +718,220 @@ class CampaignAnalyzer:
 
         rev_df = self._run(
             _DAILY_COHORT_REVENUE_SQL,
-            {"cohort_start": cohort_start, "cohort_end": cohort_end},
+            {
+                "cohort_start": cohort_start,
+                "cohort_end": cohort_end,
+                "referral_code": referral_code,
+            },
         )
         if rev_df.empty:
-            return pd.DataFrame(columns=["date", "daily_rev_usd", "cum_rev_usd"])
+            return pd.DataFrame(columns=_rev_cols)
 
         today = pd.Timestamp.today().normalize()
-        all_dates = pd.DataFrame(
-            {"date": pd.date_range(start=cohort_start, end=today, freq="D")}
-        )
+        all_dates = pd.DataFrame({"date": pd.date_range(start=cohort_start, end=today, freq="D")})
         rev_df["date"] = pd.to_datetime(rev_df["rev_date"])
         rev_df = rev_df.drop(columns=["rev_date"])
         result = all_dates.merge(rev_df, on="date", how="left")
-        result["daily_rev_usd"] = result["daily_rev_usd"].fillna(0.0)
+        for col in (
+            "daily_rev_conversion_usd",
+            "daily_rev_card_fees_usd",
+            "daily_rev_billing_usd",
+            "daily_rev_swap_usd",
+            "daily_cost_cashback_usd",
+            "daily_cost_rev_share_usd",
+            "daily_rev_usd",
+        ):
+            result[col] = result[col].fillna(0.0).astype("float64")
         result["cum_rev_usd"] = result["daily_rev_usd"].cumsum()
         return result
+
+    def _cohort_card_txns(
+        self, cohort_start: str, cohort_end: str, referral_code: str = ""
+    ) -> pd.DataFrame:
+        """Return daily card transaction counts for cohort users.
+
+        Args:
+            cohort_start: Inclusive start (ISO date string).
+            cohort_end: Exclusive end (ISO date string).
+            referral_code: Optional referral code to filter cohort users.
+
+        Returns:
+            DataFrame with columns ``txn_date`` (datetime64) and
+            ``txn_count`` (int).  Empty when no transactions exist.
+        """
+        df = self._run(
+            _COHORT_CARD_TXNS_SQL,
+            {
+                "cohort_start": cohort_start,
+                "cohort_end": cohort_end,
+                "referral_code": referral_code,
+            },
+        )
+        if df.empty:
+            return pd.DataFrame(columns=["txn_date", "txn_count"])
+        df["txn_date"] = pd.to_datetime(df["txn_date"])
+        df["txn_count"] = df["txn_count"].astype("int64")
+        return df
+
+    def _cohort_conversions(
+        self, cohort_start: str, cohort_end: str, referral_code: str = ""
+    ) -> pd.DataFrame:
+        """Return daily BRL↔USDC conversion counts for cohort users.
+
+        Args:
+            cohort_start: Inclusive start (ISO date string).
+            cohort_end: Exclusive end (ISO date string).
+            referral_code: Optional referral code to filter cohort users.
+
+        Returns:
+            DataFrame with columns ``conv_date`` (datetime64) and
+            ``conv_count`` (int).  Empty when no conversions exist.
+        """
+        df = self._run(
+            _COHORT_CONVERSIONS_SQL,
+            {
+                "cohort_start": cohort_start,
+                "cohort_end": cohort_end,
+                "referral_code": referral_code,
+            },
+        )
+        if df.empty:
+            return pd.DataFrame(columns=["conv_date", "conv_count"])
+        df["conv_date"] = pd.to_datetime(df["conv_date"])
+        df["conv_count"] = df["conv_count"].astype("int64")
+        return df
+
+    def cumulative_profit(
+        self,
+        campaign_id: str | None = None,
+        invoice_history: list[tuple[str, float | Decimal, int]] | None = None,
+        referral_code: str = "",
+    ) -> pd.DataFrame:
+        """Daily and cumulative profit for a campaign cohort.
+
+        Card-program COGS is computed as cohort daily transaction count
+        multiplied by the cost-per-transaction derived from Rain invoices.
+        Revenue includes both conversion (onramp/offramp) and card fees.
+
+        Args:
+            campaign_id: Which campaign's cohort to track. Defaults to the
+                most recent campaign.
+            invoice_history: List of
+                ``(period, invoice_total_usd, txn_count)`` tuples, e.g.
+                ``[("2026-02", 6693.58, 6885), ("2026-03", 7857.40, 6990)]``.
+                Used to compute per-transaction cost.  When ``None`` or empty,
+                COGS is treated as zero and a warning is logged.
+            referral_code: When non-empty, restricts the cohort to users whose
+                signup was attributed to this referral code (e.g. ``"GOOGLE"``).
+
+        Returns:
+            DataFrame with columns:
+            ``date``, ``daily_rev_conversion_usd``,
+            ``daily_rev_card_fees_usd``, ``daily_rev_total_usd``,
+            ``daily_card_cogs_usd``, ``daily_ad_spend_usd``,
+            ``daily_profit_usd``, ``cum_rev_usd``, ``cum_card_cogs_usd``,
+            ``cum_profit_usd``.
+            Sorted by date; missing days are zero-filled.
+        """
+        _empty_cols = [
+            "date",
+            "daily_rev_conversion_usd",
+            "daily_rev_card_fees_usd",
+            "daily_rev_billing_usd",
+            "daily_rev_swap_usd",
+            "daily_cost_cashback_usd",
+            "daily_cost_rev_share_usd",
+            "daily_rev_total_usd",
+            "daily_card_cogs_usd",
+            "daily_ad_spend_usd",
+            "daily_profit_usd",
+            "daily_txn_count",
+            "daily_conversion_count",
+            "cum_rev_conversion_usd",
+            "cum_rev_card_fees_usd",
+            "cum_rev_billing_usd",
+            "cum_rev_swap_usd",
+            "cum_cost_cashback_usd",
+            "cum_cost_rev_share_usd",
+            "cum_rev_usd",
+            "cum_card_cogs_usd",
+            "cum_profit_usd",
+            "cum_txn_count",
+            "cum_conversion_count",
+        ]
+        empty = pd.DataFrame(columns=_empty_cols)
+
+        rev_df = self.cumulative_revenue(campaign_id, referral_code=referral_code)
+        if rev_df.empty:
+            return empty
+
+        if not self._campaigns:
+            return empty
+        if campaign_id is not None:
+            matches = [c for c in self._campaigns if c["campaign_id"] == campaign_id]
+            c = matches[-1] if matches else self._campaigns[-1]
+        else:
+            c = self._campaigns[-1]
+
+        cohort_start = str(c["start"])
+        cohort_end = str((pd.Timestamp(c["end"]) + pd.Timedelta(days=1)).date())
+
+        cost_per_txn = _cost_per_txn_from_invoices(invoice_history or [])
+        txn_df = self._cohort_card_txns(cohort_start, cohort_end, referral_code=referral_code)
+        conv_df = self._cohort_conversions(cohort_start, cohort_end, referral_code=referral_code)
+
+        today = pd.Timestamp.today().normalize()
+        all_dates = pd.DataFrame({"date": pd.date_range(start=cohort_start, end=today, freq="D")})
+
+        txn_full = all_dates.rename(columns={"date": "txn_date"}).merge(
+            txn_df, on="txn_date", how="left"
+        )
+        txn_full["txn_count"] = txn_full["txn_count"].fillna(0).astype("int64")
+
+        conv_full = all_dates.rename(columns={"date": "conv_date"}).merge(
+            conv_df, on="conv_date", how="left"
+        )
+        conv_full["conv_count"] = conv_full["conv_count"].fillna(0).astype("int64")
+
+        cogs_series = _cogs_for_cohort_txns(txn_full, cost_per_txn)
+
+        spend = self._spend.copy()
+        spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
+        spend_indexed = spend.set_index("date")["daily_spend_usd"]
+
+        result = rev_df[
+            [
+                "date",
+                "daily_rev_conversion_usd",
+                "daily_rev_card_fees_usd",
+                "daily_rev_billing_usd",
+                "daily_rev_swap_usd",
+                "daily_cost_cashback_usd",
+                "daily_cost_rev_share_usd",
+                "daily_rev_usd",
+            ]
+        ].copy()
+        result = result.rename(columns={"daily_rev_usd": "daily_rev_total_usd"})
+
+        result["daily_card_cogs_usd"] = cogs_series.values
+        result["daily_ad_spend_usd"] = (
+            result["date"].map(spend_indexed).fillna(0.0).astype("float64")
+        )
+        # Contribution margin: revenue minus direct card-program cost only.
+        # Meta Ads spend is the campaign acquisition cost and is tracked
+        # separately in the spend chart — not a running deduction here.
+        result["daily_profit_usd"] = result["daily_rev_total_usd"] - result["daily_card_cogs_usd"]
+        result["daily_txn_count"] = txn_full["txn_count"].values
+        result["daily_conversion_count"] = conv_full["conv_count"].values
+        result["cum_rev_conversion_usd"] = result["daily_rev_conversion_usd"].cumsum()
+        result["cum_rev_card_fees_usd"] = result["daily_rev_card_fees_usd"].cumsum()
+        result["cum_rev_billing_usd"] = result["daily_rev_billing_usd"].cumsum()
+        result["cum_rev_swap_usd"] = result["daily_rev_swap_usd"].cumsum()
+        result["cum_cost_cashback_usd"] = result["daily_cost_cashback_usd"].cumsum()
+        result["cum_cost_rev_share_usd"] = result["daily_cost_rev_share_usd"].cumsum()
+        result["cum_rev_usd"] = result["daily_rev_total_usd"].cumsum()
+        result["cum_card_cogs_usd"] = result["daily_card_cogs_usd"].cumsum()
+        result["cum_profit_usd"] = result["daily_profit_usd"].cumsum()
+        result["cum_txn_count"] = result["daily_txn_count"].cumsum()
+        result["cum_conversion_count"] = result["daily_conversion_count"].cumsum()
+        return result.reset_index(drop=True)

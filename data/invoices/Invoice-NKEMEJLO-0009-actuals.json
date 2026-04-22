@@ -1,0 +1,20 @@
+{
+  "invoice_id": "NKEMEJLO-0009",
+  "period": "2026-03",
+  "invoice_total_usd": 7857.4,
+  "base_program_fee": 2500.0,
+  "n_active_cards": 255,
+  "n_transactions": 6990,
+  "tx_volume_usd": 259278.91,
+  "n_3ds": 85,
+  "n_infinite_txs": 979,
+  "n_platinum_txs": 973,
+  "n_applepay_txs": 4175,
+  "applepay_volume_usd": 127250.0,
+  "n_googlepay_txs": 935,
+  "n_share_tokens": 316,
+  "n_verify_domestic": 142,
+  "n_verify_intl": 313,
+  "n_chip_auth_intl": 0,
+  "n_cross_border": 32194
+}
