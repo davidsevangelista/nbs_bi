@@ -91,37 +91,15 @@ def _load_client_report(start_date: str, end_date: str, db_url: str, invoice_tot
 # ---------------------------------------------------------------------------
 
 
-def _sidebar(invoice_id: str, invoice_period: str) -> tuple[str, str]:
-    """Render the sidebar and return the selected date range.
-
-    Args:
-        invoice_id: Latest invoice ID for display (e.g. NKEMEJLO-0009).
-        invoice_period: Latest invoice period (e.g. 2026-03).
+def _default_date_range() -> tuple[str, str]:
+    """Return a default (start, exclusive_end) date range covering ~3 months.
 
     Returns:
-        Tuple of (ISO start date string, ISO end date string).
+        Tuple of ISO date strings (inclusive start, exclusive end).
     """
-    with st.sidebar:
-        st.header("Filters")
-
-        today = date.today()
-        default_start = today.replace(day=1) - timedelta(days=60)  # ~last 3 months
-        default_start = default_start.replace(day=1)
-
-        date_range = st.date_input(
-            "Date range",
-            value=(default_start, today),
-            max_value=today,
-        )
-
-        if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-            start, end = date_range[0], date_range[1]
-        else:
-            start, end = default_start, today
-
-    # Queries use `< end_date` (exclusive), so add one day to include the
-    # selected end date in full (e.g. selecting "today" includes all of today).
-    exclusive_end = end + timedelta(days=1)
+    today = date.today()
+    start = (today.replace(day=1) - timedelta(days=60)).replace(day=1)
+    exclusive_end = today + timedelta(days=1)
     return start.isoformat(), exclusive_end.isoformat()
 
 
@@ -231,14 +209,14 @@ def main() -> None:
         page_title="NBS Business Intelligence",
         page_icon=str(_logo) if _logo.exists() else "📊",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
     )
 
     st.title("NBS Business Intelligence")
     st.caption("Internal dashboard — NBS SPSAV LTDA")
 
-    invoice_total, invoice_id, invoice_period = _latest_rain_invoice_total()
-    start_date, end_date = _sidebar(invoice_id, invoice_period)
+    invoice_total, _invoice_id, _invoice_period = _latest_rain_invoice_total()
+    start_date, end_date = _default_date_range()
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         ["Overview", "Conversions", "Cards", "Clients", "Marketing - Ads"]
