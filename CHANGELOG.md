@@ -7,6 +7,120 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-04-21
+
+Multi-invoice support for the Cards tab: invoice selector, aggregate evolution sub-tab, auto-detected invoice total. Three missing Clients tab spec items implemented. Two bug fixes (leaderboard missing user_id; billed vs modelled total discrepancy).
+
+### Added
+- `cards/invoice_parser.py` — `invoice_total_usd: float = 0.0` and `base_program_fee: float = 0.0` fields added to `CardInvoiceInputs`; default `0.0` keeps existing JSON files loadable without re-parse
+- `cards/preprocess_invoices.py` — `_TOTAL_PATTERNS` list; `parse_invoice_text()` now extracts the invoice grand total via regex ("Amount due $X" / "Total $X") and stores it as `invoice_total_usd` in the output JSON; logs a warning if no pattern matches
+- `reporting/cards.py` — invoice selectbox in `_render_costs()`: when multiple invoices are present, a dropdown lets the user pick which period to drill into (defaults to latest); the full history is still passed to `CardSection` for trend chart
+- `reporting/cards.py` — `_fig_cost_driver_stacked(history)`: stacked bar chart, one column per period, stacked by all 17 cost line items; adds a grey "Outros (não modelado)" bar for the gap between `invoice_total_usd` and the modelled sum
+- `reporting/cards.py` — `_fig_driver_delta(history)`: horizontal bar showing Δ USD vs prior period per line item; ROSE bars = cost rose, EMERALD bars = cost fell; sorted by absolute impact; only rendered with ≥ 2 invoices
+- `reporting/cards.py` — `_render_evolution()` method on `CardAnalyticsSection`: KPI row (billed total, MoM Δ, cost/tx, transactions, active cards); reuses `_fig_trend()`; adds `_fig_cost_driver_stacked()`; adds `_fig_driver_delta()`; cross-invoice summary table with `billed_total`, `total` (modelled), `unmodelled`, and all 17 line items
+- `reporting/cards.py` — 4th sub-tab "📈 Evolução" wired into `CardAnalyticsSection.render()`
+- `reporting/dashboard.py` — `_latest_rain_invoice_total()` function: reads `invoice_total_usd` from the latest parsed JSON (falls back to computed model total if field is absent or zero); replaces the hardcoded `_RAIN_INVOICE_TOTAL_USD = 7857.40` constant
+- `reporting/dashboard.py` — sidebar now shows reference invoice ID and period ("Invoice de referência: NKEMEJLO-0009 (2026-03)")
+- `reporting/clients.py` — `_fig_revenue_histogram(segments)`: revenue-per-user distribution with log x-axis; uses numpy log-spaced bins, geometric-mean bar centers; only positive-revenue users included
+- `reporting/clients.py` — Multi-product Users KPI in LTV & Cohorts tab: count of users with `n_products >= 2` from `product_adoption`; shown as absolute + % of users delta
+- `reporting/clients.py` — Top 10% Revenue Share KPI: top-decile users' share of total revenue from `segments["net_revenue_usd"]` (full population, not just leaderboard top 50)
+- `reporting/clients.py` — LTV & Cohorts KPI row expanded from 3 to 5 columns
+
+### Changed
+- `reporting/cards.py` — `_render_kpis()`: "Monthly Cost" renamed "Custo Real (Invoice)"; value is `invoice_total_usd` when > 0 (falls back to modelled total); delta shows modelled total when there is a gap
+- `reporting/cards.py` — `_fig_trend()`: total-cost line now uses `invoice_total_usd` (actual billed) instead of `cost_breakdown().total` (modelled), so March correctly shows higher than February
+- `reporting/cards.py` — `_render_evolution()` KPIs: MoM delta computed from billed totals
+- `reporting/dashboard.py` — `main()` calls `_latest_rain_invoice_total()` to get invoice total dynamically; `_sidebar()` now accepts `invoice_id` and `invoice_period` parameters
+- `reporting/cards.py` — all `st.plotly_chart()` calls given unique `key=` arguments to prevent Streamlit duplicate-element-ID error when all sub-tabs render simultaneously
+
+### Fixed
+- **Billed vs modelled total confusion** — `_render_kpis()` was showing the modelled total ($6,357.39 for March) as "Monthly Cost", making March appear cheaper than February ($6,693.57) even though Rain billed $7,857.40. Now shows the actual billed total.
+- **`revenue_leaderboard()` missing user_id** — `clients/models.py`: `user_id` was absent from the column list despite the docstring promising a masked user_id. Added and masked (`str[:8] + "..."`). Fixes `test_revenue_leaderboard_masked`.
+- **Plotly duplicate element ID** — `CardAnalyticsSection.render()` renders all 4 sub-tabs at once; `_render_costs()` and `_render_evolution()` both called `st.plotly_chart(_fig_trend(...))`, triggering Streamlit's auto-ID collision error. Fixed by adding unique `key=` to every `st.plotly_chart` call in the file.
+
+## [1.0.0] — 2026-04-21
+
+All 6 dashboard tabs complete. Full Meta Ads ROI analysis with cumulative cohort revenue tracking. Daily active user metric now covers all revenue-generating activity. Two data correctness bugs fixed.
+
+### Added
+- `reporting/marketing.py` — `MetaAdsSection` (Tab 6 "Marketing - Ads"):
+  - Auto-discovers most-recent Rain CSV from `data/nbs_corp_card/` (no manual upload required)
+  - `_TRACKING_START = "2026-04-12"` gates all spend data; only most-recent campaign shown in charts
+  - `_build_cumulative_spend()` — cumulative spend with campaign-start markers
+  - `_build_channel_comparison()` — Meta Ads row merged with acquisition-source breakdown
+  - Charts: cumulative spend vs cohort revenue, ad spend vs cohort revenue bar, CAC comparison, daily signups + spend
+  - KPI strip: total spend, cohort users, cohort revenue, ROAS, full-cohort CAC
+  - Channel comparison table
+- `clients/campaigns.py` — `_DAILY_COHORT_REVENUE_SQL`: per-day revenue from campaign-cohort users across all sources (onramp, card fees, billing charges, swaps, payouts, minus cashback and revenue share); FX from median `effective_rate`
+- `clients/campaigns.py` — `CampaignAnalyzer.cumulative_revenue(campaign_id)`: queries daily cohort revenue, fills zero-revenue days, returns `date / daily_rev_usd / cum_rev_usd` from campaign start through today
+- `clients/campaigns.py` — `_COHORT_REVENUE_SQL` expanded: added `swap_rev`, `payout_rev`, `cashback_cost`, `rev_share_cost` CTEs; `total_revenue_usd` now includes swaps + payouts − cashback − revenue share
+- `onramp/queries.py` — 5 new active-user query methods: `card_transactions_active()`, `card_fees_active()`, `billing_charges_active()`, `swaps_active()`, `payouts_active()`; each returns `(user_id, created_at)` for uniform daily-count merging
+- `docs/specs/marketing.md` — full PRD for the Marketing - Ads tab
+- `tests/reporting/test_marketing.py` — 12 tests (7 happy path + 5 edge cases)
+
+### Changed
+- `reporting/dashboard.py` — 5 tabs → 6 tabs; added `_tab_marketing()` wired to `MetaAdsSection`
+- `reporting/clients.py` — removed Campaign ROI sub-tab (moved to dedicated Marketing tab); `ClientSection` now has 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption)
+- `reporting/theme.py` — `panel()` defaults changed to `legend=dict(orientation="h", y=-0.2)` and `margin=dict(t=40, b=60, l=10, r=10)`; fixes title/legend overlap across all dashboard charts
+- `reporting/overview.py` — chart title "Usuários Ativos Diários" (no qualifier); dark CSS KPI cards (`_kpi_card`, `_kpi_strip`) replacing plain `st.metric`; added `_last_day()` and `_window_avg()` helpers; imports `fmt_usd`
+- `onramp/report.py` — `_build_active_daily()` accepts 7 sources: PIX deposits, PIX transfers, card txs, card fees, billing charges, swaps, payouts; `build()` fetches all 7 before calling it
+- `reporting/ramp.py`, `reporting/cards.py`, `reporting/clients.py`, `reporting/overview.py` — `use_container_width=True` → `width="stretch"` (Streamlit deprecation)
+- `_fig_cumulative_spend()` — now accepts `cum_rev_df`; overlays green cumulative-revenue line on red spend line; title updated to "Cumulative Meta Ads Spend vs Cohort Revenue (USD)"
+- `_try_upload()` in `MetaAdsSection` — stores `analyzer` in returned dict so `render()` can call `cumulative_revenue()` without re-instantiating
+
+### Fixed
+- **Blank volume chart** — `onramp/models.py _clean()`: `from_amount_brl` and `to_amount_brl` are NULL on the opposite-direction row (onramp/offramp); `NaN + value = NaN` made `volume_brl` all-NaN for every conversion. Fixed by adding `.fillna(0.0)` to each operand before summing. Same fix applied to `volume_usdc`.
+- **Timezone `UserWarning`** — DB timestamps are tz-aware (UTC); calling `.dt.to_period()` directly raised `"Converting to PeriodArray/Index representation will drop timezone information"`. Fixed by normalising all datetime columns to UTC-naive in `_clean()` via `pd.to_datetime(..., utc=True).dt.tz_convert(None)`; same pattern applied inline in `report.py` (`_build_revenue_monthly`, `_build_cohort`) and `clients/models.py` (`signup_month` computation).
+
+## [0.9.1] — 2026-04-21
+
+### Added
+- `reporting/theme.py` — shared visual module: colour constants (`BLUE`, `EMERALD`, `AMBER`, `ROSE`, `TEAL`, `VIOLET`, `PLOT_BG`, `GRID`, `TEXT`, `TEXT_MUTED`, `BG`, `SOURCE_COLORS`), `panel()` layout helper, `fmt_brl()` / `fmt_usd()` / `fmt_usd_precise()` monetary formatters, `mask_user_id()` PII helper, `rgba()` colour utility; imported by all four reporting modules
+- `_resample_conv()` in `reporting/ramp.py` — resamples daily conversion data to weekly (`W-MON`) or monthly (`MS`) buckets for the volume chart granularity toggle
+- `_mom_annotations()` in `reporting/ramp.py` and `reporting/overview.py` — computes month-over-month percentage change labels (e.g. `+12.3%`) for bar chart annotation traces
+- Granularity radio toggle (`Diaria / Semanal / Mensal`) on the Ramp volume chart — `st.radio` above the bar chart drives `_resample_conv`
+
+### Changed
+- `reporting/cards.py` — `_fig_breakdown()` replaced horizontal bar with `go.Waterfall`; cost components shown as sequential relative bars with a green Total bar; removes local `_mask_user_id`; imports `fmt_usd`, `fmt_usd_precise`, `mask_user_id` from `theme`; removed unused `ModuleType` import
+- `reporting/ramp.py` — imports all colours, formatters, and `mask_user_id` from `theme`; removed local `_hex_to_rgb` (no longer needed); `_fig_spread_histogram()` now adds `add_vline` overlays for mean (solid) and median (dotted) per side with percentage labels; `_fig_revenue_monthly()` includes an invisible Scatter trace for MoM delta annotations; KPI strip uses `fmt_brl()`; tab labels changed to ASCII-safe strings (no emoji)
+- `reporting/overview.py` — imports colours, `panel`, `fmt_brl`, `rgba` from `theme`; `_fig_volume_monthly()` includes MoM delta annotation trace; `_fig_active_users()` uses `rgba()` for fill colour; KPI strip uses `fmt_brl()`; removed local `_rgba()`, `_panel()`, `PLOT_BG`, `GRID`, `TEXT` constants
+- `reporting/clients.py` — imports all colours, `fmt_usd`, `mask_user_id`, `panel`, `SOURCE_COLORS` from `theme`; removed ~30 lines of duplicated constants; `_fig_founders_scatter()` now applies `mask_user_id()` to hover text (fixes PII leak); `_fig_ltv_heatmap()` changed from `colorscale="Blues"` to `colorscale="YlGn"` anchored at `zmin=0` (zero LTV cells now visually distinct from missing data); campaign ROI metrics use `fmt_usd()`
+
+### Fixed
+- **PII leak** — `_fig_founders_scatter()` in `clients.py` was passing raw `user_id` UUIDs to Plotly hover text; now masked via `mask_user_id()` before render
+- **Colour inconsistency** — `ramp.py` used `"#2196F3"` (Material blue) while other files used `"#2563EB"` (Tailwind blue); all files now use `BLUE = "#2563EB"` from `theme`
+- **Monetary display inconsistency** — `overview.py` showed revenue as `R$ 8500` (zero decimals) while `ramp.py` showed `R$ 8500.00` (two decimals); both now use `fmt_brl()` → zero decimals for BRL headline figures
+- **Stale test imports** — `tests/reporting/test_cards.py` imported `_mask_user_id` from `cards` (removed); updated to import from `theme.mask_user_id`; breakdown tests updated for `go.Waterfall` (was `go.Bar`); `tests/reporting/test_ramp.py` imports updated to remove deleted functions (`_fig_pnl`, `_fig_position`, `_hex_to_rgb`); added tests for `_mom_annotations`, `_resample_conv`, `_fig_spread_histogram`, `_fig_new_vs_returning`
+
+## [0.9.0] — 2026-04-20
+
+### Added
+- `onramp/queries.py` — `_USER_ATTRIBUTION_SQL` (joins `users` → `user_registrations` → `referral_codes` → `founders`, no date filter); `_run_static()` helper for date-independent queries; `user_attribution() -> pd.DataFrame` returns acquisition_source, referral_code_name, is_founder per user
+- `onramp/models.py` — 4 new methods: `revenue_by_direction()` (monthly fee+spread by onramp/offramp), `user_behavior()` (unique users, repeat rate, avg conversions), `monthly_new_vs_returning()`, `spread_stats()` (raw spread_percentage rows for histogram)
+- `onramp/report.py` — 5 new keys: `user_attribution`, `user_behavior`, `spread_stats`, `revenue_by_direction`, `new_vs_returning`; `top_users` enriched with attribution columns (n=50); attribution fetched with `user_attribution()`
+- `reporting/ramp.py` — restructured into 4 subtabs: 📈 Visão Geral (volume + PIX), 💰 Receita (by direction + monthly), 👥 Clientes (top N slider 5–50 + new vs returning), 📊 FX & Volume (FX rate + spread histogram); KPI strip updated (unique users + repeat rate; USDC position removed); new figure builders: `_fig_revenue_by_direction`, `_fig_new_vs_returning`, `_fig_spread_histogram`
+- `reporting/overview.py` — `OverviewSection`: Tab 1 cross-module executive summary; 6-metric KPI strip (users, KYC rate, active rate, conversions, volume BRL, revenue BRL); 4 charts: monthly revenue (stacked area), monthly volume (stacked bar), daily active users, activation funnel
+- 11 new unit tests in `tests/onramp/test_models.py` (user_behavior ×4, revenue_by_direction ×3, monthly_new_vs_returning ×2, spread_stats ×2); 48 onramp tests total, 134 across all modules
+
+### Fixed
+- `onramp/queries.py` — `_USER_ATTRIBUTION_SQL`: corrected column names to match production schema (`source_type` not `acquisition_source`, `attributed_referral_code_id` not `referral_code_id`, `public_name` not `name`, table `founders` not `founders_club`)
+
+## [0.8.0] — 2026-04-20
+
+### Added
+- `clients/queries.py` — `_REVENUE_GENERATING_SQL`: all-time UNION across 8 activity tables (`conversion_quotes`, `card_annual_fees`, `billing_charges`, `swap_transactions`, `unblockpay_payouts`, `cashback_rewards`, `pix_transfers`, `revenue_share_rewards`) with no date filter; `revenue_generating_count() -> int` method returns the distinct user count (~2,407 in prod)
+- `clients/models.py` — `activation_funnel()` method: returns `{total_users, kyc_done, active_users}` where `active_users` comes from `revenue_generating_count()` (all-time, not windowed); matches the "Revenue-Generating" stage of the prod dashboard funnel
+- `reporting/clients.py` — `_fig_activation_funnel()`: horizontal 3-stage bar chart (All Users → KYC Done → Active); `_fig_product_adoption_bars()`: horizontal bars for the 4 top-level product categories; both rendered in the Product Adoption sub-tab
+- `reporting/cards.py` — module-level helpers for CSV-driven tier pricing: `_parse_tier_csv()`, `_tier_breakdown()`, `_fig_tx_histogram()`, `_fig_tier_revenue()`, `_render_tier_results()`
+- `data/card_fees/card_fees_template.csv` — tier definitions as the editable source of truth: F1–F3 flat ($0.25/$0.50/$1.00 over $0–$10/$10–$20/$20+) and P1–P10 pct (2.00%→1.00% over $0–$72+)
+
+### Changed
+- `clients/queries.py` — `_ONRAMP_REVENUE_SQL` → `_CONVERSION_REVENUE_SQL`: now returns separate `onramp_revenue_brl` (direction=`brl_to_usdc`) and `offramp_revenue_brl` (direction=`usdc_to_brl`) columns; `onramp_revenue()` → `conversion_revenue()`; `_ONRAMP_MONTHLY_SQL` → `_CONVERSION_MONTHLY_SQL` with column renamed `conversion_revenue_brl`; `onramp_monthly()` → `conversion_monthly()`; added `kyc_level` to `_COHORT_BASE_SQL`
+- `clients/models.py` — `_compute_revenues()` splits BRL→USD conversion into `onramp_revenue_usd` and `offramp_revenue_usd`; both contribute to `net_revenue_usd` (offramp was previously missing); `product_adoption()` uses new taxonomy: `has_conversion` (any direction), `has_card` (annual fee OR tx fee merged), `has_swap`, `has_crossborder` (Unblockpay); `n_products` counts these 4 categories; `revenue_leaderboard()` now includes `offramp_revenue_usd` column
+- `clients/report.py` — `build()` now includes `activation_funnel` key
+- `reporting/cards.py` — `CardAnalyticsSection` simplified from 7 subtabs to 2: "Padrões de Uso" (daily timeline + weekly heatmap) and "Faixas de Preço" (CSV-driven tier pricing); tier revenue calculated on rolling last-30-calendar-days of actual transactions (no extrapolation factor); metrics and chart labels updated to "30d" terminology; removed `_render_coverage`, `_render_b2b` methods
+- `tests/clients/test_models.py` — updated fixtures (`_make_cohort_base` adds `kyc_level`, `_make_onramp` adds `offramp_revenue_brl`/`offramp_volume_usdc`); mock updated to `conversion_revenue`/`conversion_monthly`/`revenue_generating_count`; 8 new tests (activation funnel ×4, product adoption ×4); 23 tests total, all passing; 112 tests total across all modules
+
 ## [0.7.0] — 2026-04-20
 
 ### Added

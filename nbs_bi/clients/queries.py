@@ -38,6 +38,7 @@ _BRL_DIVISOR = 100
 _COHORT_BASE_SQL = """
 SELECT
     u.id::TEXT                      AS user_id,
+    u.full_name,
     u.created_at                    AS signup_date,
     u.last_active_at,
     u.status::TEXT                  AS status,
@@ -107,8 +108,6 @@ SELECT
     SUM(amount_usdc::FLOAT) AS card_fee_usd
 FROM card_annual_fees
 WHERE status = 'paid'
-  AND paid_at >= :start
-  AND paid_at <  :end
 GROUP BY user_id
 """
 
@@ -157,12 +156,21 @@ WHERE status = 'completed'
 GROUP BY source_user_id
 """
 
+_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
 _SWAP_SQL = """
 SELECT
-    user_id::TEXT                                                         AS user_id,
-    SUM(input_amount::FLOAT / 1000000.0
-        * platform_fee_bps::FLOAT / 10000.0)                             AS swap_fee_usd,
-    COUNT(*)                                                              AS n_swaps
+    user_id::TEXT                                                            AS user_id,
+    SUM(
+        CASE
+            WHEN input_mint  = :usdc_mint
+            THEN input_amount::FLOAT  / 1e6 * platform_fee_bps::FLOAT / 1e4
+            WHEN output_mint = :usdc_mint
+            THEN output_amount::FLOAT / 1e6 * platform_fee_bps::FLOAT / 1e4
+            ELSE 0
+        END
+    )                                                                        AS swap_fee_usd,
+    COUNT(*)                                                                 AS n_swaps
 FROM swap_transactions
 WHERE "timestamp" >= :start
   AND "timestamp" <  :end
@@ -178,6 +186,35 @@ WHERE status = 'completed'
   AND created_at >= :start
   AND created_at <  :end
 GROUP BY user_id
+"""
+
+_REVENUE_GENERATING_SQL = """
+SELECT COUNT(DISTINCT user_id) AS revenue_generating_count
+FROM (
+    SELECT user_id::TEXT FROM conversion_quotes WHERE used = TRUE
+    UNION SELECT user_id::TEXT FROM card_annual_fees WHERE status = 'paid'
+    UNION SELECT user_id::TEXT FROM billing_charges WHERE status = 'settled'
+    UNION SELECT user_id::TEXT FROM swap_transactions
+    UNION SELECT user_id::TEXT FROM unblockpay_payouts WHERE status = 'completed'
+    UNION SELECT user_id::TEXT FROM cashback_rewards WHERE status = 'completed'
+    UNION SELECT user_id::TEXT FROM pix_transfers WHERE status = 'completed'
+    UNION SELECT recipient_user_id::TEXT AS user_id FROM revenue_share_rewards WHERE status = 'completed'
+) t
+"""
+
+_ACTIVITY_KPIS_SQL = """
+SELECT
+    COUNT(*) FILTER (WHERE last_active_at >= NOW() - INTERVAL '1 day')   AS dau,
+    COUNT(*) FILTER (WHERE last_active_at >= NOW() - INTERVAL '7 days')  AS wau,
+    COUNT(*) FILTER (WHERE last_active_at >= NOW() - INTERVAL '30 days') AS mau
+FROM users
+WHERE status != 'suspended'
+"""
+
+_SIGNUPS_24H_SQL = """
+SELECT COUNT(*) AS new_signups_24h
+FROM users
+WHERE created_at >= NOW() - INTERVAL '24 hours'
 """
 
 _FX_RATE_SQL = """
@@ -364,12 +401,16 @@ class ClientQueries:
         return self._run("conv_monthly", _CONVERSION_MONTHLY_SQL, {})
 
     def card_fees(self) -> pd.DataFrame:
-        """Per-user paid card annual fees over the analysis window.
+        """All-time paid card annual fees per user (no date filter).
+
+        The annual fee is a one-time/renewal commitment paid at signup; it
+        should appear in a user's revenue profile regardless of the analysis
+        window. Corresponds to the Founder Edition card annual signature.
 
         Returns:
             DataFrame with columns: user_id, card_fee_usd.
         """
-        return self._run("card_fees", _CARD_FEES_SQL, self._date_params())
+        return self._run("card_fees", _CARD_FEES_SQL, {})
 
     def card_transactions(self) -> pd.DataFrame:
         """Per-user posted card transaction counts with window total.
@@ -413,10 +454,14 @@ class ClientQueries:
     def swaps(self) -> pd.DataFrame:
         """Per-user swap fee revenue over the analysis window.
 
+        Only USDC-side amounts are used: input_amount for USDC-input swaps
+        (USDC→token) and output_amount for USDC-output swaps (token→USDC).
+        Non-USDC pairs are excluded — no on-chain price oracle is available.
+
         Returns:
             DataFrame with columns: user_id, swap_fee_usd, n_swaps.
         """
-        return self._run("swaps", _SWAP_SQL, self._date_params())
+        return self._run("swaps", _SWAP_SQL, {**self._date_params(), "usdc_mint": _USDC_MINT})
 
     def payouts(self) -> pd.DataFrame:
         """Per-user completed international payout fee revenue.
@@ -425,6 +470,53 @@ class ClientQueries:
             DataFrame with columns: user_id, payout_fee_usd.
         """
         return self._run("payouts", _PAYOUT_SQL, self._date_params())
+
+    def revenue_generating_count(self) -> int:
+        """All-time count of users with at least one completed transaction.
+
+        No date filter — unions all activity tables to match the dashboard's
+        "Revenue-Generating" funnel stage (~2,407 users as of 2026-04-20).
+
+        Returns:
+            Count of distinct revenue-generating user IDs.
+        """
+        df = self._run("rev_gen_count", _REVENUE_GENERATING_SQL, {})
+        if df.empty:
+            return 0
+        return int(df["revenue_generating_count"].iloc[0])
+
+    def activity_kpis(self) -> dict[str, int]:
+        """DAU / WAU / MAU from users.last_active_at as of now.
+
+        No date-range filter — always relative to the current timestamp so the
+        values reflect real platform activity regardless of the dashboard window.
+
+        Returns:
+            Dict with keys ``dau``, ``wau``, ``mau`` (all int).
+        """
+        df = self._run("activity_kpis", _ACTIVITY_KPIS_SQL, {})
+        if df.empty:
+            return {"dau": 0, "wau": 0, "mau": 0}
+        row = df.iloc[0]
+        return {
+            "dau": int(row.get("dau", 0) or 0),
+            "wau": int(row.get("wau", 0) or 0),
+            "mau": int(row.get("mau", 0) or 0),
+        }
+
+    def signups_24h(self) -> int:
+        """Count of users registered in the last 24 hours as of now.
+
+        No date-range filter — always relative to NOW() so the value is
+        exact regardless of the dashboard window or timezone boundaries.
+
+        Returns:
+            Integer count of new signups in the last 24 hours.
+        """
+        df = self._run("signups_24h", _SIGNUPS_24H_SQL, {})
+        if df.empty:
+            return 0
+        return int(df.iloc[0].get("new_signups_24h", 0) or 0)
 
     def fx_rate(self) -> float:
         """Median BRL/USDC effective rate over the analysis window.

@@ -223,6 +223,68 @@ def test_empty_dataframe_raises() -> None:
         OnrampModel(pd.DataFrame())
 
 
+# ---------------------------------------------------------------------------
+# New analytical methods
+# ---------------------------------------------------------------------------
+
+
+def test_user_behavior_returns_dict(model: OnrampModel) -> None:
+    beh = model.user_behavior()
+    assert isinstance(beh, dict)
+    assert {"unique_users", "repeat_users", "repeat_rate", "avg_conversions_per_user"}.issubset(beh)
+
+
+def test_user_behavior_unique_users(model: OnrampModel) -> None:
+    # fixture has u1, u2, u3 — 3 unique users
+    assert model.user_behavior()["unique_users"] == 3
+
+
+def test_user_behavior_repeat_users(model: OnrampModel) -> None:
+    # u1 appears twice in fixture → 1 repeat user
+    assert model.user_behavior()["repeat_users"] == 1
+
+
+def test_user_behavior_repeat_rate_range(model: OnrampModel) -> None:
+    rate = model.user_behavior()["repeat_rate"]
+    assert 0.0 <= rate <= 1.0
+
+
+def test_revenue_by_direction_columns(model: OnrampModel) -> None:
+    rev = model.revenue_by_direction()
+    assert {"month", "side", "fee_brl", "spread_brl", "total_revenue_brl"}.issubset(rev.columns)
+
+
+def test_revenue_by_direction_sides(model: OnrampModel) -> None:
+    rev = model.revenue_by_direction()
+    assert set(rev["side"]) == {"onramp", "offramp"}
+
+
+def test_revenue_by_direction_totals(model: OnrampModel) -> None:
+    rev = model.revenue_by_direction()
+    for _, row in rev.iterrows():
+        assert row["total_revenue_brl"] == pytest.approx(row["fee_brl"] + row["spread_brl"])
+
+
+def test_monthly_new_vs_returning_columns(model: OnrampModel) -> None:
+    nvr = model.monthly_new_vs_returning()
+    assert {"month", "new_users", "returning_users"}.issubset(nvr.columns)
+
+
+def test_monthly_new_vs_returning_sorted(model: OnrampModel) -> None:
+    nvr = model.monthly_new_vs_returning()
+    assert list(nvr["month"]) == sorted(nvr["month"].tolist())
+
+
+def test_spread_stats_columns(model: OnrampModel) -> None:
+    ss = model.spread_stats()
+    assert {"side", "spread_percentage", "volume_brl"}.issubset(ss.columns)
+
+
+def test_spread_stats_no_nulls(model: OnrampModel) -> None:
+    ss = model.spread_stats()
+    assert ss["spread_percentage"].notna().all()
+
+
 def test_single_conversion_onramp() -> None:
     df = pd.DataFrame(
         {

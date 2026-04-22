@@ -47,6 +47,8 @@ class CardInvoiceInputs:
     # Metadata (optional, for reporting)
     invoice_id: str = ""
     period: str = ""  # e.g. "2026-02"
+    invoice_total_usd: float = 0.0  # actual Rain-billed total; 0.0 if not extracted
+    base_program_fee: float = 0.0  # actual billed base fee; 0.0 falls back to CardFeeRates
 
     def __post_init__(self) -> None:
         """Validate all inputs are non-negative."""

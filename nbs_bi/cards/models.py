@@ -23,7 +23,7 @@ class CardFeeRates:
     Update these when Rain changes its pricing.
     """
 
-    base_program_fee: float = 1_000.00
+    base_program_fee: float = 2_500.00
     virtual_card_fee: float = 0.20
     transaction_fee: float = 0.075
     network_volume_bps: float = 0.00147  # 14.7 basis points
@@ -128,7 +128,7 @@ class CardCostModel:
         i = self.inputs
 
         breakdown = CostBreakdown(
-            base_program=r.base_program_fee,
+            base_program=i.base_program_fee if i.base_program_fee > 0 else r.base_program_fee,
             virtual_cards=i.n_active_cards * r.virtual_card_fee,
             transaction_fee=i.n_transactions * r.transaction_fee,
             network_volume=i.tx_volume_usd * r.network_volume_bps,

@@ -1,18 +1,16 @@
 """Tests for nbs_bi.reporting.cards — figure builders and helpers."""
 
-import pandas as pd
 import plotly.graph_objects as go
 import pytest
 
-from nbs_bi.cards.models import CardCostModel, CardFeeRates
 from nbs_bi.cards.invoice_parser import CardInvoiceInputs
+from nbs_bi.cards.models import CardCostModel
 from nbs_bi.reporting.cards import (
     _fig_breakdown,
     _fig_sensitivity,
     _fig_trend,
-    _mask_user_id,
 )
-
+from nbs_bi.reporting.theme import mask_user_id
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -47,13 +45,13 @@ def minimal_model() -> CardCostModel:
 
 
 # ---------------------------------------------------------------------------
-# Helper tests
+# Helper tests (now in theme — verify via theme import)
 # ---------------------------------------------------------------------------
 
 
 def test_mask_user_id() -> None:
     uid = "550e8400-e29b-41d4-a716-446655440000"
-    assert _mask_user_id(uid) == "550e8400…"
+    assert mask_user_id(uid) == "550e8400…"
 
 
 # ---------------------------------------------------------------------------
@@ -67,13 +65,22 @@ def test_fig_breakdown_is_figure(model: CardCostModel) -> None:
 
 
 def test_fig_breakdown_one_trace(model: CardCostModel) -> None:
+    # Waterfall produces one trace.
     fig = _fig_breakdown(model.cost_breakdown())
     assert len(fig.data) == 1
 
 
-def test_fig_breakdown_horizontal(model: CardCostModel) -> None:
+def test_fig_breakdown_is_waterfall(model: CardCostModel) -> None:
+    # Chart type is now Waterfall, not Bar.
     fig = _fig_breakdown(model.cost_breakdown())
-    assert fig.data[0].orientation == "h"
+    assert isinstance(fig.data[0], go.Waterfall)
+
+
+def test_fig_breakdown_total_bar_is_last(model: CardCostModel) -> None:
+    # The final measure element must be 'total'.
+    fig = _fig_breakdown(model.cost_breakdown())
+    measures = list(fig.data[0].measure)
+    assert measures[-1] == "total"
 
 
 def test_fig_breakdown_excludes_zero_items() -> None:
@@ -96,10 +103,9 @@ def test_fig_breakdown_excludes_zero_items() -> None:
     model = CardCostModel(inputs)
     bd = model.cost_breakdown()
     fig = _fig_breakdown(bd)
-    n_bars = len(fig.data[0].y)
-    zero_items = sum(1 for _, v in bd.sorted_by_amount() if v == 0)
-    total_items = len(bd.sorted_by_amount())
-    assert n_bars == total_items - zero_items
+    # x labels = non-zero items + "Total"
+    n_nonzero = sum(1 for _, v in bd.sorted_by_amount() if v > 0)
+    assert len(fig.data[0].x) == n_nonzero + 1
 
 
 def test_fig_trend_two_traces(model: CardCostModel) -> None:

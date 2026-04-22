@@ -114,6 +114,7 @@ def _make_queries_mock(fx: float = 5.80, invoice_total: float = 6693.58) -> Magi
     q.payouts.return_value = _make_empty()
     q.fx_rate.return_value = fx
     q.conversion_monthly.return_value = _make_empty()
+    q.revenue_generating_count.return_value = 2
     return q
 
 

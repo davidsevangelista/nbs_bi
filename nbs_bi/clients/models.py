@@ -166,8 +166,10 @@ class ClientModel:
         """
         cols = [
             "user_id",
+            "full_name",
             "acquisition_source",
             "referral_code",
+            "referral_code_name",
             "net_revenue_usd",
             "onramp_revenue_usd",
             "offramp_revenue_usd",
@@ -182,9 +184,10 @@ class ClientModel:
             "tenure_months",
         ]
         present = [c for c in cols if c in self._master.columns]
-        df = self._master[present].copy()
-        df["user_id"] = df["user_id"].str[:8] + "..."
-        return df.nlargest(n, "net_revenue_usd").reset_index(drop=True)
+        df = self._master[present].copy().nlargest(n, "net_revenue_usd").reset_index(drop=True)
+        if "user_id" in df.columns:
+            df["user_id"] = df["user_id"].apply(lambda v: str(v)[:8] + "...")
+        return df
 
     def product_adoption(self) -> pd.DataFrame:
         """Per-user product activation flags and product count.
@@ -229,14 +232,25 @@ class ClientModel:
         total = len(df)
         kyc_col = df.get("kyc_level", pd.Series(0, index=df.index))
         kyc_done = int((pd.to_numeric(kyc_col, errors="coerce").fillna(0) >= 1).sum())
-        active_mask = (
-            (df.get("n_conversions", pd.Series(0, index=df.index)) > 0)
-            | (df.get("card_fee_usd", pd.Series(0, index=df.index)) > 0)
-            | (df.get("card_tx_fee_usd", pd.Series(0, index=df.index)) > 0)
-            | (df.get("n_swaps", pd.Series(0, index=df.index)) > 0)
-            | (df.get("payout_fee_usd", pd.Series(0, index=df.index)) > 0)
+        active_users = self._q.revenue_generating_count()
+        return {"total_users": total, "kyc_done": kyc_done, "active_users": active_users}
+
+    def signups_daily(self) -> pd.DataFrame:
+        """Daily new user signup counts derived from the master DataFrame.
+
+        Returns:
+            DataFrame with columns ``date`` (datetime.date) and
+            ``new_signups`` (int), sorted ascending.
+        """
+        df = self._master.copy()
+        df["date"] = pd.to_datetime(df["signup_date"], utc=True, errors="coerce").dt.date
+        return (
+            df.dropna(subset=["date"])
+            .groupby("date")
+            .size()
+            .reset_index(name="new_signups")
+            .sort_values("date")
         )
-        return {"total_users": total, "kyc_done": kyc_done, "active_users": int(active_mask.sum())}
 
     def acquisition_summary(self) -> pd.DataFrame:
         """Aggregate revenue and conversion metrics by acquisition source.
@@ -306,9 +320,10 @@ class ClientModel:
             df["net_revenue_usd"] / df["founder_network_size"],
             np.nan,
         )
-        df["user_id"] = df["user_id"].str[:8] + "..."
         cols = [
-            "user_id",
+            "full_name",
+            "referral_code",
+            "referral_code_name",
             "founder_number",
             "founder_network_size",
             "invites_remaining",
@@ -344,9 +359,10 @@ class ClientModel:
             & (df["net_revenue_usd"] >= min_revenue_usd)
         )
         df = df[mask].copy()
-        df["user_id"] = df["user_id"].str[:8] + "..."
         cols = [
-            "user_id",
+            "full_name",
+            "referral_code",
+            "referral_code_name",
             "acquisition_source",
             "days_since_last_active",
             "net_revenue_usd",
@@ -376,7 +392,9 @@ class ClientModel:
         monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx
         monthly["month"] = pd.to_datetime(monthly["month"])
         base = self._master[["user_id", "signup_date", "acquisition_source"]].copy()
-        base["signup_month"] = pd.to_datetime(base["signup_date"]).dt.to_period("M")
+        base["signup_month"] = (
+            pd.to_datetime(base["signup_date"], utc=True).dt.tz_convert(None).dt.to_period("M")
+        )
         df = monthly.merge(base, on="user_id", how="inner")
         df["activity_month"] = df["month"].dt.to_period("M")
         df["months_since_signup"] = df["activity_month"].apply(

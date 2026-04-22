@@ -44,24 +44,33 @@ Tab 4 — Clients       → Who are my best clients? Where should I grow?
 
 ---
 
-## Tab 1 — Monthly Overview
+## Tab 1 — Overview
 
-**Decision: Is the business on track this month?**
+**Decision: Is the business healthy right now?**
 
-### KPI Row (6 cards)
-| Metric | Source |
-|---|---|
-| Total Revenue BRL (month) | onramp spread + fees + card cost delta |
-| Active Users (month) | unique users with any transaction |
-| New Users (month) | users.created_at in period |
-| Total BRL Volume (onramp + offramp) | conversion_quotes |
-| Total Card Spend (USD) | card_transactions |
-| Total Swap Volume (USD) | swap_transactions |
+### KPI Cards (top row)
+| Metric | Source | Notes |
+|---|---|---|
+| New Users 24H | `users.created_at` last 24h | subtitle: KYC'd count + active count |
+| PIX Volume 24H | `pix_daily` last row, pix_in + pix_out | BRL |
+| Card Spend 24H | `card_daily` last row, amount_usd | USD |
+| Revenue | onramp summary total revenue BRL | period total from date range |
 
-### Charts
-- **Revenue by product** (stacked bar, monthly): onramp spread, card cost, swap fees, cashback cost
-- **Active users trend** (line, monthly): new vs returning
-- **MoM growth** (single number + delta): revenue, volume, users
+### Activity Strip (secondary row)
+| Metric | Definition | Source |
+|---|---|---|
+| DAU | Users with `last_active_at >= NOW() - 1 day` | `users.last_active_at` |
+| WAU | Users with `last_active_at >= NOW() - 7 days` | `users.last_active_at` |
+| MAU | Users with `last_active_at >= NOW() - 30 days` | `users.last_active_at` |
+| KYC % | `kyc_level >= 1` / total users | `users.kyc_level` |
+
+> **Active user definition**: a user is considered active if the platform has recorded activity (any product interaction) recently enough to update `users.last_active_at`. DAU/WAU/MAU are always computed relative to `NOW()` — they are not bounded by the dashboard date range filter.
+
+### Charts (always visible)
+- **Monthly revenue** (stacked area): onramp fees + spread in BRL
+- **Monthly BRL volume** (stacked bar): onramp vs offramp with MoM % annotation
+- **Daily active users** (area): `active_daily` from transaction activity
+- **Activation funnel** (horizontal bar): Registered → KYC → Active (any revenue)
 
 ---
 
@@ -89,12 +98,6 @@ Tab 4 — Clients       → Who are my best clients? Where should I grow?
 
 **FX implicit rate** — line chart with p10–p90 band, split by onramp/offramp.
 - *Decision: Am I pricing consistently? Are outliers hurting me?*
-
-**USDC position + PM** — dual-axis line: running inventory (USDC) and weighted avg cost (BRL/USDC).
-- *Decision: Do I need to buy more USDC from the CEX? Is my position too large?*
-
-**Cumulative PnL** — single line in BRL.
-- *Decision: Is the ramp business making money overall?*
 
 **Top 10 clients by BRL volume** — simple table: user_id (masked), volume_brl, revenue_brl, n_conversions.
 - *Decision: Are there VIP clients I should call? Any concentration risk?*

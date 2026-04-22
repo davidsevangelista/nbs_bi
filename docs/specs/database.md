@@ -375,8 +375,8 @@
 | `internal_id` | uuid | PK |
 | `transaction_id` | text | Rain transaction ID |
 | `user_id` | uuid | |
-| `transaction_type` | text | `authorization`, `capture`, `refund`, `reversal` |
-| `status` | text | `pending`, `posted`, `declined` |
+| `transaction_type` | text | `spend`, `refund`, `reversal` (confirmed from prod) |
+| `status` | text | `completed`, `pending`, `declined` (confirmed from prod) |
 | `amount` | bigint | USD cents ÷ 100 |
 | `currency` | text | Always `USD` |
 | `transaction_data` | jsonb | Merchant name, category, MCC, etc. |

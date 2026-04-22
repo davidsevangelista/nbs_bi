@@ -1,6 +1,5 @@
 """Tests for nbs_bi.clients.queries — helper functions and scaling logic."""
 
-
 import pandas as pd
 import pytest
 

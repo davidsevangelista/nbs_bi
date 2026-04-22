@@ -70,8 +70,22 @@ class OnrampReport:
         conv_df = q.conversions(start_date=start_date, end_date=end_date)
         dep_df = q.pix_deposits(start_date=start_date, end_date=end_date)
         trf_df = q.pix_transfers(start_date=start_date, end_date=end_date)
+        card_tx_df = q.card_transactions_active(start_date=start_date, end_date=end_date)
+        card_fee_df = q.card_fees_active(start_date=start_date, end_date=end_date)
+        billing_df = q.billing_charges_active(start_date=start_date, end_date=end_date)
+        swap_df = q.swaps_active(start_date=start_date, end_date=end_date)
+        payout_df = q.payouts_active(start_date=start_date, end_date=end_date)
+        attr_df = q.user_attribution()
 
         model = OnrampModel(conv_df) if not conv_df.empty else None
+
+        top = model.top_users(n=50) if model else pd.DataFrame()
+        if not top.empty and not attr_df.empty:
+            top = top.merge(
+                attr_df[["user_id", "acquisition_source", "referral_code_name"]],
+                on="user_id",
+                how="left",
+            )
 
         return {
             "summary": self._build_summary(conv_df, dep_df, trf_df),
@@ -79,10 +93,18 @@ class OnrampReport:
             "revenue_monthly": self._build_revenue_monthly(conv_df),
             "pix_daily": self._build_pix_daily(dep_df, trf_df),
             "fx_stats": model.fx_stats(freq="D") if model else pd.DataFrame(),
-            "active_daily": self._build_active_daily(dep_df, trf_df),
+            "active_daily": self._build_active_daily(
+                dep_df, trf_df, card_tx_df, card_fee_df, billing_df, swap_df, payout_df
+            ),
             "position": model.position() if model else pd.DataFrame(),
-            "top_users": model.top_users(n=20) if model else pd.DataFrame(),
+            "top_users": top,
             "cohort": self._build_cohort(dep_df),
+            "user_attribution": attr_df,
+            "user_behavior": model.user_behavior() if model else {},
+            "spread_stats": model.spread_stats() if model else pd.DataFrame(),
+            "revenue_by_direction": model.revenue_by_direction() if model else pd.DataFrame(),
+            "new_vs_returning": model.monthly_new_vs_returning() if model else pd.DataFrame(),
+            "card_daily": self._build_card_daily(card_tx_df),
         }
 
     # ------------------------------------------------------------------
@@ -168,7 +190,8 @@ class OnrampReport:
             return pd.DataFrame()
         df = conv_df.copy()
         df["month"] = (
-            pd.to_datetime(df["created_at"], errors="coerce")
+            pd.to_datetime(df["created_at"], errors="coerce", utc=True)
+            .dt.tz_convert(None)
             .dt.to_period("M")
             .dt.to_timestamp()
         )
@@ -182,6 +205,28 @@ class OnrampReport:
         )
         agg["total_revenue_brl"] = agg["fee_brl"] + agg["spread_brl"]
         return agg.sort_values("month")
+
+    @staticmethod
+    def _build_card_daily(card_tx_df: pd.DataFrame) -> pd.DataFrame:
+        """Daily card spend (USD) and transaction count.
+
+        Args:
+            card_tx_df: Output of ``OnrampQueries.card_transactions_active()``
+                — columns ``created_at``, ``amount_usd``.
+
+        Returns:
+            DataFrame with columns ``date``, ``amount_usd``, ``n_txns``.
+        """
+        if card_tx_df is None or card_tx_df.empty or "amount_usd" not in card_tx_df.columns:
+            return pd.DataFrame(columns=["date", "amount_usd", "n_txns"])
+        df = card_tx_df.copy()
+        df["date"] = pd.to_datetime(df["created_at"], errors="coerce").dt.date
+        return (
+            df.groupby("date")
+            .agg(amount_usd=("amount_usd", "sum"), n_txns=("amount_usd", "count"))
+            .reset_index()
+            .sort_values("date")
+        )
 
     @staticmethod
     def _build_conv_daily(model: OnrampModel | None) -> pd.DataFrame:
@@ -245,19 +290,32 @@ class OnrampReport:
         return merged.sort_values("date")
 
     @staticmethod
-    def _build_active_daily(dep_df: pd.DataFrame, trf_df: pd.DataFrame) -> pd.DataFrame:
-        """Daily unique active users from PIX activity.
+    def _build_active_daily(
+        dep_df: pd.DataFrame,
+        trf_df: pd.DataFrame,
+        card_tx_df: pd.DataFrame | None = None,
+        card_fee_df: pd.DataFrame | None = None,
+        billing_df: pd.DataFrame | None = None,
+        swap_df: pd.DataFrame | None = None,
+        payout_df: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        """Daily unique active users across all revenue-generating activity.
 
         Args:
             dep_df: PIX deposits DataFrame.
             trf_df: PIX transfers DataFrame.
+            card_tx_df: Card transactions DataFrame (user_id, created_at).
+            card_fee_df: Card annual fees DataFrame (user_id, created_at).
+            billing_df: Billing charges DataFrame (user_id, created_at).
+            swap_df: Swap transactions DataFrame (user_id, created_at).
+            payout_df: Unblockpay payouts DataFrame (user_id, created_at).
 
         Returns:
             DataFrame with columns: date, active_total, active_in, active_out.
         """
 
         def _daily_unique(df: pd.DataFrame, label: str) -> pd.DataFrame:
-            if df.empty or "user_id" not in df.columns:
+            if df is None or df.empty or "user_id" not in df.columns:
                 return pd.DataFrame(columns=["date", label])
             tmp = df.copy()
             tmp["date"] = pd.to_datetime(tmp["created_at"], errors="coerce").dt.date
@@ -267,7 +325,11 @@ class OnrampReport:
         active_in = _daily_unique(dep_df, "active_in")
         active_out = _daily_unique(trf_df, "active_out")
 
-        frames = [f for f in [dep_df, trf_df] if not f.empty and "user_id" in f.columns]
+        all_sources = [dep_df, trf_df, card_tx_df, card_fee_df, billing_df, swap_df, payout_df]
+        frames = [
+            f for f in all_sources
+            if f is not None and not f.empty and "user_id" in f.columns
+        ]
         if not frames:
             return pd.DataFrame()
 
@@ -285,13 +347,12 @@ class OnrampReport:
         active_total = (
             all_users.groupby("date")["user_id"].nunique().reset_index(name="active_total")
         )
-        result = (
+        return (
             active_total.merge(active_in, on="date", how="left")
             .merge(active_out, on="date", how="left")
             .fillna(0)
             .sort_values("date")
         )
-        return result
 
     @staticmethod
     def _build_cohort(dep_df: pd.DataFrame) -> pd.DataFrame:
@@ -310,7 +371,9 @@ class OnrampReport:
             return pd.DataFrame()
 
         df = dep_df.copy()
-        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
+        df["created_at"] = (
+            pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert(None)
+        )
         df = df.dropna(subset=["created_at"])
         if df.empty:
             return pd.DataFrame()

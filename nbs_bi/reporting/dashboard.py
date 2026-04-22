@@ -5,31 +5,49 @@ Run with::
     streamlit run nbs_bi/reporting/dashboard.py
 
 Five tabs:
-    Tab 1 — Overview        (placeholder until all modules are built)
-    Tab 2 — On/Off Ramp     (OnrampReport → RampSection)
-    Tab 3 — Card Costs      (CardCostModel → CardSection)
-    Tab 4 — Card Analytics  (live DB spend data → CardAnalyticsSection)
-    Tab 5 — Clients         (placeholder until nbs_bi.clients is built)
+    Tab 1 — Overview        (OverviewSection: cross-module KPIs, volume, revenue, funnel)
+    Tab 2 — Conversions     (OnrampReport → RampSection: 4 subtabs)
+    Tab 3 — Cards           (CardAnalyticsSection: Cost Model + Usage Patterns + Tier Pricing)
+    Tab 4 — Clients         (ClientReport → ClientSection)
+    Tab 5 — Marketing - Ads (MetaAdsSection: cumulative spend, ROI, channel comparison)
 """
 
 from __future__ import annotations
 
-import json
-import tempfile
 from datetime import date, timedelta
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from nbs_bi.cards.models import CardCostModel
 from nbs_bi.clients.report import ClientReport
 from nbs_bi.config import READONLY_DATABASE_URL
 from nbs_bi.onramp.report import OnrampReport
-from nbs_bi.reporting.cards import CardAnalyticsSection, CardSection
+from nbs_bi.reporting.cards import CardAnalyticsSection
 from nbs_bi.reporting.clients import ClientSection
+from nbs_bi.reporting.marketing import MetaAdsSection
+from nbs_bi.reporting.overview import OverviewSection
 from nbs_bi.reporting.ramp import RampSection
 
 load_dotenv()
+
+
+def _latest_rain_invoice_total() -> tuple[float, str, str]:
+    """Return (invoice_total_usd, invoice_id, period) from the latest parsed invoice JSON.
+
+    Uses the actual Rain-billed total when available (``invoice_total_usd`` field).
+    Falls back to the computed model total if the field is absent or zero
+    (e.g. JSONs produced before the invoice_total_usd field was added).
+
+    Returns:
+        Tuple of (total_usd, invoice_id, period).
+    """
+    from nbs_bi.reporting.cards import _load_all_invoice_models
+
+    model, invoice_id, period, _ = _load_all_invoice_models()
+    actual = getattr(model.inputs, "invoice_total_usd", 0.0)
+    total = actual if actual > 0 else model.cost_breakdown().total
+    return total, invoice_id, period
+
 
 # ---------------------------------------------------------------------------
 # Cached data loaders
@@ -72,11 +90,15 @@ def _load_client_report(start_date: str, end_date: str, db_url: str, invoice_tot
 # ---------------------------------------------------------------------------
 
 
-def _sidebar() -> tuple[str, str, float]:
-    """Render the sidebar and return the selected (start_date, end_date, invoice_total).
+def _sidebar(invoice_id: str, invoice_period: str) -> tuple[str, str]:
+    """Render the sidebar and return the selected date range.
+
+    Args:
+        invoice_id: Latest invoice ID for display (e.g. NKEMEJLO-0009).
+        invoice_period: Latest invoice period (e.g. 2026-03).
 
     Returns:
-        Tuple of (ISO start date string, ISO end date string, Rain invoice total USD).
+        Tuple of (ISO start date string, ISO end date string).
     """
     with st.sidebar:
         st.header("Filters")
@@ -96,24 +118,10 @@ def _sidebar() -> tuple[str, str, float]:
         else:
             start, end = default_start, today
 
-        st.divider()
-        st.caption("Card Cost Allocation")
-        invoice_total = st.number_input(
-            "Rain Invoice Total (USD)",
-            min_value=0.0,
-            value=6693.58,
-            step=100.0,
-            help="Used to allocate card processing cost pro-rata per user.",
-        )
-
-        st.divider()
-        st.caption("Database")
-        if READONLY_DATABASE_URL:
-            st.success("Connected", icon="✅")
-        else:
-            st.error("READONLY_DATABASE_URL not set", icon="🔴")
-
-    return start.isoformat(), end.isoformat(), float(invoice_total)
+    # Queries use `< end_date` (exclusive), so add one day to include the
+    # selected end date in full (e.g. selecting "today" includes all of today).
+    exclusive_end = end + timedelta(days=1)
+    return start.isoformat(), exclusive_end.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -121,13 +129,22 @@ def _sidebar() -> tuple[str, str, float]:
 # ---------------------------------------------------------------------------
 
 
-def _tab_overview() -> None:
-    st.info(
-        "**Overview tab** is coming soon.\n\n"
-        "It will aggregate KPIs from all modules: total revenue BRL, "
-        "active users, new users, total BRL volume, card spend, and swap volume.",
-        icon="🚧",
-    )
+def _tab_overview(start_date: str, end_date: str, invoice_total: float) -> None:
+    if not READONLY_DATABASE_URL:
+        st.error(
+            "Set `READONLY_DATABASE_URL` in your `.env` file to load overview data.",
+            icon="🔴",
+        )
+        return
+    try:
+        ramp_report = _load_ramp_report(start_date, end_date, READONLY_DATABASE_URL)
+        client_report = _load_client_report(
+            start_date, end_date, READONLY_DATABASE_URL, invoice_total
+        )
+    except Exception as exc:
+        st.error(f"Failed to load overview data: {exc}", icon="🔴")
+        return
+    OverviewSection(ramp_report, client_report).render()
 
 
 def _tab_ramp(start_date: str, end_date: str) -> None:
@@ -147,39 +164,7 @@ def _tab_ramp(start_date: str, end_date: str) -> None:
     RampSection(report).render()
 
 
-def _tab_cards() -> None:
-    st.caption(
-        "Card costs are modelled from Rain invoice inputs. "
-        "Upload a new invoice JSON to update — or use the Feb 2026 reference."
-    )
-
-    uploaded = st.file_uploader(
-        "Upload invoice JSON (optional)",
-        type="json",
-        key="card_invoice_upload",
-    )
-
-    if uploaded is not None:
-        try:
-            data = json.load(uploaded)
-            with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as tmp:
-                json.dump(data, tmp)
-                tmp_path = tmp.name
-            model = CardCostModel.from_invoice(tmp_path)
-        except Exception as exc:
-            st.error(f"Could not parse invoice file: {exc}", icon="🔴")
-            return
-    else:
-        model = CardCostModel.from_february_2026()
-        st.info(
-            "Showing Feb 2026 reference invoice (NKEMEJLO-0008 — $6,693.58 USD).",
-            icon="ℹ️",
-        )
-
-    CardSection(model).render()
-
-
-def _tab_card_analytics(date_from: date | None, date_to: date | None) -> None:
+def _tab_cards(date_from: date | None, date_to: date | None, rain_cost_usd: float) -> None:
     if not READONLY_DATABASE_URL:
         st.error(
             "Set `READONLY_DATABASE_URL` in your `.env` file to load card data.",
@@ -191,6 +176,7 @@ def _tab_card_analytics(date_from: date | None, date_to: date | None) -> None:
             db_url=READONLY_DATABASE_URL,
             date_from=date_from,
             date_to=date_to,
+            rain_cost_usd=rain_cost_usd,
         ).render()
     except Exception as exc:
         st.error(f"Failed to load card analytics: {exc}", icon="🔴")
@@ -213,6 +199,25 @@ def _tab_clients(start_date: str, end_date: str, invoice_total: float) -> None:
     ClientSection(report).render()
 
 
+def _tab_marketing(start_date: str, end_date: str, invoice_total: float) -> None:
+    campaign_data = None
+    acquisition = None
+
+    if READONLY_DATABASE_URL:
+        try:
+            report = _load_client_report(start_date, end_date, READONLY_DATABASE_URL, invoice_total)
+            campaign_data = report.get("campaign_roi")
+            acquisition = report.get("acquisition")
+        except Exception as exc:
+            st.warning(f"Could not pre-load client data: {exc}", icon="⚠️")
+
+    MetaAdsSection(
+        campaign_data=campaign_data,
+        acquisition=acquisition,
+        db_url=READONLY_DATABASE_URL or None,
+    ).render()
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -227,36 +232,30 @@ def main() -> None:
     )
 
     st.title("NBS Business Intelligence")
-    st.caption("Internal dashboard — Neobankless Brasil LTDA")
+    st.caption("Internal dashboard — NBS SPSAV LTDA")
 
-    start_date, end_date, invoice_total = _sidebar()
+    invoice_total, invoice_id, invoice_period = _latest_rain_invoice_total()
+    start_date, end_date = _sidebar(invoice_id, invoice_period)
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        [
-            "Overview",
-            "On/Off Ramp",
-            "Card Costs",
-            "Card Analytics",
-            "Clients",
-        ]
+        ["Overview", "Conversions", "Cards", "Clients", "Marketing - Ads"]
     )
 
-    # Parse date strings back to date objects for CardAnalyticsSection
     from datetime import date as _date
 
     _date_from = _date.fromisoformat(start_date) if start_date else None
     _date_to = _date.fromisoformat(end_date) if end_date else None
 
     with tab1:
-        _tab_overview()
+        _tab_overview(start_date, end_date, invoice_total)
     with tab2:
         _tab_ramp(start_date, end_date)
     with tab3:
-        _tab_cards()
+        _tab_cards(_date_from, _date_to, invoice_total)
     with tab4:
-        _tab_card_analytics(_date_from, _date_to)
-    with tab5:
         _tab_clients(start_date, end_date, invoice_total)
+    with tab5:
+        _tab_marketing(start_date, end_date, invoice_total)
 
 
 if __name__ == "__main__":

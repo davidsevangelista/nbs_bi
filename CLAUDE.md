@@ -6,7 +6,7 @@ This file governs how Claude Code assists in this repository. Read it fully befo
 
 ## Project Context
 
-`nbs_bi` is a Python business intelligence and cost simulation platform for **Neobankless Brasil LTDA**. It processes sensitive financial data including invoice costs, transaction volumes, and user metrics. All work must reflect production-grade standards.
+`nbs_bi` is a Python business intelligence and cost simulation platform for **NBS SPSAV LTDA**. It processes sensitive financial data including invoice costs, transaction volumes, and user metrics. All work must reflect production-grade standards.
 
 ---
 

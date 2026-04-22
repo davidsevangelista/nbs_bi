@@ -55,7 +55,8 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in ["created_at", "updated_at", "expires_at"]:
         if col in out.columns:
-            out[col] = pd.to_datetime(out[col], errors="coerce")
+            parsed = pd.to_datetime(out[col], errors="coerce", utc=True)
+            out[col] = parsed.dt.tz_convert(None)
 
     out["direction"] = out.get("direction", pd.Series("", index=out.index)).astype(str).str.lower()
 
@@ -79,8 +80,14 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
     def _col(df: pd.DataFrame, col: str) -> pd.Series:
         return df[col] if col in df.columns else pd.Series(0.0, index=df.index)
 
-    out["volume_brl"] = _col(out, "from_amount_brl").abs() + _col(out, "to_amount_brl").abs()
-    out["volume_usdc"] = _col(out, "from_amount_usdc").abs() + _col(out, "to_amount_usdc").abs()
+    out["volume_brl"] = (
+        _col(out, "from_amount_brl").fillna(0.0).abs()
+        + _col(out, "to_amount_brl").fillna(0.0).abs()
+    )
+    out["volume_usdc"] = (
+        _col(out, "from_amount_usdc").fillna(0.0).abs()
+        + _col(out, "to_amount_usdc").fillna(0.0).abs()
+    )
     out["revenue_brl"] = _col(out, "fee_amount_brl").fillna(0.0) + _col(
         out, "spread_revenue_brl"
     ).fillna(0.0)
@@ -335,6 +342,87 @@ class OnrampModel:
             .head(n)
         )
         return agg
+
+    def revenue_by_direction(self) -> pd.DataFrame:
+        """Monthly revenue split by side (onramp / offramp) and component (fee / spread).
+
+        Returns:
+            DataFrame with columns: month, side, fee_brl, spread_brl,
+            n_conversions, total_revenue_brl.
+        """
+        df = self._df.dropna(subset=["created_at"]).copy()
+        df["month"] = df["created_at"].dt.to_period(_to_period_freq("ME")).dt.to_timestamp()
+        agg = (
+            df.groupby(["month", "side"])
+            .agg(
+                fee_brl=("fee_amount_brl", "sum"),
+                spread_brl=("spread_revenue_brl", "sum"),
+                n_conversions=("direction", "count"),
+            )
+            .reset_index()
+        )
+        agg["total_revenue_brl"] = agg["fee_brl"] + agg["spread_brl"]
+        return agg.sort_values(["month", "side"])
+
+    def user_behavior(self) -> dict[str, float | int]:
+        """Repeat-use statistics for the conversion window.
+
+        Returns:
+            Dict with keys: unique_users, repeat_users, repeat_rate,
+            avg_conversions_per_user.
+        """
+        if "user_id" not in self._df.columns:
+            return {}
+        counts = self._df.groupby("user_id").size()
+        total = int(len(counts))
+        repeat = int((counts > 1).sum())
+        return {
+            "unique_users": total,
+            "repeat_users": repeat,
+            "repeat_rate": repeat / total if total > 0 else 0.0,
+            "avg_conversions_per_user": float(counts.mean()),
+        }
+
+    def monthly_new_vs_returning(self) -> pd.DataFrame:
+        """Per-month split of first-time vs returning converters.
+
+        A user is "new" in the month of their first conversion in this dataset.
+        All subsequent months count as "returning".
+
+        Returns:
+            DataFrame with columns: month, new_users, returning_users.
+        """
+        if "user_id" not in self._df.columns:
+            return pd.DataFrame()
+        df = self._df.dropna(subset=["created_at"]).copy()
+        df["month"] = df["created_at"].dt.to_period(_to_period_freq("ME")).dt.to_timestamp()
+        first_month = df.groupby("user_id")["month"].min().rename("first_month")
+        df = df.merge(first_month, on="user_id", how="left")
+        df["is_new"] = df["month"] == df["first_month"]
+        agg = (
+            df.groupby("month")
+            .agg(
+                new_users=("is_new", "sum"),
+                returning_users=("is_new", lambda x: (~x).sum()),
+            )
+            .reset_index()
+        )
+        return agg.sort_values("month")
+
+    def spread_stats(self) -> pd.DataFrame:
+        """Raw spread_percentage values with side and volume_brl for histogram rendering.
+
+        Returns:
+            DataFrame with columns: side, spread_percentage, volume_brl.
+            Rows with null spread_percentage are excluded.
+        """
+        if "spread_percentage" not in self._df.columns:
+            return pd.DataFrame()
+        return (
+            self._df[["side", "spread_percentage", "volume_brl"]]
+            .dropna(subset=["spread_percentage"])
+            .copy()
+        )
 
     def active_users(self, freq: str = "D") -> pd.DataFrame:
         """Count distinct active users per period.

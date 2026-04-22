@@ -70,6 +70,9 @@ class ClientReport:
             "founders": self._model.founders_report(),
             "at_risk": self._model.at_risk_users(),
             "fx_rate": self._model.master_df.pipe(lambda _: self._model._q.fx_rate()),
+            "signups_daily": self._model.signups_daily(),
+            "activity_kpis": self._model._q.activity_kpis(),
+            "signups_24h": self._model._q.signups_24h(),
         }
 
     def to_json_api(self) -> dict[str, Any]:

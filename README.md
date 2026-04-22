@@ -1,6 +1,6 @@
 # NBS Business Intelligence (`nbs_bi`)
 
-Python business intelligence and cost simulation platform for **Neobankless Brasil LTDA**.
+Python business intelligence and cost simulation platform for **NBS SPSAV LTDA**.
 
 Provides modular analytics for each business domain: card operations, transactions, on/off ramp, swaps, and AI usage — with a cost simulation engine to support financial projections and operational decisions.
 

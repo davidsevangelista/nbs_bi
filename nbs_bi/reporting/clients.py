@@ -15,74 +15,36 @@ Usage::
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-try:
-    import streamlit as st
-except ModuleNotFoundError:  # pragma: no cover
+from nbs_bi.reporting.theme import (
+    AMBER,
+    BLUE,
+    EMERALD,
+    ROSE,
+    SOURCE_COLORS,
+    TEAL,
+    TEXT_MUTED,
+    VIOLET,
+    fmt_usd,
+    get_streamlit,
+    mask_user_id,
+    panel,
+)
+from nbs_bi.reporting.theme import (
+    is_empty as _empty,
+)
+from nbs_bi.reporting.theme import (
+    report_get as _get,
+)
 
-    class _StreamlitShim:
-        """Fallback so figure-builder tests can import without Streamlit installed."""
+st = get_streamlit()
 
-        def __getattr__(self, name):
-            def _noop(*args, **kwargs):
-                return None
-
-            return _noop
-
-    st = _StreamlitShim()  # type: ignore[assignment]
-
-# ---------------------------------------------------------------------------
-# Shared colour palette (matches cards.py)
-# ---------------------------------------------------------------------------
-
-BG = "#FFFFFF"
-PLOT_BG = "#F8FAFC"
-GRID = "#E2E8F0"
-TEXT = "#1E293B"
-TEXT_MUTED = "#64748B"
-BLUE = "#2563EB"
-AMBER = "#D97706"
-EMERALD = "#059669"
-ROSE = "#E11D48"
-VIOLET = "#7C3AED"
-TEAL = "#0D9488"
-
-_SOURCE_COLORS = {
-    "founder_invite": EMERALD,
-    "referral": BLUE,
-    "organic": AMBER,
-    "unknown": TEXT_MUTED,
-}
-
-
-def _panel(title: str = "") -> dict:
-    return dict(
-        title=title,
-        paper_bgcolor=BG,
-        plot_bgcolor=PLOT_BG,
-        font=dict(color=TEXT, size=12),
-        xaxis=dict(gridcolor=GRID),
-        yaxis=dict(gridcolor=GRID),
-        margin=dict(l=40, r=20, t=40, b=40),
-    )
-
-
-def _empty(v) -> bool:
-    if v is None:
-        return True
-    if isinstance(v, pd.DataFrame):
-        return v.empty
-    return False
-
-
-def _get(report: dict, key: str) -> pd.DataFrame:
-    return report.get(key, pd.DataFrame())
-
-
-def _fmt_usd(v: float) -> str:
-    return f"${v:,.2f}"
+_SOURCE_COLORS = SOURCE_COLORS
+_panel = panel
+_fmt_usd = fmt_usd
 
 
 # ---------------------------------------------------------------------------
@@ -97,12 +59,16 @@ def _fig_ltv_heatmap(cohort_ltv: pd.DataFrame) -> go.Figure | None:
     z = cohort_ltv.values.astype(float)
     y = [str(idx) for idx in cohort_ltv.index]
     x = [str(c) for c in cohort_ltv.columns]
+    # Use a sequential green scale anchored at 0 so empty/zero cells are
+    # visually distinct from low-but-positive LTV cells (which "Blues" made
+    # indistinguishable from missing data).
     fig = go.Figure(
         go.Heatmap(
             z=z,
             x=x,
             y=y,
-            colorscale="Blues",
+            colorscale="YlGn",
+            zmin=0,
             hovertemplate="Cohort: %{y}<br>Month +%{x}: $%{z:.2f}<extra></extra>",
             colorbar=dict(title="Avg LTV (USD)"),
         )
@@ -215,145 +181,36 @@ def _fig_segment_donut(summary: pd.DataFrame) -> go.Figure | None:
 
 
 def _fig_founders_scatter(founders: pd.DataFrame) -> go.Figure | None:
-    """Network size vs revenue scatter."""
+    """Network size vs revenue scatter with masked user IDs in hover text.
+
+    Args:
+        founders: DataFrame with columns user_id, founder_network_size,
+            net_revenue_usd.
+
+    Returns:
+        Plotly Figure or None if data is empty or missing required column.
+    """
     if _empty(founders) or "founder_network_size" not in founders.columns:
         return None
     df = founders.copy()
+    name_col = (
+        df["full_name"]
+        if "full_name" in df.columns
+        else (df["user_id"].apply(mask_user_id) if "user_id" in df.columns else None)
+    )
     fig = go.Figure(
         go.Scatter(
             x=df["founder_network_size"],
             y=df["net_revenue_usd"],
             mode="markers",
             marker=dict(color=VIOLET, size=8, opacity=0.7),
-            text=df["user_id"],
+            text=name_col,
             hovertemplate="User: %{text}<br>Network: %{x}<br>Revenue: $%{y:.2f}<extra></extra>",
         )
     )
     fig.update_layout(**_panel("Founder Network Size vs Net Revenue"))
     fig.update_xaxes(title="Founder Network Size")
     fig.update_yaxes(title="Net Revenue (USD)")
-    return fig
-
-
-def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
-    """Dual-axis chart: daily signups (bar) + ad spend (line) over time."""
-    if _empty(daily):
-        return None
-    fig = go.Figure()
-    campaign_ids = daily["campaign_id"].unique()
-    colors = [ROSE, VIOLET, AMBER, TEAL]
-    for i, cid in enumerate(campaign_ids):
-        if not cid:
-            continue
-        mask = daily["campaign_id"] == cid
-        fig.add_trace(
-            go.Bar(
-                x=daily.loc[mask, "date"],
-                y=daily.loc[mask, "new_signups"],
-                name=f"{cid} signups",
-                marker_color=colors[i % len(colors)],
-                opacity=0.6,
-            )
-        )
-    organic_mask = ~daily["is_campaign"]
-    fig.add_trace(
-        go.Bar(
-            x=daily.loc[organic_mask, "date"],
-            y=daily.loc[organic_mask, "new_signups"],
-            name="Organic signups",
-            marker_color=BLUE,
-            opacity=0.4,
-        )
-    )
-    spend_mask = daily["daily_spend_usd"] > 0
-    fig.add_trace(
-        go.Scatter(
-            x=daily.loc[spend_mask, "date"],
-            y=daily.loc[spend_mask, "daily_spend_usd"],
-            name="Ad spend (USD)",
-            mode="lines+markers",
-            line=dict(color=ROSE, width=2, dash="dot"),
-            yaxis="y2",
-        )
-    )
-    layout = _panel("Daily Signups vs Meta Ad Spend")
-    layout["barmode"] = "stack"
-    layout["yaxis2"] = dict(
-        title="Daily Spend (USD)",
-        overlaying="y",
-        side="right",
-        gridcolor="rgba(0,0,0,0)",
-    )
-    layout["yaxis"]["title"] = "New Signups"
-    layout["xaxis"]["title"] = "Date"
-    layout["legend"] = dict(orientation="h", y=-0.2)
-    fig.update_layout(**layout)
-    return fig
-
-
-def _fig_campaign_roi(summary: pd.DataFrame) -> go.Figure | None:
-    """Grouped bar chart: spend vs revenue per campaign."""
-    if _empty(summary):
-        return None
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=summary["campaign_id"],
-            y=summary["total_spend_usd"],
-            name="Ad Spend",
-            marker_color=ROSE,
-            text=summary["total_spend_usd"].apply(lambda v: f"${v:,.0f}"),
-            textposition="outside",
-        )
-    )
-    fig.add_trace(
-        go.Bar(
-            x=summary["campaign_id"],
-            y=summary["total_revenue_usd"],
-            name="Cohort Revenue",
-            marker_color=EMERALD,
-            text=summary["total_revenue_usd"].apply(lambda v: f"${v:,.0f}"),
-            textposition="outside",
-        )
-    )
-    layout = _panel("Ad Spend vs Cohort Revenue by Campaign")
-    layout["barmode"] = "group"
-    layout["yaxis"]["title"] = "USD"
-    fig.update_layout(**layout)
-    return fig
-
-
-def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
-    """CAC comparison: full-cohort vs incremental estimate."""
-    if _empty(summary) or "cac_full" not in summary.columns:
-        return None
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=summary["campaign_id"],
-            y=summary["cac_full"],
-            name="CAC (all cohort users)",
-            marker_color=AMBER,
-            text=summary["cac_full"].apply(lambda v: f"${v:.2f}" if pd.notna(v) else "n/a"),
-            textposition="outside",
-        )
-    )
-    valid_incr = summary["cac_incremental"].notna()
-    if valid_incr.any():
-        fig.add_trace(
-            go.Bar(
-                x=summary.loc[valid_incr, "campaign_id"],
-                y=summary.loc[valid_incr, "cac_incremental"],
-                name="CAC (incremental users est.)",
-                marker_color=VIOLET,
-                text=summary.loc[valid_incr, "cac_incremental"].apply(lambda v: f"${v:.2f}"),
-                textposition="outside",
-            )
-        )
-    layout = _panel("Customer Acquisition Cost (USD)")
-    layout["barmode"] = "group"
-    layout["yaxis"]["title"] = "CAC (USD / User)"
-    fig.update_layout(**layout)
     return fig
 
 
@@ -422,6 +279,41 @@ def _fig_product_adoption_bars(adoption: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _fig_revenue_histogram(segments: pd.DataFrame) -> go.Figure | None:
+    """Revenue per user distribution histogram (log x-axis).
+
+    Args:
+        segments: Full segments DataFrame with ``net_revenue_usd`` column.
+
+    Returns:
+        Plotly Figure or None if insufficient data.
+    """
+    if _empty(segments) or "net_revenue_usd" not in segments.columns:
+        return None
+    rev = segments["net_revenue_usd"].dropna()
+    rev = rev[rev > 0]
+    if rev.empty:
+        return None
+    log_min = np.floor(np.log10(float(rev.min())))
+    log_max = np.ceil(np.log10(float(rev.max())))
+    bins = np.logspace(log_min, log_max, 35)
+    counts, edges = np.histogram(rev, bins=bins)
+    centers = np.sqrt(edges[:-1] * edges[1:])  # geometric mean for log-space bars
+    fig = go.Figure(
+        go.Bar(
+            x=centers,
+            y=counts,
+            marker_color=TEAL,
+            opacity=0.8,
+            hovertemplate="~$%{x:.2f}: %{y} users<extra></extra>",
+        )
+    )
+    fig.update_layout(**_panel("Revenue per User Distribution (USD)"))
+    fig.update_xaxes(title="Net Revenue (USD)", type="log")
+    fig.update_yaxes(title="User Count")
+    return fig
+
+
 def _fig_adoption_heatmap(adoption: pd.DataFrame, segments: pd.DataFrame) -> go.Figure | None:
     """Product × segment heatmap — % users active in each combination."""
     if _empty(adoption) or _empty(segments):
@@ -469,7 +361,7 @@ class ClientSection:
         self._r = report
 
     def render(self) -> None:
-        """Render all 6 sub-tabs."""
+        """Render all 5 sub-tabs."""
         tabs = st.tabs(
             [
                 "LTV & Cohorts",
@@ -477,7 +369,6 @@ class ClientSection:
                 "Segments",
                 "Founders Club",
                 "Product Adoption",
-                "Campaign ROI",
             ]
         )
         with tabs[0]:
@@ -490,8 +381,6 @@ class ClientSection:
             self._render_founders()
         with tabs[4]:
             self._render_adoption()
-        with tabs[5]:
-            self._render_campaigns()
 
     # ------------------------------------------------------------------
     # Tab 1 — LTV & Cohorts
@@ -500,52 +389,57 @@ class ClientSection:
     def _render_ltv(self) -> None:
         cohort_ltv = _get(self._r, "cohort_ltv")
         ltv_by_source = self._r.get("ltv_by_source", {})
+        segments = _get(self._r, "segments")
+        adoption = _get(self._r, "product_adoption")
+
+        # Multi-product users KPI
+        n_multi = 0
+        pct_multi = 0.0
+        if not _empty(adoption) and "n_products" in adoption.columns:
+            n_multi = int((adoption["n_products"] >= 2).sum())
+            pct_multi = n_multi / len(adoption) * 100 if len(adoption) > 0 else 0.0
+
+        # Top 10% revenue concentration KPI
+        top10_pct = 0.0
+        if not _empty(segments) and "net_revenue_usd" in segments.columns:
+            rev_all = segments["net_revenue_usd"].dropna()
+            rev_pos = rev_all[rev_all > 0]
+            if len(rev_pos) > 0:
+                n_top = max(1, len(rev_pos) // 10)
+                top10_pct = float(rev_pos.nlargest(n_top).sum() / rev_pos.sum() * 100)
 
         # KPI cards
         leaderboard = _get(self._r, "leaderboard")
-        if not _empty(leaderboard):
-            avg_ltv = leaderboard["net_revenue_usd"].mean()
-            best_src = (
-                _get(self._r, "acquisition")
-                .sort_values("avg_net_revenue_usd", ascending=False)
-                .iloc[0]["acquisition_source"]
-                if not _empty(_get(self._r, "acquisition"))
-                else "—"
-            )
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Avg Net Revenue (top 50)", _fmt_usd(avg_ltv))
-            c2.metric("Best Acquisition Source", best_src)
-            c3.metric("FX Rate (BRL/USD)", f"{self._r.get('fx_rate', 0):.4f}")
+        avg_ltv = leaderboard["net_revenue_usd"].mean() if not _empty(leaderboard) else 0.0
+        best_src = (
+            _get(self._r, "acquisition")
+            .sort_values("avg_net_revenue_usd", ascending=False)
+            .iloc[0]["acquisition_source"]
+            if not _empty(_get(self._r, "acquisition"))
+            else "—"
+        )
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Avg Net Revenue (top 50)", _fmt_usd(avg_ltv))
+        c2.metric("Best Acquisition Source", best_src)
+        c3.metric("FX Rate (BRL/USD)", f"{self._r.get('fx_rate', 0):.4f}")
+        c4.metric("Multi-product Users", f"{n_multi:,}", delta=f"{pct_multi:.1f}% of users")
+        c5.metric("Top 10% Revenue Share", f"{top10_pct:.1f}%")
 
         st.divider()
 
         fig = _fig_ltv_heatmap(cohort_ltv)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.info("No cohort LTV data available for the selected period.")
 
         fig2 = _fig_ltv_curves(ltv_by_source)
         if fig2:
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
 
-        st.divider()
-        st.subheader("CAC Breakeven Analysis")
-        cac = st.slider(
-            "Customer Acquisition Cost (USD)", min_value=0, max_value=200, value=20, step=5
-        )
-        # CAC breakeven is computed from model — stored in report only if passed
-        # We show it from ltv_by_source data directly
-        breakeven = self._r.get("cac_breakeven_fn")
-        if callable(breakeven):
-            df_be = breakeven(cac)
-        else:
-            df_be = self._r.get("cac_breakeven_20", pd.DataFrame())
-        fig3 = _fig_cac_payback(df_be)
+        fig3 = _fig_revenue_histogram(segments)
         if fig3:
-            st.plotly_chart(fig3, use_container_width=True)
-        else:
-            st.caption("CAC breakeven chart requires cohort LTV data. Load data via ClientReport.")
+            st.plotly_chart(fig3, width="stretch")
 
     # ------------------------------------------------------------------
     # Tab 2 — Acquisition
@@ -564,11 +458,11 @@ class ClientSection:
         with col1:
             fig = _fig_acquisition_bar(acq)
             if fig:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
         with col2:
             fig2 = _fig_funnel(acq)
             if fig2:
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
 
         st.subheader("Acquisition Source Summary")
         display = acq.copy()
@@ -579,7 +473,7 @@ class ClientSection:
             display["conversion_rate"] = (display["conversion_rate"] * 100).round(1).astype(
                 str
             ) + "%"
-        st.dataframe(display, use_container_width=True, hide_index=True)
+        st.dataframe(display, width="stretch", hide_index=True)
 
         if not _empty(ref):
             st.divider()
@@ -592,7 +486,7 @@ class ClientSection:
             ]:
                 if col in display_ref.columns:
                     display_ref[col] = display_ref[col].apply(lambda v: f"${v:,.2f}")
-            st.dataframe(display_ref, use_container_width=True, hide_index=True)
+            st.dataframe(display_ref, width="stretch", hide_index=True)
 
     # ------------------------------------------------------------------
     # Tab 3 — Segments
@@ -621,20 +515,20 @@ class ClientSection:
         with col1:
             fig = _fig_segment_donut(summary)
             if fig:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
         with col2:
             if not _empty(summary):
-                st.dataframe(summary, use_container_width=True, hide_index=True)
+                st.dataframe(summary, width="stretch", hide_index=True)
 
         if not _empty(leaderboard):
             st.subheader("Champion Leaderboard (Top 50 by Net Revenue)")
-            st.dataframe(leaderboard, use_container_width=True, hide_index=True)
+            st.dataframe(leaderboard, width="stretch", hide_index=True)
 
         if not _empty(at_risk):
             st.divider()
             st.subheader("At-Risk Users — Outreach Targets")
             st.caption("Users inactive 30–90 days with meaningful revenue. user_id masked.")
-            st.dataframe(at_risk.head(50), use_container_width=True, hide_index=True)
+            st.dataframe(at_risk.head(50), width="stretch", hide_index=True)
 
     # ------------------------------------------------------------------
     # Tab 4 — Founders Club
@@ -663,137 +557,40 @@ class ClientSection:
         with col1:
             fig = _fig_founders_scatter(founders)
             if fig:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
         with col2:
             if "invites_remaining" in founders.columns:
+                unused_cols = [
+                    "user_id",
+                    "referral_code",
+                    "referral_code_name",
+                    "invites_remaining",
+                    "net_revenue_usd",
+                ]
+                unused_present = [c for c in unused_cols if c in founders.columns]
                 top_unused = founders[founders["invites_remaining"] > 0].nlargest(
                     20, "invites_remaining"
-                )[["user_id", "invites_remaining", "net_revenue_usd"]]
+                )[unused_present]
                 if not top_unused.empty:
                     st.subheader("Under-leveraged Founders (unused invites)")
-                    st.dataframe(top_unused, use_container_width=True, hide_index=True)
+                    st.dataframe(top_unused, width="stretch", hide_index=True)
 
         st.subheader("Founders Leaderboard (Top 20 by Revenue)")
         cols = [
             "user_id",
+            "referral_code",
+            "referral_code_name",
             "founder_number",
             "founder_network_size",
             "net_revenue_usd",
             "n_products",
         ]
         present = [c for c in cols if c in founders.columns]
-        st.dataframe(founders[present].head(20), use_container_width=True, hide_index=True)
+        st.dataframe(founders[present].head(20), width="stretch", hide_index=True)
 
     # ------------------------------------------------------------------
     # Tab 5 — Product Adoption
     # ------------------------------------------------------------------
-
-    # ------------------------------------------------------------------
-    # Tab 6 — Campaign ROI (Meta Ads)
-    # ------------------------------------------------------------------
-
-    def _render_campaigns(self) -> None:  # noqa: C901
-        """Render the Campaign ROI sub-tab.
-
-        Requires a Rain card CSV upload (or pre-loaded data in the report dict
-        under the key ``campaign_roi``).
-        """
-        st.subheader("Meta Ads (Facebook) Campaign ROI")
-        st.caption(
-            "Upload the Rain company card CSV to analyse Meta Ads spend vs revenue from "
-            "users who signed up during each campaign window.  "
-            "Attribution is date-window based — no UTM tracking in DB."
-        )
-
-        campaign_data = self._r.get("campaign_roi")
-        if campaign_data is None:
-            uploaded = st.file_uploader("Rain Card CSV export", type=["csv"], key="campaign_csv")
-            if uploaded is None:
-                st.info(
-                    "Upload the Rain card CSV (e.g. rain-transactions-export-YYYY-MM-DD.csv) "
-                    "to load Meta Ads spend data."
-                )
-                return
-            import io
-
-            from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend
-
-            raw_bytes = uploaded.read()
-            spend = load_ad_spend(io.StringIO(raw_bytes.decode("utf-8")))
-            db_url = self._r.get("_db_url")
-            analyzer = CampaignAnalyzer(spend, db_url=db_url)
-            campaign_data = {
-                "summary": analyzer.roi_summary(),
-                "daily": analyzer.daily_context(),
-            }
-
-        summary = campaign_data.get("summary", pd.DataFrame())
-        daily = campaign_data.get("daily", pd.DataFrame())
-
-        if _empty(summary):
-            st.warning("No FACEBK spend rows found in the uploaded CSV.")
-            return
-
-        # KPI cards
-        total_spend = float(summary["total_spend_usd"].sum())
-        total_rev = float(summary["total_revenue_usd"].sum())
-        total_users = int(summary["cohort_users"].sum())
-        overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total Meta Spend", f"${total_spend:,.2f}")
-        c2.metric("Cohort Revenue", f"${total_rev:,.2f}")
-        c3.metric("Cohort Users", f"{total_users:,}")
-        c4.metric(
-            "ROAS",
-            f"{overall_roas:.2f}×",
-            delta=f"{'above' if overall_roas >= 1 else 'below'} break-even",
-            delta_color="normal" if overall_roas >= 1 else "inverse",
-        )
-
-        st.caption(
-            "⚠️ Revenue is from ALL users who signed up during campaign windows — "
-            "includes organic signups.  CAC (incremental) estimates only Meta-attributed "
-            "uplift above the pre-campaign organic baseline."
-        )
-
-        st.divider()
-
-        # Spend vs revenue chart
-        fig = _fig_campaign_roi(summary)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-
-        # CAC chart
-        fig2 = _fig_campaign_cac(summary)
-        if fig2:
-            st.plotly_chart(fig2, use_container_width=True)
-
-        # Daily context
-        if not _empty(daily):
-            fig3 = _fig_campaign_daily(daily)
-            if fig3:
-                st.plotly_chart(fig3, use_container_width=True)
-
-        # Summary table
-        st.subheader("Campaign Summary Table")
-        display = summary.copy()
-        for col in [
-            "total_spend_usd",
-            "total_revenue_usd",
-            "cac_full",
-            "cac_incremental",
-            "avg_rev_per_transacting_user",
-        ]:
-            if col in display.columns:
-                display[col] = display[col].apply(lambda v: f"${v:,.2f}" if pd.notna(v) else "n/a")
-        if "transacting_rate" in display.columns:
-            display["transacting_rate"] = display["transacting_rate"].apply(
-                lambda v: f"{v * 100:.1f}%" if pd.notna(v) else "n/a"
-            )
-        if "roas" in display.columns:
-            display["roas"] = display["roas"].apply(lambda v: f"{v:.2f}×" if pd.notna(v) else "n/a")
-        st.dataframe(display, use_container_width=True, hide_index=True)
 
     def _render_adoption(self) -> None:
         adoption = _get(self._r, "product_adoption")
@@ -804,7 +601,7 @@ class ClientSection:
         st.subheader("User Activation Funnel")
         fig_funnel = _fig_activation_funnel(funnel)
         if fig_funnel:
-            st.plotly_chart(fig_funnel, use_container_width=True)
+            st.plotly_chart(fig_funnel, width="stretch")
             if funnel:
                 total = funnel.get("total_users", 1) or 1
                 kyc = funnel.get("kyc_done", 0)
@@ -830,7 +627,7 @@ class ClientSection:
         st.subheader("Product Adoption")
         fig_bars = _fig_product_adoption_bars(adoption)
         if fig_bars:
-            st.plotly_chart(fig_bars, use_container_width=True)
+            st.plotly_chart(fig_bars, width="stretch")
 
         # KPI row
         kpi_map = {
@@ -850,7 +647,7 @@ class ClientSection:
         # -- Segment heatmap --
         fig_heat = _fig_adoption_heatmap(adoption, segments)
         if fig_heat:
-            st.plotly_chart(fig_heat, use_container_width=True)
+            st.plotly_chart(fig_heat, width="stretch")
 
         if "n_products" in adoption.columns:
             st.subheader("Product Combination Distribution")
@@ -864,4 +661,4 @@ class ClientSection:
             )
             fig_combo.update_layout(**_panel("Users by Number of Products Used"))
             fig_combo.update_yaxes(title="User Count")
-            st.plotly_chart(fig_combo, use_container_width=True)
+            st.plotly_chart(fig_combo, width="stretch")

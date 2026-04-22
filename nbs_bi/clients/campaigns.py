@@ -55,11 +55,11 @@ WITH cohort AS (
       AND created_at <  :cohort_end
 ),
 onramp_rev AS (
-    SELECT cq.user_id::TEXT,
-           SUM(cq.fee_amount_brl + cq.spread_revenue_brl) / 100.0 AS onramp_brl
-    FROM conversion_quotes cq
-    WHERE cq.used = TRUE
-    GROUP BY cq.user_id::TEXT
+    SELECT user_id::TEXT,
+           SUM(fee_amount_brl + spread_revenue_brl) / 100.0 AS onramp_brl
+    FROM conversion_quotes
+    WHERE used = TRUE
+    GROUP BY user_id::TEXT
 ),
 card_fee_rev AS (
     SELECT user_id::TEXT, SUM(amount_usdc::FLOAT) AS card_fee_usd
@@ -73,36 +73,136 @@ billing_rev AS (
     WHERE status = 'settled'
     GROUP BY user_id::TEXT
 ),
+swap_rev AS (
+    SELECT user_id::TEXT,
+           SUM(input_amount::FLOAT / 1000000.0
+               * platform_fee_bps::FLOAT / 10000.0) AS swap_fee_usd
+    FROM swap_transactions
+    GROUP BY user_id::TEXT
+),
+payout_rev AS (
+    SELECT user_id::TEXT, SUM(unblockpay_fee::FLOAT) AS payout_fee_usd
+    FROM unblockpay_payouts
+    WHERE status = 'completed'
+    GROUP BY user_id::TEXT
+),
+cashback_cost AS (
+    SELECT user_id::TEXT, SUM(reward_usd_value::FLOAT) AS cashback_usd
+    FROM cashback_rewards
+    WHERE status = 'completed'
+    GROUP BY user_id::TEXT
+),
+rev_share_cost AS (
+    SELECT source_user_id::TEXT AS user_id,
+           SUM(reward_usd_value::FLOAT) AS revenue_share_usd
+    FROM revenue_share_rewards
+    WHERE status = 'completed'
+    GROUP BY source_user_id::TEXT
+),
 fx AS (
     SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY effective_rate) AS rate
     FROM conversion_quotes
     WHERE used = TRUE AND direction = 'brl_to_usdc'
 ),
 transacting AS (
-    SELECT DISTINCT user_id::TEXT AS uid
-    FROM conversion_quotes WHERE used = TRUE
-    UNION
-    SELECT DISTINCT user_id::TEXT FROM card_annual_fees WHERE status = 'paid'
-    UNION
-    SELECT DISTINCT user_id::TEXT FROM billing_charges WHERE status = 'settled'
+    SELECT DISTINCT user_id::TEXT AS uid FROM conversion_quotes WHERE used = TRUE
+    UNION SELECT DISTINCT user_id::TEXT FROM card_annual_fees WHERE status = 'paid'
+    UNION SELECT DISTINCT user_id::TEXT FROM billing_charges  WHERE status = 'settled'
+    UNION SELECT DISTINCT user_id::TEXT FROM swap_transactions
+    UNION SELECT DISTINCT user_id::TEXT FROM unblockpay_payouts WHERE status = 'completed'
 )
 SELECT
-    COUNT(DISTINCT c.user_id)                                               AS cohort_users,
-    COUNT(DISTINCT t.uid)                                                   AS transacting_users,
-    ROUND(SUM(COALESCE(or_.onramp_brl, 0) / fx.rate)::NUMERIC, 4)          AS onramp_rev_usd,
-    ROUND(SUM(COALESCE(cf.card_fee_usd, 0))::NUMERIC, 4)                   AS card_fee_usd,
-    ROUND(SUM(COALESCE(br.billing_usd, 0))::NUMERIC, 4)                    AS billing_usd,
+    COUNT(DISTINCT c.user_id)                                                AS cohort_users,
+    COUNT(DISTINCT t.uid)                                                    AS transacting_users,
+    ROUND(SUM(COALESCE(or_.onramp_brl,  0) / fx.rate)::NUMERIC, 4)          AS onramp_rev_usd,
+    ROUND(SUM(COALESCE(cf.card_fee_usd, 0))::NUMERIC, 4)                    AS card_fee_usd,
+    ROUND(SUM(COALESCE(br.billing_usd,  0))::NUMERIC, 4)                    AS billing_usd,
+    ROUND(SUM(COALESCE(sw.swap_fee_usd, 0))::NUMERIC, 4)                    AS swap_fee_usd,
+    ROUND(SUM(COALESCE(po.payout_fee_usd, 0))::NUMERIC, 4)                  AS payout_fee_usd,
+    ROUND(SUM(COALESCE(cb.cashback_usd,  0))::NUMERIC, 4)                   AS cashback_usd,
+    ROUND(SUM(COALESCE(rs.revenue_share_usd, 0))::NUMERIC, 4)               AS revenue_share_usd,
     ROUND(SUM(
-        COALESCE(or_.onramp_brl, 0) / fx.rate
+        COALESCE(or_.onramp_brl,  0) / fx.rate
         + COALESCE(cf.card_fee_usd, 0)
-        + COALESCE(br.billing_usd, 0)
-    )::NUMERIC, 4)                                                          AS total_revenue_usd
+        + COALESCE(br.billing_usd,  0)
+        + COALESCE(sw.swap_fee_usd, 0)
+        + COALESCE(po.payout_fee_usd, 0)
+        - COALESCE(cb.cashback_usd,  0)
+        - COALESCE(rs.revenue_share_usd, 0)
+    )::NUMERIC, 4)                                                           AS total_revenue_usd
 FROM cohort c
 CROSS JOIN fx
-LEFT JOIN onramp_rev or_  ON or_.user_id  = c.user_id
-LEFT JOIN card_fee_rev cf ON cf.user_id   = c.user_id
-LEFT JOIN billing_rev  br ON br.user_id   = c.user_id
-LEFT JOIN transacting  t  ON t.uid        = c.user_id
+LEFT JOIN onramp_rev    or_ ON or_.user_id = c.user_id
+LEFT JOIN card_fee_rev  cf  ON cf.user_id  = c.user_id
+LEFT JOIN billing_rev   br  ON br.user_id  = c.user_id
+LEFT JOIN swap_rev      sw  ON sw.user_id  = c.user_id
+LEFT JOIN payout_rev    po  ON po.user_id  = c.user_id
+LEFT JOIN cashback_cost cb  ON cb.user_id  = c.user_id
+LEFT JOIN rev_share_cost rs ON rs.user_id  = c.user_id
+LEFT JOIN transacting   t   ON t.uid       = c.user_id
+"""
+
+
+_DAILY_COHORT_REVENUE_SQL = """
+WITH cohort AS (
+    SELECT id::TEXT AS user_id
+    FROM users
+    WHERE created_at >= :cohort_start
+      AND created_at <  :cohort_end
+),
+fx AS (
+    SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY effective_rate) AS rate
+    FROM conversion_quotes
+    WHERE used = TRUE AND direction = 'brl_to_usdc'
+),
+rev_rows AS (
+    SELECT DATE(cq.created_at AT TIME ZONE 'UTC') AS rev_date,
+           (cq.fee_amount_brl + cq.spread_revenue_brl)::FLOAT / 100.0
+               / NULLIF(fx.rate, 0) AS rev_usd
+    FROM conversion_quotes cq, fx
+    WHERE cq.used = TRUE
+      AND cq.user_id::TEXT IN (SELECT user_id FROM cohort)
+    UNION ALL
+    SELECT DATE(cf.created_at AT TIME ZONE 'UTC'),
+           cf.amount_usdc::FLOAT
+    FROM card_annual_fees cf
+    WHERE cf.status = 'paid'
+      AND cf.user_id::TEXT IN (SELECT user_id FROM cohort)
+    UNION ALL
+    SELECT DATE(bc.created_at AT TIME ZONE 'UTC'),
+           bc.amount::FLOAT / 1000000.0
+    FROM billing_charges bc
+    WHERE bc.status = 'settled'
+      AND bc.user_id::TEXT IN (SELECT user_id FROM cohort)
+    UNION ALL
+    SELECT DATE(st."timestamp" AT TIME ZONE 'UTC'),
+           st.input_amount::FLOAT / 1000000.0
+               * st.platform_fee_bps::FLOAT / 10000.0
+    FROM swap_transactions st
+    WHERE st.user_id::TEXT IN (SELECT user_id FROM cohort)
+    UNION ALL
+    SELECT DATE(pp.created_at AT TIME ZONE 'UTC'),
+           pp.unblockpay_fee::FLOAT
+    FROM unblockpay_payouts pp
+    WHERE pp.status = 'completed'
+      AND pp.user_id::TEXT IN (SELECT user_id FROM cohort)
+    UNION ALL
+    SELECT DATE(cr.created_at AT TIME ZONE 'UTC'),
+           -cr.reward_usd_value::FLOAT
+    FROM cashback_rewards cr
+    WHERE cr.status = 'completed'
+      AND cr.user_id::TEXT IN (SELECT user_id FROM cohort)
+    UNION ALL
+    SELECT DATE(rsr.created_at AT TIME ZONE 'UTC'),
+           -rsr.reward_usd_value::FLOAT
+    FROM revenue_share_rewards rsr
+    WHERE rsr.status = 'completed'
+      AND rsr.source_user_id::TEXT IN (SELECT user_id FROM cohort)
+)
+SELECT rev_date, ROUND(SUM(rev_usd)::NUMERIC, 4) AS daily_rev_usd
+FROM rev_rows
+GROUP BY rev_date
+ORDER BY rev_date
 """
 
 
@@ -370,10 +470,16 @@ class CampaignAnalyzer:
                 columns=["date", "new_signups", "daily_spend_usd", "is_campaign", "campaign_id"]
             )
 
+        from datetime import date as _date
+
         first_start = pd.Timestamp(self._campaigns[0]["start"]) - pd.Timedelta(
             days=context_days_before
         )
-        last_end = pd.Timestamp(self._campaigns[-1]["end"]) + pd.Timedelta(days=1)
+        # Extend to today so signups after the last ad spend date are included.
+        last_end = max(
+            pd.Timestamp(self._campaigns[-1]["end"]) + pd.Timedelta(days=1),
+            pd.Timestamp(_date.today()) + pd.Timedelta(days=1),
+        )
 
         signups = self._daily_signups(str(first_start.date()), str(last_end.date()))
         signups["date"] = pd.to_datetime(signups["signup_date"]).dt.date
@@ -396,3 +502,49 @@ class CampaignAnalyzer:
             merged.loc[mask, "campaign_id"] = c["campaign_id"]
 
         return merged.sort_values("date").reset_index(drop=True)
+
+    def cumulative_revenue(self, campaign_id: str | None = None) -> pd.DataFrame:
+        """Daily and cumulative revenue generated by users acquired during a campaign.
+
+        Revenue is tracked from the campaign start through today, covering all
+        revenue sources (onramp, card fees, billing, swaps, payouts) minus costs
+        (cashback, revenue share).
+
+        Args:
+            campaign_id: Which campaign's cohort to track. Defaults to the most
+                recent campaign.
+
+        Returns:
+            DataFrame with columns: ``date`` (datetime), ``daily_rev_usd``,
+            ``cum_rev_usd``.  Sorted by date; days with no revenue are filled
+            with 0.
+        """
+        if not self._campaigns:
+            return pd.DataFrame(columns=["date", "daily_rev_usd", "cum_rev_usd"])
+
+        if campaign_id is not None:
+            matches = [c for c in self._campaigns if c["campaign_id"] == campaign_id]
+            c = matches[-1] if matches else self._campaigns[-1]
+        else:
+            c = self._campaigns[-1]
+
+        cohort_start = str(c["start"])
+        cohort_end = str((pd.Timestamp(c["end"]) + pd.Timedelta(days=1)).date())
+
+        rev_df = self._run(
+            _DAILY_COHORT_REVENUE_SQL,
+            {"cohort_start": cohort_start, "cohort_end": cohort_end},
+        )
+        if rev_df.empty:
+            return pd.DataFrame(columns=["date", "daily_rev_usd", "cum_rev_usd"])
+
+        today = pd.Timestamp.today().normalize()
+        all_dates = pd.DataFrame(
+            {"date": pd.date_range(start=cohort_start, end=today, freq="D")}
+        )
+        rev_df["date"] = pd.to_datetime(rev_df["rev_date"])
+        rev_df = rev_df.drop(columns=["rev_date"])
+        result = all_dates.merge(rev_df, on="date", how="left")
+        result["daily_rev_usd"] = result["daily_rev_usd"].fillna(0.0)
+        result["cum_rev_usd"] = result["daily_rev_usd"].cumsum()
+        return result

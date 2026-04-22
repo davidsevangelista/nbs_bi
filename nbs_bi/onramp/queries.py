@@ -101,6 +101,63 @@ WHERE pt.created_at >= :start_date
 """
 
 
+_CARD_TXS_ACTIVE_SQL = """
+SELECT user_id::TEXT AS user_id, posted_at AS created_at,
+       amount / 100.0 AS amount_usd
+FROM card_transactions
+WHERE status = 'completed'
+  AND transaction_type = 'spend'
+  AND posted_at >= :start_date
+  AND posted_at <  :end_date
+"""
+
+_CARD_FEES_ACTIVE_SQL = """
+SELECT user_id::TEXT AS user_id, paid_at AS created_at
+FROM card_annual_fees
+WHERE status = 'paid'
+  AND paid_at >= :start_date
+  AND paid_at <  :end_date
+"""
+
+_BILLING_ACTIVE_SQL = """
+SELECT user_id::TEXT AS user_id, created_at
+FROM billing_charges
+WHERE status = 'settled'
+  AND created_at >= :start_date
+  AND created_at <  :end_date
+"""
+
+_SWAPS_ACTIVE_SQL = """
+SELECT user_id::TEXT AS user_id, "timestamp" AS created_at
+FROM swap_transactions
+WHERE "timestamp" >= :start_date
+  AND "timestamp" <  :end_date
+"""
+
+_PAYOUTS_ACTIVE_SQL = """
+SELECT user_id::TEXT AS user_id, created_at
+FROM unblockpay_payouts
+WHERE status = 'completed'
+  AND created_at >= :start_date
+  AND created_at <  :end_date
+"""
+
+
+# user attribution: acquisition source, referral code, founder status — no date filter.
+# Joined Python-side to top_users via user_id.
+_USER_ATTRIBUTION_SQL = """
+SELECT
+    u.id::TEXT                                   AS user_id,
+    COALESCE(ur.source_type, 'organic')          AS acquisition_source,
+    COALESCE(rc.public_name, '')                 AS referral_code_name,
+    CASE WHEN f.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_founder
+FROM users u
+LEFT JOIN user_registrations ur ON ur.user_id = u.id
+LEFT JOIN referral_codes rc     ON rc.id = ur.attributed_referral_code_id
+LEFT JOIN founders f            ON f.user_id = u.id
+"""
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -136,9 +193,9 @@ def _cache_path(prefix: str, sql: str, params: dict[str, Any]) -> Path | None:
     if not DB_CACHE_DIR:
         return None
     payload = {"sql": sql.strip(), "params": params}
-    digest = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, default=str).encode()
-    ).hexdigest()[:16]
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[
+        :16
+    ]
     cache_dir = Path(DB_CACHE_DIR)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{prefix}_{digest}.parquet"
@@ -197,8 +254,7 @@ class OnrampQueries:
         resolved_url = db_url or READONLY_DATABASE_URL
         if not resolved_url:
             raise ValueError(
-                "No database URL available. "
-                "Set READONLY_DATABASE_URL in your .env file."
+                "No database URL available. Set READONLY_DATABASE_URL in your .env file."
             )
         self._db_url = resolved_url
         self.start_date = start_date
@@ -215,6 +271,28 @@ class OnrampQueries:
         if self._engine is None:
             self._engine = create_engine(self._db_url, pool_pre_ping=True)
         return self._engine
+
+    def _run_static(self, name: str, sql: str) -> pd.DataFrame:
+        """Execute a date-independent query with optional Parquet caching.
+
+        Args:
+            name: Short label for the cache filename.
+            sql: SQL string with no bind parameters.
+
+        Returns:
+            DataFrame with monetary columns scaled.
+        """
+        cache = _cache_path(name, sql, {})
+        if cache and cache.exists():
+            logger.debug("Cache hit: %s", cache.name)
+            return _scale_currency(pd.read_parquet(cache))
+        logger.info("DB query [%s] (no date range)", name)
+        with self._engine_lazy.connect() as conn:
+            df = pd.read_sql(text(sql), conn)
+        if cache:
+            df.to_parquet(cache, index=False)
+            logger.debug("Cached → %s", cache.name)
+        return _scale_currency(df)
 
     def _run(self, name: str, sql: str, params: dict[str, Any]) -> pd.DataFrame:
         """Execute a parameterised SQL query with optional Parquet caching.
@@ -235,9 +313,7 @@ class OnrampQueries:
             logger.debug("Cache hit: %s", cache.name)
             return _scale_currency(pd.read_parquet(cache))
 
-        logger.info(
-            "DB query [%s] %s → %s", name, bound["start_date"], bound["end_date"]
-        )
+        logger.info("DB query [%s] %s → %s", name, bound["start_date"], bound["end_date"])
         with self._engine_lazy.connect() as conn:
             df = pd.read_sql(text(sql), conn, params=bound)
 
@@ -316,6 +392,20 @@ class OnrampQueries:
         """
         return self._run("pix_deposits", _PIX_DEPOSITS_SQL, self._date_params(start_date, end_date))
 
+    def user_attribution(self) -> pd.DataFrame:
+        """Fetch acquisition source, referral code, and founder flag for all users.
+
+        No date filter — returns one row per user across all time. The result
+        is intended for a Python-side left-join onto top_users or similar tables.
+
+        Columns returned:
+            user_id, acquisition_source, referral_code_name, is_founder
+
+        Returns:
+            DataFrame with one row per user.
+        """
+        return self._run_static("ramp_attr", _USER_ATTRIBUTION_SQL)
+
     def pix_transfers(
         self,
         *,
@@ -337,4 +427,111 @@ class OnrampQueries:
         Returns:
             DataFrame with one row per completed PIX withdrawal.
         """
-        return self._run("pix_transfers", _PIX_TRANSFERS_SQL, self._date_params(start_date, end_date))
+        return self._run(
+            "pix_transfers", _PIX_TRANSFERS_SQL, self._date_params(start_date, end_date)
+        )
+
+    def card_transactions_active(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Fetch posted card transactions for active-user counting.
+
+        Columns returned: user_id, created_at
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with one row per posted card transaction.
+        """
+        return self._run(
+            "card_txs_active", _CARD_TXS_ACTIVE_SQL, self._date_params(start_date, end_date)
+        )
+
+    def card_fees_active(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Fetch paid card annual fees for active-user counting.
+
+        Columns returned: user_id, created_at
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with one row per paid card annual fee.
+        """
+        return self._run(
+            "card_fees_active", _CARD_FEES_ACTIVE_SQL, self._date_params(start_date, end_date)
+        )
+
+    def billing_charges_active(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Fetch settled billing charges (card tx fees) for active-user counting.
+
+        Columns returned: user_id, created_at
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with one row per settled billing charge.
+        """
+        return self._run(
+            "billing_active", _BILLING_ACTIVE_SQL, self._date_params(start_date, end_date)
+        )
+
+    def swaps_active(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Fetch swap transactions for active-user counting.
+
+        Columns returned: user_id, created_at
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with one row per swap transaction.
+        """
+        return self._run(
+            "swaps_active", _SWAPS_ACTIVE_SQL, self._date_params(start_date, end_date)
+        )
+
+    def payouts_active(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Fetch completed Unblockpay payouts for active-user counting.
+
+        Columns returned: user_id, created_at
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with one row per completed payout.
+        """
+        return self._run(
+            "payouts_active", _PAYOUTS_ACTIVE_SQL, self._date_params(start_date, end_date)
+        )

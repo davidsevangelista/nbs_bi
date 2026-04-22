@@ -63,10 +63,10 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 ## Phase 3 — On/Off Ramp Analytics (`nbs_bi.onramp`)
 
 - [x] Define schema and KPIs (see [specs/onramp.md](specs/onramp.md))
-- [x] Implement `queries.py` — `OnrampQueries`: DB connection, fixed SQL (schema-grounded), BRL/USDC scaling, Parquet cache
-- [x] Implement `models.py` — `OnrampModel`: KPIs, volume by period, FX stats, position + PnL, top users, active users
-- [x] Implement `report.py` — `OnrampReport`: full pipeline returning summary, conv_daily, pix_daily, fx_stats, active_daily, position, top_users, cohort, revenue_monthly
-- [x] Unit tests (23 tests, all green, no DB required)
+- [x] Implement `queries.py` — `OnrampQueries`: DB connection, fixed SQL, BRL/USDC scaling, Parquet cache; 7 active-user query methods (PIX in/out, card txs, card fees, billing charges, swaps, payouts)
+- [x] Implement `models.py` — `OnrampModel`: KPIs, volume by period, FX stats, position + PnL, top users, user behavior, spread stats, revenue by direction, new vs returning; tz-aware datetime normalised to UTC-naive in `_clean()`; `volume_brl` NaN bug fixed
+- [x] Implement `report.py` — `OnrampReport`: full pipeline; daily active users union of all 7 revenue-generating sources
+- [x] Unit tests (23+ tests, all green, no DB required)
 - [ ] Smoke test against production DB
 - [ ] Validate KPIs against contabil_pipeline dashboard for same period
 
@@ -86,88 +86,84 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Phase 6 — Reporting (`nbs_bi.reporting`)
 
-- [x] Define spec: 4-tab Streamlit dashboard, platform recommendation, per-tab decisions (see [specs/reporting.md](specs/reporting.md))
-- [x] `reporting/ramp.py` — Tab 2: on/off ramp visuals (wraps OnrampReport); 7 charts incl. volume, revenue, FX, position/PnL, PIX flows, top users
-- [x] `reporting/cards.py` — Tab 3: card cost visuals (wraps CardCostModel); `CardSection` + `CardAnalyticsSection` (8-tab live DB dashboard)
-- [x] `reporting/dashboard.py` — Streamlit entry point: 5 tabs (Overview, Ramp, Card Costs, Card Analytics, Clients), sidebar date picker, DB connection status
-- [x] `cards/analytics.py` — `CardAnalyticsSection` data layer: DB fetch, daily/weekly aggregations, fee-model comparisons (A/B/C/D), invoice coverage, EWMA forecast, B2B scenarios, threshold sweep, combination grid
-- [x] Add card invoice-coverage decision tooling:
-  - [x] Compute flat + percentage revenue (`flat_fee_usd + pct_fee * amount_usd`) against Rain invoice cost
-  - [x] Show coverage ratio, margin, required variable percentage, and required fixed fee
-  - [x] Render coverage bar and flat/% breakeven heatmap in Card Analytics
-  - [x] Unit-test inclusive observed-day monthly extrapolation and coverage math
-- [x] Unit tests for `reporting/ramp.py` and `reporting/cards.py` figure builders
-- [ ] `reporting/clients.py` — Tab 5 (depends on nbs_bi.clients)
-- [ ] `reporting/overview.py` — Tab 1 monthly KPIs (aggregates from all modules)
-
----
-
-## Current State — 2026-04-20 (updated)
-
-### What's been built
-
-The project has a working BI foundation covering card-cost modelling, live card-spend analytics, on/off-ramp analytics, and a 5-tab Streamlit reporting shell.
-
-**Phase 1 — Cards**: `CardCostModel` reproduces the February 2026 Rain invoice (`NKEMEJLO-0008`) at $6,693.58. `CardCostSimulator` runs what-if and linear-projection scenarios. `cards/analytics.py` adds a live DB data layer with daily/weekly aggregations, four fee-model comparisons (A/B/C/D), EWMA demand forecasting, B2B scenarios, threshold sweep, and invoice-coverage math.
-
-**Phase 3 — Onramp**: `OnrampQueries` + `OnrampModel` + `OnrampReport` deliver the full ramp pipeline (conversions, PIX flows, FX stats, position/PnL, active users, top users, monthly revenue split). 23 unit tests, no DB required.
-
-**Phase 6 — Reporting**: Streamlit `dashboard.py` (5 tabs), `reporting/ramp.py` (Tab 2, 7 charts), `reporting/cards.py` (Tab 3 cost breakdown + Tab 4 eight-tab analytics dashboard).
-
-**Card fee coverage finding** (live DB, `2026-02-01` → `2026-04-13`):
-- 15,703 completed card-spend transactions over 72 days; monthlyized: 6,543 tx/month, $253,311.42/month spend
-- `$0.30 + 1.00%` → $4,495.99/month projected revenue → 67.17% coverage; -$2,197.59/month gap
-- Breakeven: ~1.87% variable (with $0.30 fixed) or ~$0.64 fixed (with 1.00% variable)
-
-### What's pending (committed changes not yet in a versioned release)
-
-The following are staged / unstaged changes that will form the next release:
-
-- `nbs_bi/cards/analytics.py` (new) — full data layer + figure builders
-- `nbs_bi/reporting/ramp.py` (new) — Tab 2 ramp visuals
-- `nbs_bi/reporting/cards.py` (new) — Tab 3 + Tab 4 card visuals
-- `nbs_bi/reporting/dashboard.py` (new) — Streamlit entry point
-- `nbs_bi/onramp/report.py` — added `revenue_monthly` key to `build()` output
-- `nbs_bi/cards/__init__.py` — lazy-loads `CardCostSimulator`
-- `pyproject.toml` — added `streamlit>=1.32`, `plotly>=5.20` to runtime deps
-- `tests/cards/test_analytics.py`, `tests/onramp/test_report.py`, `tests/reporting/` — new test suites
-- `docs/specs/card_usage_forecast.md` — spec for standalone forecast script (complete)
-
-**Meta Ads (FACEBK) ROI findings** (Rain CSV `2026-04-20`, vs DB revenue all-time):
-- 3 campaigns detected (7-day gap split): Feb 15-16 ($891), Feb 26-Mar 4 ($501), Apr 14-20 ($715)
-- campaign_2 (Feb 26-Mar 4): ROAS 2.10× — the only positive-return campaign so far
-- campaign_1 (Feb 15-16): ROAS 0.12× — $891 spend, only $111 cohort revenue to date (early users may still convert)
-- campaign_3 (Apr 14-20): ROAS 0.41× — too recent; CAC incremental ~$10.07/user (+10 daily signups above ~15/day baseline)
-- Note: revenue counts ALL cohort signups (organic + paid); true Meta ROAS is higher for campaign_2 if organic baseline ~40/day is excluded
-
-### Known environment notes
-
-- `sklearn` absent locally → `CardCostSimulator` is lazy-loaded so analytics imports always work.
-- `streamlit` absent locally → `reporting/cards.py` has an import-time shim so pure figure-builder tests collect without the UI runtime.
+- [x] Define spec (see [specs/reporting.md](specs/reporting.md)) and [specs/marketing.md](specs/marketing.md)
+- [x] `reporting/theme.py` — shared visual module: colour palette, `panel()`, formatters, `mask_user_id()`, `rgba()`; `panel()` uses `legend y=-0.2, b=60` to prevent title/legend overlap
+- [x] `reporting/overview.py` — Tab 1: dark CSS KPI cards; 6-metric strip (users, KYC rate, active rate, conversions, volume BRL, revenue BRL); 4 charts (monthly revenue, monthly volume with MoM deltas, daily active users, activation funnel)
+- [x] `reporting/ramp.py` — Tab 2: 4 subtabs (Visão Geral, Receita, Clientes, FX & Volume); granularity toggle; 8+ charts
+- [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity, trend), Padrões de Uso, Faixas de Preço, Evolução (aggregate cross-invoice trend + stacked driver + delta chart + summary table)
+- [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs (avg LTV, best source, FX rate, multi-product users %, top-10% revenue concentration) + revenue-per-user histogram (log scale)
+- [x] `reporting/marketing.py` — Tab 5: `MetaAdsSection`; auto-loads most-recent Rain CSV from `data/nbs_corp_card/`; shows only most-recent campaign; cumulative spend vs cohort revenue chart; channel comparison; KPI cards (spend, cohort users, revenue, ROAS, CAC); tracking start gated at `2026-04-12`
+- [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); sidebar date picker + reference invoice display; invoice total auto-loaded from latest parsed JSON (no hardcoded constant)
+- [x] `use_container_width=True` → `width="stretch"` everywhere (Streamlit deprecation)
 
 ---
 
 ## Phase 7 — Client Revenue & Behaviour (`nbs_bi.clients`)
 
-- [x] Define spec: per-user revenue model, CPF enrichment, segmentation, cohort LTV (see [specs/clients.md](specs/clients.md))
-- [x] `clients/queries.py` — 11 SQL queries: cohort base (attribution inference), onramp revenue + monthly time-series, card fees, card txs, billing_charges (actual card tx fee revenue), cashback, revenue share, swaps, payouts, FX rate; Parquet cache
-- [x] `clients/models.py` — `ClientModel`: master join of all revenue/cost streams → unified USD LTV; pro-rata Rain invoice card cost; `revenue_leaderboard`, `product_adoption`, `acquisition_summary`, `referral_code_summary`, `founders_report`, `at_risk_users`, `cohort_ltv`, `ltv_by_source`, `cac_breakeven`
-- [x] `clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant + `referral_performance` + `founders_vs_non_founders`
-- [x] `clients/report.py` — `ClientReport.build()` → structured dict; `to_json_api()` for future API layer
-- [x] Unit tests (38 tests, fixture-based, no DB)
-- [x] Smoke test against production DB (11,478 users, 9-cohort LTV matrix, 4 acquisition sources)
-- [x] `reporting/clients.py` — 6-tab `ClientSection`: LTV & Cohorts (heatmap + CAC slider), Acquisition, Segments, Founders Club, Product Adoption, Campaign ROI
-- [x] `reporting/dashboard.py` — Tab 5 wired to `ClientSection`; sidebar adds Rain Invoice Total input
-- [x] `clients/campaigns.py` — `CampaignAnalyzer`: Meta Ads ROI analysis from Rain CSV; `load_ad_spend()`, `_detect_campaigns()`, `roi_summary()`, `daily_context()`; 17 unit tests
+- [x] Define spec (see [specs/clients.md](specs/clients.md))
+- [x] `clients/queries.py` — 11 SQL queries, Parquet cache
+- [x] `clients/models.py` — `ClientModel`: master join, unified USD LTV, product adoption, cohort LTV, activation funnel, CAC breakeven
+- [x] `clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant
+- [x] `clients/report.py` — `ClientReport.build()` dict
+- [x] `clients/campaigns.py` — `CampaignAnalyzer`: `load_ad_spend()`, `_detect_campaigns()`, `roi_summary()`, `daily_context()`, `cumulative_revenue()` (daily cohort revenue across all 7 sources, with cumsum); `_COHORT_REVENUE_SQL` covers all revenue sources including swaps, payouts, cashback, revenue share; `_DAILY_COHORT_REVENUE_SQL` for time-series revenue tracking
+- [x] Unit tests (112+ tests across all modules, fixture-based, no DB)
+- [x] Smoke test against production DB
+
+---
+
+## Current State — 2026-04-21 (v1.1.0)
+
+### What's been built
+
+`nbs_bi` is a fully operational BI platform. All 5 dashboard tabs are live. Data flows from the Neon PostgreSQL read-only replica through module-specific query/model/report pipelines into a Streamlit dashboard with Plotly visualisations.
+
+**Phase 1 — Cards** (`nbs_bi.cards`):
+- `CardCostModel` validates against Feb 2026 invoice ($6,693.58). March 2026 invoice ($7,857.40) also parsed and loaded.
+- `invoice_total_usd` field now stored in each actuals JSON; `nbs-invoices --force` re-parses all PDFs to populate it.
+- `CardInvoiceInputs.invoice_total_usd` and `base_program_fee` fields added (default `0.0`) — backward-compatible with existing JSON files.
+- Known gap: `CardFeeRates` model accounts for ~$6,357 of the March invoice but Rain billed $7,857.40; ~$1,500 is unmodelled ("Outros"). Visible in the Evolução stacked-driver chart.
+
+**Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention.
+
+**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard fully wired:
+- Tab 1 — Overview: headline KPIs, revenue trend, volume, daily active users, activation funnel
+- Tab 2 — Conversions: 4 subtabs, 8+ charts, granularity toggle
+- Tab 3 — Cards: 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity), Padrões de Uso, Faixas de Preço, Evolução (cross-invoice evolution); `_RAIN_INVOICE_TOTAL_USD` hardcode removed — auto-loaded from latest JSON; sidebar shows reference invoice
+- Tab 4 — Clients: LTV cohorts (5 KPIs: avg LTV, best source, FX rate, multi-product users, top-10% concentration; revenue histogram log-scale), acquisition, segments, founders, product adoption
+- Tab 5 — Marketing - Ads: Meta Ads ROI; cumulative spend vs cohort revenue; channel comparison
+
+**Phase 7 — Clients** (`nbs_bi.clients`): Full per-user revenue pipeline. `revenue_leaderboard()` bug fixed (was missing `user_id` column). `CampaignAnalyzer.cumulative_revenue()` tracks cohort revenue over time.
+
+### Key metrics from live DB (as of 2026-04-21)
+
+- **Users**: 11,478 registered · 5,921 KYC done (52%) · 2,407 revenue-generating (21%)
+- **Conversions**: 8,697 completed (used = TRUE in conversion_quotes)
+- **Card spend**: ~22,728 card spend rows in DB history
+- **Invoices on file**: NKEMEJLO-0008 (Feb 2026, $6,693.58) · NKEMEJLO-0009 (Mar 2026, $7,857.40)
+- **March modelled gap**: $7,857.40 billed vs $6,357.39 modelled → $1,500.01 in unmodelled fees
+- **Meta Ads tracking**: from 2026-04-12; campaign_3 (Apr 14–20, $715) is the active campaign
+
+### What's next (priority order)
+
+1. **Investigate unmodelled $1,500 gap in NKEMEJLO-0009** — compare the March PDF line items against `CardFeeRates`; identify which fee line(s) Rain charged that the model doesn't account for; update `CardFeeRates` or add a new field to `CardInvoiceInputs`
+2. **Onramp smoke test** — validate `OnrampModel` KPIs against prod DB for a known period; confirm `volume_brl` and revenue figures match contabil_pipeline
+3. **Marketing — watch campaign_3** — ROAS currently low (too recent); the cumulative revenue line will show ROI once the cohort matures past 30 days
+4. **Phase 2** (`nbs_bi.transactions`) — schema definition required first
+5. **Phase 4** (`nbs_bi.swaps`) — schema definition required first
+
+### Known environment notes
+
+- `sklearn` absent locally → `CardCostSimulator` lazy-loaded so analytics imports always work
+- `streamlit` absent locally → `reporting/cards.py` has an import-time shim so figure-builder tests collect without the UI runtime
+- `tests/cards/test_simulator.py` and `tests/reporting/test_ramp.py` fail to collect in test env (missing `streamlit`/`sklearn`) — pre-existing, not blocking
 
 ---
 
 ## Backlog
 
-- [x] Jupyter notebook: card cost exploration (`notebooks/cards.ipynb`)
-- [x] CLI entrypoint for running simulations
-- [x] Integration with live database (`OnrampQueries` via `READONLY_DATABASE_URL`)
-- [x] Full DB schema documented in `docs/specs/database.md` (72 tables, column types, scaling rules, row counts)
-- [ ] Feed uploaded/current Rain invoice cost from Card Costs tab into Card Analytics automatically, instead of using the default February 2026 target unless overridden
-- [ ] Add date-window presets for Card Analytics coverage decisions (last 7d, last 30d, current invoice period, all-time)
-- [ ] Validate dashboard KPIs end-to-end in Streamlit once full runtime dependencies are installed
+- [ ] Investigate and close the ~$1,500 unmodelled fee gap in NKEMEJLO-0009 (March 2026)
+- [ ] Onramp smoke test: compare KPIs against contabil_pipeline for same date window
+- [ ] Validate dashboard KPIs end-to-end in Streamlit once full runtime dependencies installed in prod
+- [ ] Phase 2 — transactions analytics (schema definition first)
+- [ ] Phase 4 — swaps analytics (schema definition first)
+- [ ] Phase 5 — AI usage analytics (schema definition first)
