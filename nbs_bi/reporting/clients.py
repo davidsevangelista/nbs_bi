@@ -583,6 +583,18 @@ class ClientSection:
             "founder_number",
             "founder_network_size",
             "net_revenue_usd",
+            # --- revenue sources ---
+            "onramp_revenue_usd",
+            "offramp_revenue_usd",
+            "card_fee_usd",
+            "card_tx_fee_usd",
+            "swap_fee_usd",
+            "payout_fee_usd",
+            # --- deductions ---
+            "cashback_usd",
+            "revenue_share_paid_usd",
+            "card_cost_allocated_usd",
+            # --- other ---
             "n_products",
         ]
         present = [c for c in cols if c in founders.columns]
