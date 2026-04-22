@@ -49,7 +49,9 @@ from nbs_bi.reporting.theme import (
     GRID,
     PLOT_BG,
     ROSE,
+    TEAL,
     TEXT,
+    VIOLET,
     fmt_usd,
     fmt_usd_precise,
     get_streamlit,
@@ -351,6 +353,60 @@ def _fig_driver_delta(history: list[tuple[str, CardCostModel]]) -> go.Figure | N
         xaxis=dict(gridcolor=GRID),
         yaxis=dict(gridcolor=GRID),
         showlegend=False,
+    )
+    return fig
+
+
+def _fig_driver_evolution(history: list[tuple[str, CardCostModel]]) -> go.Figure | None:
+    """Grouped horizontal bar: each cost driver's delta from the first invoice period.
+
+    One bar group per period, Y axis = cost driver, X = Δ USD vs the first period.
+    The first period bar is always zero; subsequent bars show cumulative drift.
+
+    Args:
+        history: List of (period_label, CardCostModel) sorted chronologically.
+
+    Returns:
+        Plotly Figure or None if insufficient history.
+    """
+    if len(history) < 2:
+        return None
+
+    line_items = [k for k in _LABELS if k != "total"]
+    labels = [_LABELS.get(k, k) for k in line_items]
+    first_d = history[0][1].cost_breakdown().as_dict()
+    _period_colors = [BLUE, AMBER, TEAL, VIOLET, EMERALD, ROSE]
+
+    fig = go.Figure()
+    for i, (period, model) in enumerate(history):
+        d = model.cost_breakdown().as_dict()
+        deltas = [d.get(k, 0.0) - first_d.get(k, 0.0) for k in line_items]
+        texts = [f"{'+' if v >= 0 else ''}{v:,.2f}" for v in deltas]
+        fig.add_trace(
+            go.Bar(
+                name=period,
+                x=deltas,
+                y=labels,
+                orientation="h",
+                marker_color=_period_colors[i % len(_period_colors)],
+                text=texts,
+                textposition="outside",
+                hovertemplate=f"{period} — %{{y}}: %{{text}}<extra></extra>",
+            )
+        )
+
+    baseline_label = history[0][0]
+    fig.update_layout(
+        barmode="group",
+        xaxis_title=f"Δ USD vs {baseline_label}",
+        yaxis_title=None,
+        margin=dict(t=10, b=40, l=160, r=120),
+        plot_bgcolor=PLOT_BG,
+        paper_bgcolor=BG,
+        font=dict(color=TEXT),
+        xaxis=dict(gridcolor=GRID, zeroline=True, zerolinecolor=GRID),
+        yaxis=dict(gridcolor=GRID),
+        legend=dict(orientation="h", y=-0.15),
     )
     return fig
 
@@ -878,6 +934,10 @@ class CardAnalyticsSection:
         fig_delta = _fig_driver_delta(history)
         if fig_delta:
             st.plotly_chart(fig_delta, width="stretch", key="evo_delta")
+
+        fig_evo = _fig_driver_evolution(history)
+        if fig_evo:
+            st.plotly_chart(fig_evo, width="stretch", key="evo_driver_evolution")
 
         st.subheader("Detalhe por Invoice")
         rows = []
