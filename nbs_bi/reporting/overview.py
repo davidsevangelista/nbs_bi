@@ -326,11 +326,11 @@ class OverviewSection:
         """Render all overview components."""
         col_left, col_right = st.columns(2)
         with col_left:
-            self._render_revenue_trend()
             self._render_active_users()
+            self._render_revenue_trend()
         with col_right:
-            self._render_volume()
             self._render_funnel()
+            self._render_volume()
 
     # ------------------------------------------------------------------
     # Private render methods
