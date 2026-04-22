@@ -916,21 +916,50 @@ class CardAnalyticsSection:
         prev_cpt = prev_model.cost_per_transaction()
         delta_cpt = latest_cpt - prev_cpt
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric(
+        # Avg total cost across all invoice periods
+        all_totals = [
+            getattr(m.inputs, "invoice_total_usd", 0.0) or m.cost_breakdown().total
+            for _, m in history
+        ]
+        avg_total = sum(all_totals) / len(all_totals)
+
+        # Total transactions across all invoice periods
+        total_txns = sum(m.inputs.n_transactions for _, m in history)
+
+        # Revenue from DB (annual fees + billing charges)
+        rev: dict = {"annual_fees_usd": 0.0, "billing_usd": 0.0}
+        if self._db_url:
+            start_str = self._date_from.isoformat() if self._date_from else "2000-01-01"
+            end_str = self._date_to.isoformat() if self._date_to else "2099-01-01"
+            try:
+                rev = self._load_card_revenue(self._db_url, start_str, end_str)
+            except Exception:
+                pass
+
+        # Row 1 — revenue KPIs
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Total Transactions", f"{total_txns:,}")
+        r2.metric("Revenue — Annual Fees", fmt_usd(rev["annual_fees_usd"]))
+        r3.metric("Revenue — Billing (Txn)", fmt_usd(rev["billing_usd"]))
+        r4.metric("Active Cards", f"{latest_model.inputs.n_active_cards:,}")
+
+        # Row 2 — cost KPIs
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Avg Total Cost", fmt_usd(avg_total))
+        c2.metric(
             "Total Cost (latest)",
             fmt_usd(latest_total),
             delta=f"{delta_total:+.2f} vs {prev_period}",
             delta_color="inverse",
         )
-        c2.metric(
+        c3.metric(
             "Cost / Transaction",
             fmt_usd_precise(latest_cpt),
             delta=f"{delta_cpt:+.4f} vs {prev_period}",
             delta_color="inverse",
         )
-        c3.metric("Transactions (latest)", f"{latest_model.inputs.n_transactions:,}")
-        c4.metric("Active Cards (latest)", f"{latest_model.inputs.n_active_cards:,}")
+        c4.metric("Transactions (latest)", f"{latest_model.inputs.n_transactions:,}")
+        c5.metric("Active Cards (latest)", f"{latest_model.inputs.n_active_cards:,}")
 
         st.divider()
         st.plotly_chart(_fig_trend(history), width="stretch", key="evo_trend")
@@ -1074,6 +1103,40 @@ class CardAnalyticsSection:
             f"{coverage * 100:.1f}%",
             delta=fmt_usd(combined - rain_cost_usd),
         )
+
+    @staticmethod
+    @st.cache_data(show_spinner="Loading card revenue…")
+    def _load_card_revenue(db_url: str, start: str, end: str) -> dict:
+        """Query annual fee + billing charge revenue totals for the date range.
+
+        Args:
+            db_url: Read-only database URL.
+            start: ISO date string (inclusive).
+            end: ISO date string (exclusive).
+
+        Returns:
+            Dict with keys ``annual_fees_usd`` and ``billing_usd``.
+        """
+        from sqlalchemy import create_engine
+        from sqlalchemy import text as _text
+
+        engine = create_engine(db_url)
+        with engine.connect() as conn:
+            fees = conn.execute(
+                _text(
+                    "SELECT COALESCE(SUM(amount_usdc::FLOAT), 0) FROM card_annual_fees "
+                    "WHERE status = 'paid' AND created_at >= :start AND created_at < :end"
+                ),
+                {"start": start, "end": end},
+            ).scalar()
+            billing = conn.execute(
+                _text(
+                    "SELECT COALESCE(SUM(amount::FLOAT / 1000000.0), 0) FROM billing_charges "
+                    "WHERE status = 'settled' AND created_at >= :start AND created_at < :end"
+                ),
+                {"start": start, "end": end},
+            ).scalar()
+        return {"annual_fees_usd": float(fees or 0), "billing_usd": float(billing or 0)}
 
     @staticmethod
     @st.cache_data(show_spinner="Loading card transactions…")

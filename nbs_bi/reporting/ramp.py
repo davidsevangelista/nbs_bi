@@ -77,16 +77,16 @@ def _resample_conv(conv_daily: pd.DataFrame, granularity: str) -> pd.DataFrame:
 
     Args:
         conv_daily: DataFrame with columns date, onramp, offramp.
-        granularity: One of 'Diaria', 'Semanal', 'Mensal'.
+        granularity: One of 'Daily', 'Weekly', 'Monthly'.
 
     Returns:
         Resampled DataFrame with the same column structure.
     """
     df = conv_daily.copy()
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    if granularity == "Diaria":
+    if granularity == "Daily":
         return df
-    freq = "W-MON" if granularity == "Semanal" else "MS"
+    freq = "W-MON" if granularity == "Weekly" else "MS"
     df = df.set_index("date")
     agg_cols = [c for c in ["onramp", "offramp"] if c in df.columns]
     resampled = df[agg_cols].resample(freq).sum().reset_index()
@@ -98,12 +98,12 @@ def _resample_conv(conv_daily: pd.DataFrame, granularity: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def _fig_volume(conv_daily: pd.DataFrame, granularity: str = "Diaria") -> go.Figure:
+def _fig_volume(conv_daily: pd.DataFrame, granularity: str = "Daily") -> go.Figure:
     """Grouped bar chart: onramp vs offramp BRL volume at the chosen granularity.
 
     Args:
         conv_daily: DataFrame with columns date, onramp, offramp.
-        granularity: Display granularity — 'Diaria', 'Semanal', or 'Mensal'.
+        granularity: Display granularity — 'Daily', 'Weekly', or 'Monthly'.
 
     Returns:
         Plotly Figure.
@@ -307,15 +307,15 @@ def _fig_new_vs_returning(nvr: pd.DataFrame) -> go.Figure:
     """
     fig = go.Figure()
     for col, label, color in [
-        ("new_users", "Novos", TEAL),
-        ("returning_users", "Recorrentes", BLUE),
+        ("new_users", "New", TEAL),
+        ("returning_users", "Returning", BLUE),
     ]:
         if col in nvr.columns:
             fig.add_trace(go.Bar(x=nvr["month"], y=nvr[col], name=label, marker_color=color))
     layout = panel()
     layout["barmode"] = "stack"
     layout["xaxis"]["title"] = None
-    layout["yaxis"]["title"] = "Usuarios"
+    layout["yaxis"]["title"] = "Users"
     fig.update_layout(**layout)
     return fig
 
@@ -372,7 +372,7 @@ def _fig_spread_histogram(spread_stats: pd.DataFrame) -> go.Figure:
     layout = panel()
     layout["barmode"] = "overlay"
     layout["xaxis"]["title"] = "Spread (%)"
-    layout["yaxis"]["title"] = "Transacoes"
+    layout["yaxis"]["title"] = "Transactions"
     fig.update_layout(**layout)
     return fig
 
@@ -424,20 +424,20 @@ class RampSection:
         cols[1].metric("Onramp BRL", fmt_brl(_kpi(summary, "Onramp volume BRL")))
         cols[2].metric("Offramp BRL", fmt_brl(_kpi(summary, "Offramp volume BRL")))
         cols[3].metric("Revenue BRL", fmt_brl(_kpi(summary, "Total revenue BRL")))
-        cols[4].metric("Usuarios unicos", f"{behavior.get('unique_users', 0):,}")
-        cols[5].metric("Taxa de retorno", f"{behavior.get('repeat_rate', 0):.1%}")
+        cols[4].metric("Unique Users", f"{behavior.get('unique_users', 0):,}")
+        cols[5].metric("Repeat Rate", f"{behavior.get('repeat_rate', 0):.1%}")
 
     def _render_volume(self) -> None:
         """Render the volume bar chart with granularity toggle."""
         conv_daily = _get(self._r, "conv_daily")
-        st.subheader("Volume ao longo do tempo")
-        st.caption("O volume esta crescendo? Ha padrao de dia da semana?")
+        st.subheader("Volume over time")
+        st.caption("Is volume growing? Any day-of-week pattern?")
         if _empty(conv_daily):
             st.info("No conversion data for this period.")
             return
         granularity = st.radio(
-            "Granularidade",
-            ["Diaria", "Semanal", "Mensal"],
+            "Granularity",
+            ["Daily", "Weekly", "Monthly"],
             horizontal=True,
             key="ramp_vol_gran",
         )
@@ -446,8 +446,8 @@ class RampSection:
     def _render_pix_flows(self) -> None:
         """Render the PIX IN vs PIX OUT daily line chart."""
         pix = _get(self._r, "pix_daily")
-        st.subheader("PIX IN vs PIX OUT (diario)")
-        st.caption("A liquidez BRL esta positiva ou estou drenando reservas?")
+        st.subheader("PIX IN vs PIX OUT (daily)")
+        st.caption("Is BRL liquidity positive or draining reserves?")
         if _empty(pix):
             st.info("No PIX data for this period.")
             return
@@ -476,9 +476,9 @@ class RampSection:
     def _render_top_users(self) -> None:
         """Render the top-N clients table with masked user IDs."""
         top = _get(self._r, "top_users")
-        n = st.slider("Numero de clientes", min_value=5, max_value=50, value=10, step=5)
-        st.subheader(f"Top {n} clientes por volume BRL")
-        st.caption("Ha clientes VIP? Existe risco de concentracao?")
+        n = st.slider("Number of clients", min_value=5, max_value=50, value=10, step=5)
+        st.subheader(f"Top {n} clients by BRL volume")
+        st.caption("VIP clients? Any concentration risk?")
         if _empty(top):
             st.info("No user data for this period.")
             return
@@ -498,7 +498,7 @@ class RampSection:
         ]
         display = display[cols_order]
         rename_map = {
-            "user_id": "Cliente",
+            "user_id": "Client",
             "acquisition_source": "Source",
             "referral_code_name": "Referral Code",
             "volume_brl": "Volume BRL",
@@ -513,8 +513,8 @@ class RampSection:
     def _render_new_vs_returning(self) -> None:
         """Render the new vs returning users stacked bar chart."""
         nvr = _get(self._r, "new_vs_returning")
-        st.subheader("Novos vs recorrentes (mensal)")
-        st.caption("Estamos retendo usuarios ou dependendo de novos?")
+        st.subheader("New vs Returning (monthly)")
+        st.caption("Retaining users or relying on new ones?")
         if _empty(nvr):
             st.info("No new/returning data.")
             return
@@ -523,8 +523,8 @@ class RampSection:
     def _render_fx_rate(self) -> None:
         """Render the implicit FX rate line chart with p10–p90 bands."""
         fx = _get(self._r, "fx_stats")
-        st.subheader("Taxa FX implicita")
-        st.caption("A precificacao esta consistente? Ha outliers afetando a margem?")
+        st.subheader("Implicit FX Rate")
+        st.caption("Is pricing consistent? Any outliers affecting margin?")
         if _empty(fx):
             st.info("No FX data for this period.")
             return
@@ -533,8 +533,8 @@ class RampSection:
     def _render_spread_histogram(self) -> None:
         """Render the spread distribution histogram with mean/median overlays."""
         ss = _get(self._r, "spread_stats")
-        st.subheader("Distribuicao do spread (%)")
-        st.caption("A precificacao esta consistente? Ha outliers concentrados?")
+        st.subheader("Spread Distribution (%)")
+        st.caption("Is pricing consistent? Any concentrated outliers?")
         if _empty(ss):
             st.info("No spread data.")
             return

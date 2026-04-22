@@ -184,18 +184,18 @@ def test_mom_annotations_zero_prev_skips() -> None:
 
 
 def test_resample_conv_daily_unchanged(conv_daily: pd.DataFrame) -> None:
-    result = _resample_conv(conv_daily, "Diaria")
+    result = _resample_conv(conv_daily, "Daily")
     assert len(result) == len(conv_daily)
 
 
 def test_resample_conv_monthly_reduces_rows(conv_daily: pd.DataFrame) -> None:
     # 5 days spanning a single month → 1 monthly bucket
-    result = _resample_conv(conv_daily, "Mensal")
+    result = _resample_conv(conv_daily, "Monthly")
     assert len(result) == 1
 
 
 def test_resample_conv_sums_correctly(conv_daily: pd.DataFrame) -> None:
-    result = _resample_conv(conv_daily, "Mensal")
+    result = _resample_conv(conv_daily, "Monthly")
     assert float(result["onramp"].iloc[0]) == pytest.approx(65_000.0)
 
 
@@ -221,7 +221,7 @@ def test_fig_volume_missing_column() -> None:
 
 
 def test_fig_volume_weekly_granularity(conv_daily: pd.DataFrame) -> None:
-    fig = _fig_volume(conv_daily, "Semanal")
+    fig = _fig_volume(conv_daily, "Weekly")
     assert isinstance(fig, go.Figure)
 
 
