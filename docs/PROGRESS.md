@@ -90,12 +90,13 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] `reporting/theme.py` — shared visual module: colour palette, `panel()`, formatters, `mask_user_id()`, `rgba()`; `panel()` uses `legend y=-0.2, b=60` to prevent title/legend overlap
 - [x] `reporting/overview.py` — Tab 1: dark CSS KPI cards; 6-metric strip (users, KYC rate, active rate, conversions, volume BRL, revenue BRL); 4 charts (monthly revenue, monthly volume with MoM deltas, daily active users, activation funnel)
 - [x] `reporting/ramp.py` — Tab 2: 4 subtabs (Visão Geral, Receita, Clientes, FX & Volume); granularity toggle; 8+ charts
-- [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity, trend), Padrões de Uso, Faixas de Preço, Evolução (cross-invoice trend + stacked driver + Δ vs prior + **evolution vs first** + summary table)
-- [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs (avg LTV, best source, FX rate, multi-product users %, top-10% revenue concentration) + revenue-per-user histogram (log scale)
+- [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + **line-per-driver evolution** + summary table + revenue KPI row); fully translated to English
+- [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs (avg LTV, best source, FX rate, multi-product users %, top-10% revenue concentration) + revenue-per-user histogram (log scale); Founders leaderboard shows full 9-column revenue breakdown per user
 - [x] `reporting/marketing.py` — Tab 5: `MetaAdsSection`; auto-loads most-recent Rain CSV from `data/nbs_corp_card/`; shows only most-recent campaign; 3-chart stack (cumulative spend vs cohort revenue; cumulative contribution margin with dual-axis card txns + conversions; stacked revenue breakdown by source); KPI strip (spend, revenue, ROAS, CAC, net contribution margin); referral selectbox filters entire cohort analysis; tracking start gated at `2026-04-12`
-- [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed
+- [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed; title "NBS Data Analytics"
 - [x] `use_container_width=True` → `width="stretch"` everywhere (Streamlit deprecation)
 - [x] Dark NBS green theme: Plotly charts, `theme.py` constants, and `overview.py` CSS all aligned to dark shell (`#0D1117` bg / `#161B22` plot bg / `#00E676` accent)
+- [x] Full English translation: Cards tab and Conversions (Ramp) tab; activation funnels use `go.Funnel` (correct top-to-bottom direction)
 - [x] Deployed to **Streamlit Community Cloud** (personal GitHub mirror); viewer auth via email whitelist; `READONLY_DATABASE_URL` injected as secret
 
 ---
@@ -117,7 +118,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-22 (v1.3.0)
+## Current State — 2026-04-22 (v1.4.0)
 
 ### What's been built
 
@@ -130,13 +131,13 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 **Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention.
 
-**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard, deployed and accessible:
-- Tab 1 — Overview: headline KPIs, revenue trend, volume, daily active users, activation funnel
-- Tab 2 — Conversions: 4 subtabs, 8+ charts, granularity toggle
-- Tab 3 — Cards: 4 sub-tabs — Custos do Programa (invoice selector, cost breakdown, sensitivity), Padrões de Uso, Faixas de Preço, Evolução (cross-invoice trend + stacked driver + Δ vs prior + **evolution vs first invoice** + summary table)
-- Tab 4 — Clients: LTV cohorts, acquisition, segments, founders, product adoption
+**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard titled "NBS Data Analytics", deployed and accessible:
+- Tab 1 — Overview: headline KPIs, revenue trend, volume, daily active users, activation funnel (`go.Funnel`, top-to-bottom)
+- Tab 2 — Conversions: 4 subtabs, 8+ charts, granularity toggle (Daily/Weekly/Monthly); fully translated to English
+- Tab 3 — Cards: 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + line-per-driver evolution + revenue KPI row + cost KPI row + summary table); fully translated to English
+- Tab 4 — Clients: LTV cohorts, acquisition, segments, founders (full 9-column revenue breakdown per user), product adoption
 - Tab 5 — Marketing - Ads: cohort P&L — cumulative spend vs revenue; contribution margin with dual-axis txn counts; stacked revenue breakdown; referral code filter
-- Dark NBS green theme throughout: `#0D1117` background, `#161B22` chart bg, `#00E676` primary accent; all 7 figure builders in `cards.py` fixed for dark background; `overview.py` CSS card palette aligned
+- Dark NBS green theme throughout: `#0D1117` background, `#161B22` chart bg, `#00E676` primary accent
 - No sidebar panel — date range computed inline; sidebar fully collapsed
 
 **Phase 7 — Clients** (`nbs_bi.clients`): Full per-user revenue pipeline + Meta Ads cohort P&L:

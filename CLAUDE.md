@@ -132,7 +132,7 @@ Convert all relative dates to absolute dates at save time.
 
 ---
 
-## Current Status (v0.5.0, 2026-04-20)
+## Current Status (v1.4.0, 2026-04-22)
 
 | Phase | Module | Status | Next |
 |---|---|---|---|
@@ -141,17 +141,18 @@ Convert all relative dates to absolute dates at save time.
 | 3 | `onramp` | Core done | Smoke test + KPI validation vs contabil_pipeline |
 | 4 | `swaps` | Not started | Schema definition |
 | 5 | `ai_usage` | Not started | Schema definition |
-| 6 | `reporting` | 4/6 tabs done | `overview.py` (Tab 1), `clients.py` (Tab 5) |
-| 7 | `clients` | Spec done | `queries.py` → `models.py` → `segments.py` |
+| 6 | `reporting` | Done (5/5 tabs live) | Monitor campaign_3 ROAS; April invoice |
+| 7 | `clients` | Done | — |
 
 ### Key Decisions
 
 - **Dashboard platform:** Streamlit (see `docs/specs/reporting.md` for rationale)
-- **Dashboard structure:** 5 tabs — Overview, On/Off Ramp, Card Costs, Card Analytics, Clients
+- **Dashboard structure:** 5 tabs — Overview, Conversions, Cards, Clients, Marketing - Ads
 - **Card fee models:** 4 models compared (A/B/C/D) in `cards/analytics.py` for fee-model evaluation
 - **Forecasting:** EWMA with 95% CI chosen for card demand projection (not ARIMA — insufficient data)
 - **DB caching:** 1-hour `@st.cache_data` in dashboard; Parquet cache in `OnrampQueries`
 - **PII masking:** Top-user tables mask user IDs in all reporting outputs
+- **Dashboard language:** English throughout (Cards and Conversions tabs translated in v1.4.0)
 
 ---
 

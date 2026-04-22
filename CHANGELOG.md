@@ -7,6 +7,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-04-22
+
+Dashboard polish: full English translation of Cards and Conversions tabs, evolution chart redesign, revenue KPIs in Cards Evolution, enriched founders leaderboard, corrected activation funnel direction, and chart presentation cleanup.
+
+### Added
+- `reporting/cards.py` — `_load_card_revenue()`: static method querying `card_annual_fees` + `billing_charges` for the dashboard date range; powers the new revenue KPI row in the Evolution sub-tab
+- `reporting/cards.py` — Revenue KPI row in Evolution sub-tab: Total Transactions, Revenue Annual Fees, Revenue Billing, Active Cards, Avg Total Cost (5-column strip above the cost KPI row)
+- `clients/models.py` — `founders_report()` now includes all nine revenue/deduction columns: `onramp_revenue_usd`, `offramp_revenue_usd`, `card_fee_usd`, `card_tx_fee_usd`, `swap_fee_usd`, `payout_fee_usd`, `cashback_usd`, `revenue_share_paid_usd`, `card_cost_allocated_usd`; leaderboard table in the Founders Club sub-tab now shows the full per-user revenue breakdown
+
+### Changed
+- `reporting/cards.py` — `_fig_driver_evolution()` redesigned: months on X axis, one line per cost driver (absolute cost, not delta); all-zero drivers omitted; replaces the previous grouped horizontal bar approach
+- `reporting/cards.py` — full English translation: all sub-tab labels, metric labels, captions, chart axis titles, spinner text, and subheaders
+- `reporting/ramp.py` — full English translation: granularity radio options (Diária/Semanal/Mensal → Daily/Weekly/Monthly), KPI strip labels, chart subheaders, captions, axis titles, trace names, table column headers
+- `reporting/overview.py` + `reporting/clients.py` — activation funnels switched to `go.Funnel` (Plotly native); widest stage (All Users) now renders at top, matching a standard funnel shape; previous horizontal bar approach rendered stages bottom-to-top
+- `reporting/dashboard.py` — page title renamed from "NBS Business Intelligence" to "NBS Data Analytics"; removed "Internal dashboard — NBS SPSAV LTDA" subtitle
+- `reporting/cards.py` — `_fig_trend()`, `_fig_driver_delta()`, `_fig_driver_evolution()` all given explicit chart titles; `_fig_trend()` legend moved below plot to eliminate title overlap
+- `tests/reporting/test_ramp.py` — granularity key strings updated to match renamed values (`Daily`/`Weekly`/`Monthly`)
+
+### Removed
+- `reporting/cards.py` — `_fig_cost_driver_stacked()` removed from the Evolution sub-tab (stacked bar by period); the line-per-driver evolution chart and the delta chart cover this view more clearly
+
 ## [1.3.0] — 2026-04-22
 
 Dark NBS green theme, Streamlit Community Cloud deployment, sidebar removal, and a new cost-driver evolution chart in the Cards tab.
