@@ -15,7 +15,6 @@ Usage::
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -279,40 +278,6 @@ def _fig_product_adoption_bars(adoption: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
-def _fig_revenue_histogram(segments: pd.DataFrame) -> go.Figure | None:
-    """Revenue per user distribution histogram (log x-axis).
-
-    Args:
-        segments: Full segments DataFrame with ``net_revenue_usd`` column.
-
-    Returns:
-        Plotly Figure or None if insufficient data.
-    """
-    if _empty(segments) or "net_revenue_usd" not in segments.columns:
-        return None
-    rev = segments["net_revenue_usd"].dropna()
-    rev = rev[rev > 0]
-    if rev.empty:
-        return None
-    log_min = np.floor(np.log10(float(rev.min())))
-    log_max = np.ceil(np.log10(float(rev.max())))
-    bins = np.logspace(log_min, log_max, 35)
-    counts, edges = np.histogram(rev, bins=bins)
-    centers = np.sqrt(edges[:-1] * edges[1:])  # geometric mean for log-space bars
-    fig = go.Figure(
-        go.Bar(
-            x=centers,
-            y=counts,
-            marker_color=TEAL,
-            opacity=0.8,
-            hovertemplate="~$%{x:.2f}: %{y} users<extra></extra>",
-        )
-    )
-    fig.update_layout(**_panel("Revenue per User Distribution (USD)"))
-    fig.update_xaxes(title="Net Revenue (USD)", type="log")
-    fig.update_yaxes(title="User Count")
-    return fig
-
 
 def _fig_adoption_heatmap(adoption: pd.DataFrame, segments: pd.DataFrame) -> go.Figure | None:
     """Product × segment heatmap — % users active in each combination."""
@@ -436,10 +401,6 @@ class ClientSection:
         fig2 = _fig_ltv_curves(ltv_by_source)
         if fig2:
             st.plotly_chart(fig2, width="stretch")
-
-        fig3 = _fig_revenue_histogram(segments)
-        if fig3:
-            st.plotly_chart(fig3, width="stretch")
 
     # ------------------------------------------------------------------
     # Tab 2 — Acquisition
