@@ -804,10 +804,10 @@ class CardAnalyticsSection:
 
         t_costs, t_uso, t_faixas, t_evo = st.tabs(
             [
-                "💰 Program Costs",
-                "📊 Usage Patterns",
-                "🎚️ Pricing Tiers",
-                "📈 Evolution",
+                "Program Costs",
+                "Usage Patterns",
+                "Pricing Tiers",
+                "Evolution",
             ]
         )
 

@@ -3,7 +3,7 @@
 Wraps the dict returned by ``OnrampReport.build()`` into Streamlit + Plotly
 components organised into four subtabs:
 
-* Overview  — volume over time (daily/weekly/monthly toggle) + PIX flows
+* Overview  — volume over time (daily/weekly/monthly toggle)
 * Revenue   — revenue by direction + monthly breakdown with MoM deltas
 * Users     — top N clients (with attribution) + new vs returning
 * FX & Volume — FX rate bands
@@ -265,36 +265,6 @@ def _fig_fx_rate(fx_stats: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _fig_pix(pix_daily: pd.DataFrame) -> go.Figure:
-    """Line chart: PIX IN vs PIX OUT daily BRL flows.
-
-    Args:
-        pix_daily: DataFrame with columns date, pix_in, pix_out.
-
-    Returns:
-        Plotly Figure.
-    """
-    fig = go.Figure()
-    for col, label, color in [
-        ("pix_in", "PIX IN", EMERALD),
-        ("pix_out", "PIX OUT", ROSE),
-    ]:
-        if col in pix_daily.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=pix_daily["date"],
-                    y=pix_daily[col],
-                    mode="lines",
-                    name=label,
-                    line=dict(color=color, width=2),
-                )
-            )
-    layout = panel()
-    layout["xaxis"]["title"] = None
-    layout["yaxis"]["title"] = "BRL"
-    fig.update_layout(**layout)
-    return fig
-
 
 def _fig_new_vs_returning(nvr: pd.DataFrame) -> go.Figure:
     """Stacked bar: new vs returning users per month.
@@ -343,7 +313,6 @@ class RampSection:
         tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Revenue", "Users", "FX & Volume"])
         with tab1:
             self._render_volume()
-            self._render_pix_flows()
         with tab2:
             self._render_revenue_by_direction()
             self._render_revenue_monthly()
@@ -386,15 +355,6 @@ class RampSection:
         )
         st.plotly_chart(_fig_volume(conv_daily, granularity), width="stretch")
 
-    def _render_pix_flows(self) -> None:
-        """Render the PIX IN vs PIX OUT daily line chart."""
-        pix = _get(self._r, "pix_daily")
-        st.subheader("PIX IN vs PIX OUT (daily)")
-        st.caption("Is BRL liquidity positive or draining reserves?")
-        if _empty(pix):
-            st.info("No PIX data for this period.")
-            return
-        st.plotly_chart(_fig_pix(pix), width="stretch")
 
     def _render_revenue_by_direction(self) -> None:
         """Render the monthly revenue split by direction bar chart."""

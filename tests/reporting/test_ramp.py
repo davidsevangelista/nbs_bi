@@ -16,7 +16,6 @@ import pytest
 from nbs_bi.reporting.ramp import (
     _fig_fx_rate,
     _fig_new_vs_returning,
-    _fig_pix,
     _fig_revenue_monthly,
     _fig_volume,
     _kpi,
@@ -91,16 +90,7 @@ def fx_stats() -> pd.DataFrame:
     return pd.concat([onramp, offramp], ignore_index=True)
 
 
-@pytest.fixture()
-def pix_daily() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "date": pd.date_range("2026-01-01", periods=5).date,
-            "pix_in": [50_000.0, 60_000.0, 45_000.0, 70_000.0, 55_000.0],
-            "pix_out": [20_000.0, 25_000.0, 18_000.0, 30_000.0, 22_000.0],
-            "pix_net": [30_000.0, 35_000.0, 27_000.0, 40_000.0, 33_000.0],
-        }
-    )
+
 
 
 
@@ -242,22 +232,6 @@ def test_fig_fx_rate_single_side() -> None:
     fig = _fig_fx_rate(df)
     assert len(fig.data) == 3  # p90 + p10 band + mean for one side
 
-
-def test_fig_pix_two_traces(pix_daily: pd.DataFrame) -> None:
-    fig = _fig_pix(pix_daily)
-    assert isinstance(fig, go.Figure)
-    assert len(fig.data) == 2
-
-
-def test_fig_pix_missing_column() -> None:
-    df = pd.DataFrame(
-        {
-            "date": pd.date_range("2026-01-01", periods=3).date,
-            "pix_in": [1000.0, 2000.0, 1500.0],
-        }
-    )
-    fig = _fig_pix(df)
-    assert len(fig.data) == 1
 
 
 
