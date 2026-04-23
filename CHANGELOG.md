@@ -7,6 +7,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-04-22
+
+Cloud deployment hardening, dedicated Neon ads DB, and conversion revenue accuracy fix.
+
+### Added
+- `config.py` — `ADS_DATABASE_URL` env var: dedicated connection for the Neon ads-spend DB (separate from `READONLY_DATABASE_URL`)
+- `reporting/marketing.py` — `MetaAdsSection.analytics_db_url` parameter: routes ROI/signup queries (`CampaignAnalyzer`) to `READONLY_DATABASE_URL` while spend loading uses `ADS_DATABASE_URL`
+- `onramp/queries.py` — `_run_scalar()` helper + `card_fees_revenue_total()` and `billing_charges_revenue_total()` methods: query `card_annual_fees` and `billing_charges` for period revenue totals
+- `onramp/report.py` — `card_revenue` dict in `build()` output: `{card_fee_usd, billing_usd}` from the two new scalar queries
+- `clients/ads_upload.py` + `nbs-ads-upload` CLI — upload Rain CSV to any PostgreSQL DB via `--db-url`; 57 rows inserted to Neon on 2026-04-22
+
+### Changed
+- `reporting/dashboard.py` — `_tab_marketing()` passes `db_url=ADS_DATABASE_URL` and `analytics_db_url=READONLY_DATABASE_URL` to `MetaAdsSection`
+- `reporting/dashboard.py` — default date range changed from rolling ~3 months to full history from `2025-08-15`
+- `reporting/marketing.py` — removed file uploader fallback; DB is now the only spend source on Streamlit Cloud
+- `reporting/overview.py` — Cards KPI strip uses `card_revenue` from onramp report (`card_fee_usd + billing_usd`) instead of stale `revenue_totals` dict; conversions revenue KPI now shows USD (converted from BRL at per-tx rate) instead of BRL
+
+### Fixed
+- **Conversion revenue USD undercounted** — was summing `fee_amount_usdc + spread_revenue_usdc` which are NULL for most rows; now converts `fee_amount_brl + spread_revenue_brl` to USD using per-row `exchange_rate` (BRL ÷ rate = USDC)
+- **Marketing tab crash on Streamlit Cloud** — `CampaignAnalyzer` was receiving `ADS_DATABASE_URL` (Neon, no user tables) and failing on `_daily_signups`; fixed by routing it to `READONLY_DATABASE_URL` via `analytics_db_url`
+- **Streamlit Cloud ImportError** — `sqlalchemy` import in `load_ad_spend_from_db` moved to lazy import inside the function to avoid top-level import failure on Cloud
+
 ## [1.4.0] — 2026-04-22
 
 Dashboard polish: full English translation of Cards and Conversions tabs, evolution chart redesign, revenue KPIs in Cards Evolution, enriched founders leaderboard, corrected activation funnel direction, and chart presentation cleanup.

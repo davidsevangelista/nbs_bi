@@ -118,27 +118,27 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-22 (v1.4.0)
+## Current State — 2026-04-22 (v1.5.0)
 
 ### What's been built
 
-`nbs_bi` is a fully operational BI platform deployed on Streamlit Community Cloud. All 5 dashboard tabs are live. Data flows from the Neon PostgreSQL read-only replica through module-specific query/model/report pipelines into a dark-themed Streamlit dashboard with Plotly visualisations.
+`nbs_bi` is a fully operational BI platform deployed on Streamlit Community Cloud. All 5 dashboard tabs are live. Data flows from two PostgreSQL databases (production read-only replica + Neon ads DB) through module-specific query/model/report pipelines into a dark-themed Streamlit dashboard with Plotly visualisations.
 
 **Phase 1 — Cards** (`nbs_bi.cards`):
 - `CardCostModel` validates against Feb 2026 invoice ($6,693.58). March 2026 invoice ($7,857.40) also parsed and loaded.
 - `invoice_total_usd` field stored in each actuals JSON; `nbs-invoices --force` re-parses all PDFs to populate it.
 - Known gap: `CardFeeRates` model accounts for ~$6,357 of the March invoice but Rain billed $7,857.40; ~$1,500 is unmodelled ("Outros"). Visible in the Evolução stacked-driver chart.
 
-**Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention.
+**Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention. Revenue USD computed by converting `fee_amount_brl + spread_revenue_brl` at per-tx `exchange_rate`.
 
-**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard titled "NBS Data Analytics", deployed and accessible:
-- Tab 1 — Overview: headline KPIs, revenue trend, volume, daily active users, activation funnel (`go.Funnel`, top-to-bottom)
+**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard titled "NBS Data Analytics", deployed and accessible at `nbs-data-analytics.streamlit.app`:
+- Tab 1 — Overview: 2 KPI rows (Conversions: count, volume BRL, revenue USD; Cards: txns, volume USD, revenue USD from card fees + billing); revenue trend, volume, daily active users, activation funnel
 - Tab 2 — Conversions: 4 subtabs, 8+ charts, granularity toggle (Daily/Weekly/Monthly); fully translated to English
 - Tab 3 — Cards: 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + line-per-driver evolution + revenue KPI row + cost KPI row + summary table); fully translated to English
 - Tab 4 — Clients: LTV cohorts, acquisition, segments, founders (full 9-column revenue breakdown per user), product adoption
 - Tab 5 — Marketing - Ads: cohort P&L — cumulative spend vs revenue; contribution margin with dual-axis txn counts; stacked revenue breakdown; referral code filter
 - Dark NBS green theme throughout: `#0D1117` background, `#161B22` chart bg, `#00E676` primary accent
-- No sidebar panel — date range computed inline; sidebar fully collapsed
+- Default date range: full history from 2025-08-15 to today
 
 **Phase 7 — Clients** (`nbs_bi.clients`): Full per-user revenue pipeline + Meta Ads cohort P&L:
 - Discriminated revenue SQL: conversion spread, card fees, billing charges, swap fees (revenue); cashback + rev share cohort-scoped (costs)
@@ -147,8 +147,10 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - Referral filter on all cohort queries; `referral_code_options()` populates UI selectbox dynamically
 
 **Deployment**:
-- Live on Streamlit Community Cloud (personal GitHub mirror at `davidsevangelista/nbs_bi`)
-- Viewer auth via email whitelist; `READONLY_DATABASE_URL` injected as secret
+- Live on Streamlit Community Cloud at `nbs-data-analytics.streamlit.app`
+- Mirrored on personal GitHub (`davidsevangelista/nbs_bi`) — this is what Streamlit Cloud pulls from
+- Two DB secrets: `READONLY_DATABASE_URL` (production analytics) + `ADS_DATABASE_URL` (Neon, Meta Ads spend only)
+- Neon DB populated with 57 rows of Meta Ads spend via `nbs-ads-upload` CLI
 - `requirements.txt` with `-e .` ensures package install; no Poetry dependency
 
 ### Key metrics from live DB (as of 2026-04-22)
@@ -158,17 +160,8 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - **Card spend**: ~22,728 card spend rows in DB history
 - **Invoices on file**: NKEMEJLO-0008 (Feb 2026, $6,693.58) · NKEMEJLO-0009 (Mar 2026, $7,857.40)
 - **March modelled gap**: $7,857.40 billed vs $6,357.39 modelled → $1,500.01 in unmodelled fees
-- **Meta Ads**: campaign_3 (Apr 14–20, $715 spend); ROAS still maturing — revisit at 30-day cohort mark
+- **Meta Ads**: campaign_3 (Apr 14–20, $715 spend); ROAS still maturing — revisit at 30-day cohort mark (~May 14)
 - **Cost per transaction**: Feb $0.972/txn · Mar $1.124/txn (6,885 and 6,990 transactions respectively)
-
-### What's next (priority order)
-
-1. **Watch campaign_3 ROAS** — cohort started Apr 14; revisit at ~May 14 (30-day mark); use referral filter to isolate Meta-attributed users vs organic
-2. **Investigate unmodelled $1,500 gap in NKEMEJLO-0009** — compare March PDF line items against `CardFeeRates`; identify which fee lines Rain charged that the model doesn't account for; close with a new fee category or adjust rates
-3. **Add April 2026 invoice** — parse NKEMEJLO-0010 when available; evolution chart will automatically pick it up
-4. **Onramp smoke test** — validate `OnrampModel` KPIs against prod DB for a known period
-5. **Phase 2** (`nbs_bi.transactions`) — schema definition required first
-6. **Phase 4** (`nbs_bi.swaps`) — schema definition required first
 
 ### Known environment notes
 
@@ -180,10 +173,21 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Backlog
 
-- [ ] Watch campaign_3 ROAS at ~30-day cohort mark (~May 14); compare referral filter vs all-users
+### Immediate
+- [ ] Verify Overview KPI values are correct after revenue USD fix (check conversion revenue USD vs known period)
+- [ ] Upload future Rain CSV exports to Neon as new ad spend data arrives (`nbs-ads-upload <file> --db-url $ADS_DATABASE_URL`)
+
+### Campaign monitoring
+- [ ] Watch campaign_3 ROAS at ~30-day cohort mark (~May 14, 2026); compare referral filter vs all-users
+
+### Cards
 - [ ] Investigate and close the ~$1,500 unmodelled fee gap in NKEMEJLO-0009 (March 2026)
-- [ ] Parse April 2026 invoice (NKEMEJLO-0010) when available
-- [ ] Onramp smoke test: compare KPIs against contabil_pipeline for same date window
+- [ ] Parse April 2026 invoice (NKEMEJLO-0010) when available; evolution chart will auto-pick it up
+
+### Onramp validation
+- [ ] Smoke test: validate `OnrampModel` KPIs against contabil_pipeline for a known date window
+
+### Future phases
 - [ ] Phase 2 — transactions analytics (schema definition first)
 - [ ] Phase 4 — swaps analytics (schema definition first)
 - [ ] Phase 5 — AI usage analytics (schema definition first)
