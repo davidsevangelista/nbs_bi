@@ -406,13 +406,35 @@ class ClientModel:
         total_txns = int(card_monthly["n_card_txns"].sum()) if not card_monthly.empty else 0
         return self._invoice_total / max(total_txns, 1)
 
+    @staticmethod
+    def _merge_monthly(
+        base: pd.DataFrame, other: pd.DataFrame, col: str
+    ) -> pd.DataFrame:
+        """Left-join a monthly revenue/cost stream into the base DataFrame.
+
+        Args:
+            base: Monthly base with user_id and month columns.
+            other: Monthly stream DataFrame with user_id, month, and *col*.
+            col: Column name to merge in (filled with 0.0 when absent).
+
+        Returns:
+            base with *col* added and NaNs filled to 0.
+        """
+        if other.empty:
+            base[col] = 0.0
+            return base
+        other = other.copy()
+        other["month"] = pd.to_datetime(other["month"])
+        merged = base.merge(other[["user_id", "month", col]], on=["user_id", "month"], how="left")
+        merged[col] = merged[col].fillna(0.0)
+        return merged
+
     def _build_monthly_ltv(self) -> pd.DataFrame:
         """Build monthly net revenue per user for cohort LTV computation.
 
-        Converts BRL conversion revenue to USD, then deducts the pro-rata
-        Rain card processing cost for each user's card transactions in that
-        calendar month. The per-tx cost is derived from the actual invoice
-        total (``self._invoice_total / total_period_txns``).
+        Includes all revenue streams (conversion, card annual fee, billing,
+        swap, payout) and deducts costs (cashback, revenue share, and
+        pro-rata Rain card processing cost).
 
         Returns:
             Long-format DataFrame with columns: user_id, signup_month,
@@ -430,6 +452,27 @@ class ClientModel:
         monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx + usdc_rev
         monthly["month"] = pd.to_datetime(monthly["month"])
 
+        # Merge all additional revenue streams
+        monthly = self._merge_monthly(monthly, self._q.card_fees_monthly(), "card_fee_usd")
+        monthly = self._merge_monthly(monthly, self._q.billing_monthly(), "billing_usd")
+        monthly = self._merge_monthly(monthly, self._q.swap_fees_monthly(), "swap_fee_usd")
+        monthly = self._merge_monthly(monthly, self._q.payout_fees_monthly(), "payout_fee_usd")
+        monthly = self._merge_monthly(monthly, self._q.cashback_monthly(), "cashback_usd")
+        monthly = self._merge_monthly(
+            monthly, self._q.revenue_share_monthly(), "revenue_share_usd"
+        )
+
+        monthly["revenue_usd"] = (
+            monthly["revenue_usd"]
+            + monthly["card_fee_usd"]
+            + monthly["billing_usd"]
+            + monthly["swap_fee_usd"]
+            + monthly["payout_fee_usd"]
+            - monthly["cashback_usd"]
+            - monthly["revenue_share_usd"]
+        )
+
+        # Deduct pro-rata Rain card processing cost
         card_monthly = self._q.card_transactions_monthly()
         cost_per_tx = self._cost_per_tx(card_monthly)
         logger.debug("Card cost_per_tx=%.4f USD (invoice=%.2f)", cost_per_tx, self._invoice_total)

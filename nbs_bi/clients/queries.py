@@ -210,6 +210,79 @@ GROUP BY user_id, DATE_TRUNC('month', posted_at)
 ORDER BY user_id, month
 """
 
+_CARD_FEES_MONTHLY_SQL = """
+SELECT
+    user_id::TEXT                          AS user_id,
+    DATE_TRUNC('month', created_at)::DATE  AS month,
+    SUM(amount_usdc::FLOAT)                AS card_fee_usd
+FROM card_annual_fees
+WHERE status = 'paid'
+GROUP BY user_id, DATE_TRUNC('month', created_at)
+ORDER BY user_id, month
+"""
+
+_BILLING_MONTHLY_SQL = """
+SELECT
+    user_id::TEXT                          AS user_id,
+    DATE_TRUNC('month', created_at)::DATE  AS month,
+    SUM(amount::FLOAT / 1000000.0)         AS billing_usd
+FROM billing_charges
+WHERE status = 'settled'
+GROUP BY user_id, DATE_TRUNC('month', created_at)
+ORDER BY user_id, month
+"""
+
+_SWAP_FEES_MONTHLY_SQL = """
+SELECT
+    user_id::TEXT                               AS user_id,
+    DATE_TRUNC('month', "timestamp")::DATE      AS month,
+    SUM(
+        CASE
+            WHEN input_mint  = :usdc_mint
+            THEN input_amount::FLOAT  / 1e6 * platform_fee_bps::FLOAT / 1e4
+            WHEN output_mint = :usdc_mint
+            THEN output_amount::FLOAT / 1e6 * platform_fee_bps::FLOAT / 1e4
+            ELSE 0
+        END
+    ) AS swap_fee_usd
+FROM swap_transactions
+GROUP BY user_id, DATE_TRUNC('month', "timestamp")
+ORDER BY user_id, month
+"""
+
+_PAYOUT_FEES_MONTHLY_SQL = """
+SELECT
+    user_id::TEXT                          AS user_id,
+    DATE_TRUNC('month', created_at)::DATE  AS month,
+    SUM(unblockpay_fee::FLOAT)             AS payout_fee_usd
+FROM unblockpay_payouts
+WHERE status = 'completed'
+GROUP BY user_id, DATE_TRUNC('month', created_at)
+ORDER BY user_id, month
+"""
+
+_CASHBACK_MONTHLY_SQL = """
+SELECT
+    user_id::TEXT                          AS user_id,
+    DATE_TRUNC('month', created_at)::DATE  AS month,
+    SUM(reward_usd_value::FLOAT)           AS cashback_usd
+FROM cashback_rewards
+WHERE status = 'completed'
+GROUP BY user_id, DATE_TRUNC('month', created_at)
+ORDER BY user_id, month
+"""
+
+_REVENUE_SHARE_MONTHLY_SQL = """
+SELECT
+    source_user_id::TEXT                   AS user_id,
+    DATE_TRUNC('month', created_at)::DATE  AS month,
+    SUM(reward_usd_value::FLOAT)           AS revenue_share_usd
+FROM revenue_share_rewards
+WHERE status = 'completed'
+GROUP BY source_user_id, DATE_TRUNC('month', created_at)
+ORDER BY user_id, month
+"""
+
 _REVENUE_GENERATING_SQL = """
 SELECT COUNT(DISTINCT user_id) AS revenue_generating_count
 FROM (
@@ -457,6 +530,54 @@ class ClientQueries:
             DataFrame with columns: user_id, month (date), n_card_txns (int).
         """
         return self._run("card_txs_monthly", _CARD_TXS_MONTHLY_SQL, {})
+
+    def card_fees_monthly(self) -> pd.DataFrame:
+        """Monthly card annual fee revenue per user (full history).
+
+        Returns:
+            DataFrame with columns: user_id, month (date), card_fee_usd.
+        """
+        return self._run("card_fees_monthly", _CARD_FEES_MONTHLY_SQL, {})
+
+    def billing_monthly(self) -> pd.DataFrame:
+        """Monthly billing charge revenue per user (full history).
+
+        Returns:
+            DataFrame with columns: user_id, month (date), billing_usd.
+        """
+        return self._run("billing_monthly", _BILLING_MONTHLY_SQL, {})
+
+    def swap_fees_monthly(self) -> pd.DataFrame:
+        """Monthly swap fee revenue per user, USDC pairs only (full history).
+
+        Returns:
+            DataFrame with columns: user_id, month (date), swap_fee_usd.
+        """
+        return self._run("swap_fees_monthly", _SWAP_FEES_MONTHLY_SQL, {"usdc_mint": _USDC_MINT})
+
+    def payout_fees_monthly(self) -> pd.DataFrame:
+        """Monthly payout fee revenue per user (full history).
+
+        Returns:
+            DataFrame with columns: user_id, month (date), payout_fee_usd.
+        """
+        return self._run("payout_fees_monthly", _PAYOUT_FEES_MONTHLY_SQL, {})
+
+    def cashback_monthly(self) -> pd.DataFrame:
+        """Monthly cashback cost per user (full history).
+
+        Returns:
+            DataFrame with columns: user_id, month (date), cashback_usd.
+        """
+        return self._run("cashback_monthly", _CASHBACK_MONTHLY_SQL, {})
+
+    def revenue_share_monthly(self) -> pd.DataFrame:
+        """Monthly revenue share cost per user (full history).
+
+        Returns:
+            DataFrame with columns: user_id, month (date), revenue_share_usd.
+        """
+        return self._run("rev_share_monthly", _REVENUE_SHARE_MONTHLY_SQL, {})
 
     def billing_charges(self) -> pd.DataFrame:
         """Per-user settled billing charges (actual card tx fee revenue).
