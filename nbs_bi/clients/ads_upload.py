@@ -103,13 +103,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--db-url",
         default=None,
-        help="Writable PostgreSQL URL. Defaults to DATABASE_URL env var.",
+        help="Writable PostgreSQL URL. Defaults to ADS_DATABASE_URL env var.",
     )
     args = parser.parse_args(argv)
 
-    db_url = args.db_url or os.environ.get("DATABASE_URL", "")
+    db_url = args.db_url or os.environ.get("ADS_DATABASE_URL", "")
     if not db_url:
-        logger.error("No database URL provided. Set DATABASE_URL or pass --db-url.")
+        logger.error("No database URL provided. Set ADS_DATABASE_URL or pass --db-url.")
         return 1
 
     if not args.csv_path.exists():
