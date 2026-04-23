@@ -127,6 +127,22 @@ WHERE status = 'settled'
   AND created_at <  :end_date
 """
 
+_CARD_FEES_REVENUE_SQL = """
+SELECT COALESCE(SUM(amount_usdc::FLOAT), 0.0) AS total
+FROM card_annual_fees
+WHERE status = 'paid'
+  AND paid_at >= :start_date
+  AND paid_at <  :end_date
+"""
+
+_BILLING_REVENUE_SQL = """
+SELECT COALESCE(SUM(amount::FLOAT / 1000000.0), 0.0) AS total
+FROM billing_charges
+WHERE status = 'settled'
+  AND created_at >= :start_date
+  AND created_at <  :end_date
+"""
+
 _SWAPS_ACTIVE_SQL = """
 SELECT user_id::TEXT AS user_id, "timestamp" AS created_at
 FROM swap_transactions
@@ -322,6 +338,21 @@ class OnrampQueries:
             logger.debug("Cached → %s", cache.name)
 
         return _scale_currency(df)
+
+    def _run_scalar(self, sql: str, params: dict[str, Any]) -> float:
+        """Execute a single-value aggregation query and return the scalar.
+
+        Args:
+            sql: SQL with named placeholders; must SELECT a single column 'total'.
+            params: Named bind parameters (``end_date`` converted to exclusive).
+
+        Returns:
+            Float scalar; 0.0 on empty result.
+        """
+        bound = {**params, "end_date": _to_exclusive_end(params["end_date"])}
+        with self._engine_lazy.connect() as conn:
+            row = conn.execute(text(sql), bound).fetchone()
+        return float(row[0]) if row and row[0] is not None else 0.0
 
     def _date_params(
         self,
@@ -535,3 +566,37 @@ class OnrampQueries:
         return self._run(
             "payouts_active", _PAYOUTS_ACTIVE_SQL, self._date_params(start_date, end_date)
         )
+
+    def card_fees_revenue_total(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> float:
+        """Total card annual fee revenue (USD) for the period.
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            Sum of amount_usdc for paid card_annual_fees records.
+        """
+        return self._run_scalar(_CARD_FEES_REVENUE_SQL, self._date_params(start_date, end_date))
+
+    def billing_charges_revenue_total(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> float:
+        """Total billing charges revenue (USD) for the period.
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            Sum of amount / 1_000_000 for settled billing_charges records.
+        """
+        return self._run_scalar(_BILLING_REVENUE_SQL, self._date_params(start_date, end_date))

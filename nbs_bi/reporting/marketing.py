@@ -17,8 +17,6 @@ Usage::
 
 from __future__ import annotations
 
-import io
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -756,17 +754,12 @@ class MetaAdsSection:
                 st.caption(f"Loaded spend data from `{csv_path.name}`")
                 spend = load_ad_spend(csv_path)
 
-        # 3. File uploader fallback
         if spend is None:
-            uploaded = st.file_uploader("Rain Card CSV export", type=["csv"], key="meta_ads_csv")
-            if uploaded is None:
-                st.info(
-                    "No spend data found. Run `nbs-ads-upload` to populate the database, "
-                    "or upload rain-transactions-export-YYYY-MM-DD.csv manually."
-                )
-                return None
-            raw = uploaded.read()
-            spend = load_ad_spend(io.StringIO(raw.decode("utf-8")))
+            st.info(
+                "No ad spend data found in the database. "
+                "Run `nbs-ads-upload <rain-export.csv>` to populate it."
+            )
+            return None
 
         cutoff = pd.Timestamp(_TRACKING_START)
         spend = spend[pd.to_datetime(spend["date"]) >= cutoff].reset_index(drop=True)

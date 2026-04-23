@@ -105,6 +105,14 @@ class OnrampReport:
             "revenue_by_direction": model.revenue_by_direction() if model else pd.DataFrame(),
             "new_vs_returning": model.monthly_new_vs_returning() if model else pd.DataFrame(),
             "card_daily": self._build_card_daily(card_tx_df),
+            "card_revenue": {
+                "card_fee_usd": q.card_fees_revenue_total(
+                    start_date=start_date, end_date=end_date
+                ),
+                "billing_usd": q.billing_charges_revenue_total(
+                    start_date=start_date, end_date=end_date
+                ),
+            },
         }
 
     # ------------------------------------------------------------------
@@ -174,6 +182,16 @@ class OnrampReport:
             ("Offramp volume BRL", conv_brl_offramp, "USDC→BRL client volume"),
             ("Total revenue BRL", revenue_brl, "Fees + spread captured in BRL"),
         ]
+
+        if not conv_df.empty:
+            rev_usdc = conv_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(0.0) + conv_df.get(
+                "spread_revenue_usdc", pd.Series(0.0)
+            ).fillna(0.0)
+            revenue_usd = float(rev_usdc.sum())
+        else:
+            revenue_usd = 0.0
+        rows.append(("Total revenue USD", revenue_usd, "Fees + spread in USD (per-tx rate)"))
+
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
 
     @staticmethod

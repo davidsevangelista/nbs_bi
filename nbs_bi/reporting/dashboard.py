@@ -21,7 +21,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from nbs_bi.clients.report import ClientReport
-from nbs_bi.config import READONLY_DATABASE_URL
+from nbs_bi.config import ADS_DATABASE_URL, READONLY_DATABASE_URL
 from nbs_bi.onramp.report import OnrampReport
 from nbs_bi.reporting.cards import CardAnalyticsSection
 from nbs_bi.reporting.clients import ClientSection
@@ -193,7 +193,7 @@ def _tab_marketing(start_date: str, end_date: str, invoice_total: float) -> None
     MetaAdsSection(
         campaign_data=campaign_data,
         acquisition=acquisition,
-        db_url=READONLY_DATABASE_URL or None,
+        db_url=ADS_DATABASE_URL or None,
     ).render()
 
 

@@ -27,5 +27,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 # Database — read-only replica used by onramp and other analytics modules
 READONLY_DATABASE_URL = os.environ.get("READONLY_DATABASE_URL", "")
 
+# Database — ads spend only (Neon), used by the Marketing - Ads tab
+ADS_DATABASE_URL = os.environ.get("ADS_DATABASE_URL", "")
+
 # Parquet cache directory for DB query results (set DB_CACHE_DIR= to disable)
 DB_CACHE_DIR = os.getenv("DB_CACHE_DIR", "")
