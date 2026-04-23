@@ -194,6 +194,7 @@ def _tab_marketing(start_date: str, end_date: str, invoice_total: float) -> None
         campaign_data=campaign_data,
         acquisition=acquisition,
         db_url=ADS_DATABASE_URL or None,
+        analytics_db_url=READONLY_DATABASE_URL or None,
     ).render()
 
 

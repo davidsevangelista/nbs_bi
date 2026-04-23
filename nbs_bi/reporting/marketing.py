@@ -658,10 +658,12 @@ class MetaAdsSection:
         campaign_data: dict | None,
         acquisition: pd.DataFrame | None,
         db_url: str | None = None,
+        analytics_db_url: str | None = None,
     ) -> None:
         self._data = campaign_data
         self._acquisition = acquisition
         self._db_url = db_url
+        self._analytics_db_url = analytics_db_url
 
     def render(self) -> None:  # pragma: no cover
         """Render all Marketing - Ads tab components into the active Streamlit context."""
@@ -763,7 +765,7 @@ class MetaAdsSection:
 
         cutoff = pd.Timestamp(_TRACKING_START)
         spend = spend[pd.to_datetime(spend["date"]) >= cutoff].reset_index(drop=True)
-        analyzer = CampaignAnalyzer(spend, db_url=self._db_url)
+        analyzer = CampaignAnalyzer(spend, db_url=self._analytics_db_url or self._db_url)
 
         _, _, _, history = _load_all_invoice_models()
         invoice_history = [
