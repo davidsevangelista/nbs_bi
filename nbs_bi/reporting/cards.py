@@ -752,7 +752,19 @@ class CardSection:
         if self._top_spenders is None or self._top_spenders.empty:
             st.info("Pass top_spenders=df to CardSection to display this table.")
             return
+        col_order = [
+            "user_id",
+            "full_name",
+            "acquisition_source",
+            "referral_code",
+            "referral_code_name",
+            "n_transactions",
+            "total_usd",
+            "ramp_conversions",
+        ]
         display = self._top_spenders.head(20).copy()
+        present = [c for c in col_order if c in display.columns]
+        display = display[present]
         if "user_id" in display.columns:
             display["user_id"] = display["user_id"].apply(mask_user_id)
         display.columns = [c.replace("_", " ").title() for c in display.columns]
@@ -886,9 +898,7 @@ class CardAnalyticsSection:
         top_spenders = None
         if self._db_url:
             try:
-                top_spenders = self._load_top_spenders(
-                    self._db_url, self._date_from, self._date_to
-                )
+                top_spenders = self._load_top_spenders(self._db_url, self._date_from, self._date_to)
             except Exception as exc:
                 st.warning(f"Could not load top card spenders: {exc}")
         CardSection(selected_model, history=history, top_spenders=top_spenders).render()

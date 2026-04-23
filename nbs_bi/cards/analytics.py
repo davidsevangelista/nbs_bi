@@ -73,9 +73,7 @@ SWEEP_THRESHOLDS: list[float] = [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 125
 # Coverage grid sweep ranges (flat fee + pct combinations)
 COVERAGE_FLAT_RANGE: list[float] = [0, 0.25, 0.50, 0.75, 1.00, 1.25, 1.50, 2.00]
 COVERAGE_PCT_RANGE: list[float] = [0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
-COVERAGE_FLAT_OPTIONS: list[float] = [
-    0.10, 0.20, 0.30, 0.40, 0.50, 0.75, 1.00, 1.25, 1.50, 2.00
-]
+COVERAGE_FLAT_OPTIONS: list[float] = [0.10, 0.20, 0.30, 0.40, 0.50, 0.75, 1.00, 1.25, 1.50, 2.00]
 
 # Spend-tier histogram bins
 _BINS: list[float] = [0, 10, 25, 50, 100, 200, 500, float("inf")]
@@ -108,18 +106,29 @@ ORDER BY posted_at
 _SQL_TOP_SPENDERS = """\
 SELECT
     ct.user_id::text,
+    u.full_name,
+    COALESCE(
+        ur.source_type,
+        CASE WHEN f.invite_code IS NOT NULL AND f.invite_code <> ''
+             THEN 'founder_invite' ELSE 'unknown' END
+    )                               AS acquisition_source,
+    rc.code                         AS referral_code,
+    rc.public_name                  AS referral_code_name,
     COUNT(*)                        AS n_transactions,
     SUM(ct.amount)::float / 100     AS total_usd,
     COUNT(DISTINCT cq.id)::int      AS ramp_conversions
 FROM card_transactions ct
-LEFT JOIN conversion_quotes cq
-       ON cq.user_id = ct.user_id AND cq.used = TRUE
+LEFT JOIN users u               ON u.id = ct.user_id
+LEFT JOIN user_registrations ur ON ur.user_id = ct.user_id
+LEFT JOIN referral_codes rc     ON rc.id = ur.attributed_referral_code_id
+LEFT JOIN founders f            ON f.user_id = ct.user_id
+LEFT JOIN conversion_quotes cq  ON cq.user_id = ct.user_id AND cq.used = TRUE
 WHERE ct.status = 'completed'
   AND ct.transaction_type = 'spend'
   AND ct.posted_at IS NOT NULL
   AND (:date_from IS NULL OR ct.posted_at >= :date_from)
   AND (:date_to   IS NULL OR ct.posted_at <  :date_to)
-GROUP BY ct.user_id
+GROUP BY ct.user_id, u.full_name, acquisition_source, rc.code, rc.public_name
 ORDER BY total_usd DESC
 LIMIT 20
 """
@@ -179,9 +188,11 @@ def load_top_card_spenders(
         db_url: Override the database URL; falls back to READONLY_DATABASE_URL.
 
     Returns:
-        DataFrame with columns ``user_id`` (text), ``n_transactions`` (int),
-        ``total_usd`` (float64), ``ramp_conversions`` (int), sorted descending
-        by ``total_usd``.  Contains at most 20 rows.
+        DataFrame with columns ``user_id`` (text), ``full_name``,
+        ``acquisition_source``, ``referral_code``, ``referral_code_name``,
+        ``n_transactions`` (int), ``total_usd`` (float64),
+        ``ramp_conversions`` (int), sorted descending by ``total_usd``.
+        Contains at most 20 rows.
 
     Raises:
         RuntimeError: If no database URL is configured.
@@ -526,8 +537,9 @@ def bin_fee_revenue(
         raise ValueError(f"bin_pct_fees must have {len(_BIN_LABELS)} elements")
     n_days = _observed_days(raw)
     amounts = raw["amount_usd"].dropna().to_numpy(dtype="float64")
-    bin_idx = np.clip(np.searchsorted(np.array(_BINS[1:]), amounts, side="right"), 0,
-                      len(_BIN_LABELS) - 1)
+    bin_idx = np.clip(
+        np.searchsorted(np.array(_BINS[1:]), amounts, side="right"), 0, len(_BIN_LABELS) - 1
+    )
     total = len(amounts)
     rows = []
     for i, label in enumerate(_BIN_LABELS):
@@ -720,8 +732,9 @@ def progressive_fee_sweep(
         DataFrame with columns ``gap``, ``revenue_usd``, ``coverage_ratio``.
     """
     rows = [
-        progressive_fee_revenue(raw, n_bins, g, flat_start, flat_end, pct_start, pct_end,
-                                rain_cost_usd)
+        progressive_fee_revenue(
+            raw, n_bins, g, flat_start, flat_end, pct_start, pct_end, rain_cost_usd
+        )
         for g in gap_values
     ]
     return pd.DataFrame(rows)[["gap", "revenue_usd", "coverage_ratio"]]
@@ -784,22 +797,22 @@ def progressive_fee_breakdown(
         mask = bin_idx == i
         count = int(mask.sum())
         rev_obs = (
-            float((flat_fee_values[i] + pct_fees[i] * amounts[mask]).sum())
-            if mask.any()
-            else 0.0
+            float((flat_fee_values[i] + pct_fees[i] * amounts[mask]).sum()) if mask.any() else 0.0
         )
         rev_month = rev_obs / obs_days * 30
-        rows.append({
-            "bin": i + 1,
-            "from_usd": float(edges[i]),
-            "to_usd": float(edges[i + 1]) if i < n_bins - 1 else float("inf"),
-            "flat_usd": float(flat_fee_values[i]),
-            "pct": float(pct_fees[i]),
-            "count": count,
-            "pct_count": round(count / total * 100, 2) if total > 0 else 0.0,
-            "revenue_month_usd": rev_month,
-            "invoice_factor": rev_month / rain_cost_usd,
-        })
+        rows.append(
+            {
+                "bin": i + 1,
+                "from_usd": float(edges[i]),
+                "to_usd": float(edges[i + 1]) if i < n_bins - 1 else float("inf"),
+                "flat_usd": float(flat_fee_values[i]),
+                "pct": float(pct_fees[i]),
+                "count": count,
+                "pct_count": round(count / total * 100, 2) if total > 0 else 0.0,
+                "revenue_month_usd": rev_month,
+                "invoice_factor": rev_month / rain_cost_usd,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -2060,22 +2073,34 @@ def fig_progressive_coverage(
 
     fig = go.Figure()
     # Filled area below / above breakeven
-    fig.add_trace(go.Scatter(
-        x=gaps, y=ratios, fill="tozeroy",
-        fillcolor="rgba(5,150,105,0.10)",
-        line=dict(color="rgba(0,0,0,0)"), showlegend=False, hoverinfo="skip",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=gaps,
+            y=ratios,
+            fill="tozeroy",
+            fillcolor="rgba(5,150,105,0.10)",
+            line=dict(color="rgba(0,0,0,0)"),
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
     # Main line
-    fig.add_trace(go.Scatter(
-        x=gaps, y=ratios, mode="lines+markers",
-        line=dict(color=BLUE, width=2),
-        marker=dict(color=colours, size=9, line=dict(color=BG, width=1)),
-        name="Cobertura",
-        hovertemplate="Gap $%{x}<br>Cobertura %{y:.2f}×<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=gaps,
+            y=ratios,
+            mode="lines+markers",
+            line=dict(color=BLUE, width=2),
+            marker=dict(color=colours, size=9, line=dict(color=BG, width=1)),
+            name="Cobertura",
+            hovertemplate="Gap $%{x}<br>Cobertura %{y:.2f}×<extra></extra>",
+        )
+    )
     # Breakeven reference
     fig.add_hline(
-        y=1.0, line_dash="dash", line_color=SLATE,
+        y=1.0,
+        line_dash="dash",
+        line_color=SLATE,
         annotation_text=f"Equilíbrio  ${rain_cost_usd:,.0f}",
         annotation_position="right",
         annotation_font=dict(color=SLATE, size=10),
@@ -2086,10 +2111,13 @@ def fig_progressive_coverage(
         first_g = float(be_rows.iloc[0]["gap"])
         first_r = float(be_rows.iloc[0]["coverage_ratio"])
         fig.add_annotation(
-            x=first_g, y=first_r,
+            x=first_g,
+            y=first_r,
             text="⬆ break-even",
-            showarrow=True, arrowhead=2,
-            arrowcolor=EMERALD, font=dict(color=EMERALD, size=10),
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor=EMERALD,
+            font=dict(color=EMERALD, size=10),
             yshift=12,
         )
     layout = _panel_layout("Cobertura da Invoice — Sweep por Largura de Faixa", height=420)
