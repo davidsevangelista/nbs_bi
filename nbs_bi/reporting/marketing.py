@@ -803,18 +803,16 @@ class MetaAdsSection:
         total_spend = float(summary["total_spend_usd"].sum())
         total_rev = float(summary["total_revenue_usd"].sum())
         transacting = int(summary["transacting_users"].sum())
-        total_incremental = float(summary["incremental_users_est"].sum())
         overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
         best_roas = float(summary["roas"].max()) if "roas" in summary.columns else 0.0
         cac_active = total_spend / transacting if transacting > 0 else float("nan")
-        cac_incr = total_spend / total_incremental if total_incremental > 0 else float("nan")
 
         has_profit = (
             cum_profit_df is not None
             and not cum_profit_df.empty
             and "cum_profit_usd" in cum_profit_df.columns
         )
-        cols = st.columns(7 if has_profit else 6)
+        cols = st.columns(6 if has_profit else 5)
         cols[0].metric("Total Meta Spend", fmt_usd(total_spend))
         cols[1].metric("Cohort Revenue", fmt_usd(total_rev))
         cols[2].metric(
@@ -828,13 +826,9 @@ class MetaAdsSection:
             "CAC (active users)",
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
         )
-        cols[5].metric(
-            "CAC (incremental)",
-            fmt_usd(cac_incr) if not np.isnan(cac_incr) else "n/a",
-        )
         if has_profit:
             net_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[union-attr]
-            cols[6].metric(
+            cols[5].metric(
                 "Net Profit (latest cohort)",
                 fmt_usd(net_profit),
                 delta="profitable" if net_profit >= 0 else "loss",
