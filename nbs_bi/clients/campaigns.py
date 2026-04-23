@@ -69,7 +69,8 @@ WITH cohort AS (
 ),
 onramp_rev AS (
     SELECT user_id::TEXT,
-           SUM(fee_amount_brl + spread_revenue_brl) / 100.0 AS onramp_brl
+           SUM(fee_amount_brl + spread_revenue_brl) / 100.0       AS onramp_brl,
+           SUM(fee_amount_usdc + spread_revenue_usdc) / 1000000.0 AS onramp_usdc
     FROM conversion_quotes
     WHERE used = TRUE
     GROUP BY user_id::TEXT
@@ -127,7 +128,9 @@ transacting AS (
 SELECT
     COUNT(DISTINCT c.user_id)                                                AS cohort_users,
     COUNT(DISTINCT t.uid)                                                    AS transacting_users,
-    ROUND(SUM(COALESCE(or_.onramp_brl,  0) / fx.rate)::NUMERIC, 4)          AS onramp_rev_usd,
+    ROUND(SUM(
+        COALESCE(or_.onramp_brl, 0) / fx.rate + COALESCE(or_.onramp_usdc, 0)
+    )::NUMERIC, 4) AS onramp_rev_usd,
     ROUND(SUM(COALESCE(cf.card_fee_usd, 0))::NUMERIC, 4)                    AS card_fee_usd,
     ROUND(SUM(COALESCE(br.billing_usd,  0))::NUMERIC, 4)                    AS billing_usd,
     ROUND(SUM(COALESCE(sw.swap_fee_usd, 0))::NUMERIC, 4)                    AS swap_fee_usd,
@@ -135,7 +138,7 @@ SELECT
     ROUND(SUM(COALESCE(cb.cashback_usd,  0))::NUMERIC, 4)                   AS cashback_usd,
     ROUND(SUM(COALESCE(rs.revenue_share_usd, 0))::NUMERIC, 4)               AS revenue_share_usd,
     ROUND(SUM(
-        COALESCE(or_.onramp_brl,  0) / fx.rate
+        COALESCE(or_.onramp_brl, 0) / fx.rate + COALESCE(or_.onramp_usdc, 0)
         + COALESCE(cf.card_fee_usd, 0)
         + COALESCE(br.billing_usd,  0)
         + COALESCE(sw.swap_fee_usd, 0)
@@ -176,7 +179,8 @@ fx AS (
 conversion_rev AS (
     SELECT DATE(cq.created_at AT TIME ZONE 'UTC') AS rev_date,
            (cq.fee_amount_brl + cq.spread_revenue_brl)::FLOAT / 100.0
-               / NULLIF(fx.rate, 0) AS rev_usd
+               / NULLIF(fx.rate, 0)
+           + (cq.fee_amount_usdc + cq.spread_revenue_usdc)::FLOAT / 1000000.0 AS rev_usd
     FROM conversion_quotes cq, fx
     WHERE cq.used = TRUE
       AND cq.user_id::TEXT IN (SELECT user_id FROM cohort)

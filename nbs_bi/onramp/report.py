@@ -148,6 +148,7 @@ class OnrampReport:
         total_conversions = 0
         unique_conv_users = 0
         revenue_brl = 0.0
+        revenue_usdc = 0.0
 
         if not conv_df.empty and "direction" in conv_df.columns:
             on_mask = conv_df["direction"].str.lower().isin({"brl_to_usdc", "buy", "onramp"})
@@ -167,7 +168,11 @@ class OnrampReport:
             rev_brl = conv_df.get("fee_amount_brl", pd.Series(0.0)).fillna(0.0) + conv_df.get(
                 "spread_revenue_brl", pd.Series(0.0)
             ).fillna(0.0)
+            rev_usdc = conv_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(0.0) + conv_df.get(
+                "spread_revenue_usdc", pd.Series(0.0)
+            ).fillna(0.0)
             revenue_brl = float(rev_brl.sum())
+            revenue_usdc = float(rev_usdc.sum())
 
         rows = [
             ("PIX IN (dep)", pix_in, "BRL deposits via PIX"),
@@ -181,19 +186,23 @@ class OnrampReport:
             ("Unique conversion users", unique_conv_users, "Users who converted"),
             ("Onramp volume BRL", conv_brl_onramp, "BRL→USDC client volume"),
             ("Offramp volume BRL", conv_brl_offramp, "USDC→BRL client volume"),
-            ("Total revenue BRL", revenue_brl, "Fees + spread captured in BRL"),
+            ("Total revenue BRL", revenue_brl, "Fees + spread in BRL"),
+            ("Total revenue USDC", revenue_usdc, "Fees + spread in USDC"),
         ]
 
         if not conv_df.empty and "exchange_rate" in conv_df.columns:
             rev_brl = conv_df.get("fee_amount_brl", pd.Series(0.0)).fillna(0.0) + conv_df.get(
                 "spread_revenue_brl", pd.Series(0.0)
             ).fillna(0.0)
+            rev_usdc = conv_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(0.0) + conv_df.get(
+                "spread_revenue_usdc", pd.Series(0.0)
+            ).fillna(0.0)
             rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(0, float("nan"))
-            revenue_usd = float((rev_brl / rate).sum())
+            revenue_usd = float((rev_brl / rate).sum()) + float(rev_usdc.sum())
         else:
-            revenue_usd = 0.0
+            revenue_usd = revenue_usdc
         rows.append(
-            ("Total revenue USD", revenue_usd, "BRL fees + spread converted at per-tx rate")
+            ("Total revenue USD", revenue_usd, "BRL fees at per-tx rate + USDC fees")
         )
 
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
@@ -220,9 +229,13 @@ class OnrampReport:
         )
         raw_rate = df.get("exchange_rate", pd.Series(dtype=float))
         rate = pd.to_numeric(raw_rate, errors="coerce").replace(0, float("nan"))
-        df["fee_usd"] = df["fee_amount_brl"].fillna(0.0) / rate
+        df["fee_usd"] = (
+            df["fee_amount_brl"].fillna(0.0) / rate
+            + df.get("fee_amount_usdc", pd.Series(0.0, index=df.index)).fillna(0.0)
+        )
         spread_brl = df.get("spread_revenue_brl", pd.Series(0.0, index=df.index))
-        df["spread_usd"] = spread_brl.fillna(0.0) / rate
+        spread_usdc = df.get("spread_revenue_usdc", pd.Series(0.0, index=df.index))
+        df["spread_usd"] = spread_brl.fillna(0.0) / rate + spread_usdc.fillna(0.0)
         agg = (
             df.groupby("month")
             .agg(

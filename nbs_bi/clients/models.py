@@ -103,8 +103,12 @@ class ClientModel:
             DataFrame with ``onramp_revenue_usd`` and ``net_revenue_usd`` added.
         """
         out = df.copy()
-        out["onramp_revenue_usd"] = out.get("onramp_revenue_brl", 0) / fx
-        out["offramp_revenue_usd"] = out.get("offramp_revenue_brl", 0) / fx
+        out["onramp_revenue_usd"] = (
+            out.get("onramp_revenue_brl", 0) / fx + out.get("onramp_revenue_usdc", 0)
+        )
+        out["offramp_revenue_usd"] = (
+            out.get("offramp_revenue_brl", 0) / fx + out.get("offramp_revenue_usdc", 0)
+        )
         out["net_revenue_usd"] = (
             out["onramp_revenue_usd"]
             + out["offramp_revenue_usd"]
@@ -420,7 +424,10 @@ class ClientModel:
                 columns=["user_id", "signup_month", "months_since_signup", "cum_ltv"]
             )
         fx = self._q.fx_rate()
-        monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx
+        usdc_rev = monthly.get(
+            "conversion_revenue_usdc", pd.Series(0.0, index=monthly.index)
+        ).fillna(0.0)
+        monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx + usdc_rev
         monthly["month"] = pd.to_datetime(monthly["month"])
 
         card_monthly = self._q.card_transactions_monthly()

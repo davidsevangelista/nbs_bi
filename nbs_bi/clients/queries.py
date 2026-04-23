@@ -72,18 +72,26 @@ LEFT JOIN user_profiles up ON up.user_id = u.id
 
 _CONVERSION_REVENUE_SQL = """
 SELECT
-    user_id::TEXT                                                       AS user_id,
+    user_id::TEXT AS user_id,
     SUM(CASE WHEN direction = 'brl_to_usdc'
-             THEN fee_amount_brl + spread_revenue_brl ELSE 0 END)      AS onramp_revenue_brl,
+             THEN (fee_amount_brl + spread_revenue_brl)::FLOAT / 100.0
+             ELSE 0 END) AS onramp_revenue_brl,
     SUM(CASE WHEN direction = 'usdc_to_brl'
-             THEN fee_amount_brl + spread_revenue_brl ELSE 0 END)      AS offramp_revenue_brl,
-    COUNT(*)                                                            AS n_conversions,
+             THEN (fee_amount_brl + spread_revenue_brl)::FLOAT / 100.0
+             ELSE 0 END) AS offramp_revenue_brl,
+    SUM(CASE WHEN direction = 'brl_to_usdc'
+             THEN (fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0
+             ELSE 0 END) AS onramp_revenue_usdc,
+    SUM(CASE WHEN direction = 'usdc_to_brl'
+             THEN (fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0
+             ELSE 0 END) AS offramp_revenue_usdc,
+    COUNT(*) AS n_conversions,
     SUM(CASE WHEN direction = 'brl_to_usdc'
              THEN (from_amount_brl)::FLOAT / 100.0
-             ELSE 0 END)                                                AS onramp_volume_brl,
+             ELSE 0 END) AS onramp_volume_brl,
     SUM(CASE WHEN direction = 'usdc_to_brl'
              THEN (from_amount_usdc)::FLOAT / 1000000.0
-             ELSE 0 END)                                                AS offramp_volume_usdc
+             ELSE 0 END) AS offramp_volume_usdc
 FROM conversion_quotes
 WHERE used = TRUE
   AND created_at >= :start
@@ -93,9 +101,10 @@ GROUP BY user_id
 
 _CONVERSION_MONTHLY_SQL = """
 SELECT
-    user_id::TEXT                                           AS user_id,
-    DATE_TRUNC('month', created_at)::DATE                   AS month,
-    SUM(fee_amount_brl + spread_revenue_brl)                AS conversion_revenue_brl
+    user_id::TEXT                                                        AS user_id,
+    DATE_TRUNC('month', created_at)::DATE                                AS month,
+    SUM(fee_amount_brl + spread_revenue_brl)::FLOAT / 100.0             AS conversion_revenue_brl,
+    SUM(fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0       AS conversion_revenue_usdc
 FROM conversion_quotes
 WHERE used = TRUE
 GROUP BY user_id, DATE_TRUNC('month', created_at)
