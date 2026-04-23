@@ -612,7 +612,7 @@ class CampaignAnalyzer:
 
             incremental = max(0.0, cohort_users - expected_organic)
             roas = total_rev / spend if spend > 0 else np.nan
-            cac_full = spend / cohort_users if cohort_users > 0 else np.nan
+            cac_full = spend / transacting if transacting > 0 else np.nan
             cac_incr = spend / incremental if incremental > 0 else np.nan
             avg_rev_tx = total_rev / transacting if transacting > 0 else np.nan
 

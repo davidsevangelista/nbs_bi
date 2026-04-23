@@ -528,7 +528,7 @@ def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
         go.Bar(
             x=summary["campaign_id"],
             y=summary["cac_full"],
-            name="CAC (all cohort users)",
+            name="CAC (active users)",
             marker_color=AMBER,
             text=summary["cac_full"].apply(lambda v: f"${v:.2f}" if pd.notna(v) else "n/a"),
             textposition="outside",
@@ -802,17 +802,19 @@ class MetaAdsSection:
         """
         total_spend = float(summary["total_spend_usd"].sum())
         total_rev = float(summary["total_revenue_usd"].sum())
-        n_users = int(summary["cohort_users"].sum())
+        transacting = int(summary["transacting_users"].sum())
+        total_incremental = float(summary["incremental_users_est"].sum())
         overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
         best_roas = float(summary["roas"].max()) if "roas" in summary.columns else 0.0
-        cac_full = total_spend / n_users if n_users > 0 else float("nan")
+        cac_active = total_spend / transacting if transacting > 0 else float("nan")
+        cac_incr = total_spend / total_incremental if total_incremental > 0 else float("nan")
 
         has_profit = (
             cum_profit_df is not None
             and not cum_profit_df.empty
             and "cum_profit_usd" in cum_profit_df.columns
         )
-        cols = st.columns(6 if has_profit else 5)
+        cols = st.columns(7 if has_profit else 6)
         cols[0].metric("Total Meta Spend", fmt_usd(total_spend))
         cols[1].metric("Cohort Revenue", fmt_usd(total_rev))
         cols[2].metric(
@@ -822,10 +824,17 @@ class MetaAdsSection:
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
         cols[3].metric("Best Campaign ROAS", f"{best_roas:.2f}×")
-        cols[4].metric("Full-Cohort CAC", fmt_usd(cac_full) if not np.isnan(cac_full) else "n/a")
+        cols[4].metric(
+            "CAC (active users)",
+            fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
+        )
+        cols[5].metric(
+            "CAC (incremental)",
+            fmt_usd(cac_incr) if not np.isnan(cac_incr) else "n/a",
+        )
         if has_profit:
             net_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[union-attr]
-            cols[5].metric(
+            cols[6].metric(
                 "Net Profit (latest cohort)",
                 fmt_usd(net_profit),
                 delta="profitable" if net_profit >= 0 else "loss",
@@ -834,9 +843,10 @@ class MetaAdsSection:
 
         st.caption(
             "Revenue is from ALL users who signed up during campaign windows — "
-            "includes organic signups. Net Profit deducts card COGS (Rain invoice) "
-            "and ad spend. CAC (incremental) in the table below "
-            "estimates only Meta-attributed uplift."
+            "includes organic signups. "
+            "CAC (active users) = ad spend ÷ transacting users in cohort. "
+            "CAC (incremental) = ad spend ÷ signups above organic baseline. "
+            "Net Profit deducts card COGS (Rain invoice) and ad spend."
         )
 
     def _render_spend_charts(  # pragma: no cover

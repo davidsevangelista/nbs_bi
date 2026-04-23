@@ -270,7 +270,7 @@ def test_roi_summary_cac_full():
     )
     summary = analyzer.roi_summary()
     c1 = summary[summary["campaign_id"] == "campaign_1"].iloc[0]
-    expected_cac = c1["total_spend_usd"] / 100
+    expected_cac = c1["total_spend_usd"] / 12  # denominator is transacting_users
     assert pytest.approx(c1["cac_full"], rel=1e-3) == expected_cac
 
 
