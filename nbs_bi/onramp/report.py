@@ -183,14 +183,15 @@ class OnrampReport:
             ("Total revenue BRL", revenue_brl, "Fees + spread captured in BRL"),
         ]
 
-        if not conv_df.empty:
-            rev_usdc = conv_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(0.0) + conv_df.get(
-                "spread_revenue_usdc", pd.Series(0.0)
+        if not conv_df.empty and "exchange_rate" in conv_df.columns:
+            rev_brl = conv_df.get("fee_amount_brl", pd.Series(0.0)).fillna(0.0) + conv_df.get(
+                "spread_revenue_brl", pd.Series(0.0)
             ).fillna(0.0)
-            revenue_usd = float(rev_usdc.sum())
+            rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(0, float("nan"))
+            revenue_usd = float((rev_brl / rate).sum())
         else:
             revenue_usd = 0.0
-        rows.append(("Total revenue USD", revenue_usd, "Fees + spread in USD (per-tx rate)"))
+        rows.append(("Total revenue USD", revenue_usd, "BRL fees + spread converted at per-tx rate"))
 
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
 
