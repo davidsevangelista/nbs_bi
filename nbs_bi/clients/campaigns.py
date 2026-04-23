@@ -941,10 +941,11 @@ class CampaignAnalyzer:
         result["daily_ad_spend_usd"] = (
             result["date"].map(spend_indexed).fillna(0.0).astype("float64")
         )
-        # Contribution margin: revenue minus direct card-program cost only.
-        # Meta Ads spend is the campaign acquisition cost and is tracked
-        # separately in the spend chart — not a running deduction here.
-        result["daily_profit_usd"] = result["daily_rev_total_usd"] - result["daily_card_cogs_usd"]
+        result["daily_profit_usd"] = (
+            result["daily_rev_total_usd"]
+            - result["daily_card_cogs_usd"]
+            - result["daily_ad_spend_usd"]
+        )
         result["daily_txn_count"] = txn_full["txn_count"].values
         result["daily_conversion_count"] = conv_full["conv_count"].values
         result["cum_rev_conversion_usd"] = result["daily_rev_conversion_usd"].cumsum()
