@@ -28,9 +28,8 @@ from nbs_bi.reporting.theme import (
     AMBER,
     BLUE,
     EMERALD,
-    ROSE,
     TEAL,
-    fmt_brl,
+    fmt_usd,
     mask_user_id,
     panel,
     rgba,
@@ -265,7 +264,6 @@ def _fig_fx_rate(fx_stats: pd.DataFrame) -> go.Figure:
     return fig
 
 
-
 def _fig_new_vs_returning(nvr: pd.DataFrame) -> go.Figure:
     """Stacked bar: new vs returning users per month.
 
@@ -288,7 +286,6 @@ def _fig_new_vs_returning(nvr: pd.DataFrame) -> go.Figure:
     layout["yaxis"]["title"] = "Users"
     fig.update_layout(**layout)
     return fig
-
 
 
 # ---------------------------------------------------------------------------
@@ -327,17 +324,22 @@ class RampSection:
     # ------------------------------------------------------------------
 
     def _render_kpis(self) -> None:
-        """Render the 6-metric KPI strip at the top of the Ramp tab."""
+        """Render the KPI strips at the top of the Ramp tab."""
         summary = _get(self._r, "summary")
         behavior = self._r.get("user_behavior", {})
 
-        cols = st.columns(6)
+        cols = st.columns(5)
         cols[0].metric("Conversions", f"{int(_kpi(summary, 'Total conversions')):,}")
-        cols[1].metric("Onramp BRL", fmt_brl(_kpi(summary, "Onramp volume BRL")))
-        cols[2].metric("Offramp BRL", fmt_brl(_kpi(summary, "Offramp volume BRL")))
-        cols[3].metric("Revenue BRL", fmt_brl(_kpi(summary, "Total revenue BRL")))
-        cols[4].metric("Unique Users", f"{behavior.get('unique_users', 0):,}")
-        cols[5].metric("Repeat Rate", f"{behavior.get('repeat_rate', 0):.1%}")
+        cols[1].metric("Volume (USD)", fmt_usd(_kpi(summary, "Total volume USD")))
+        cols[2].metric("Revenue (USD)", fmt_usd(_kpi(summary, "Total revenue USD")))
+        cols[3].metric("Unique Users", f"{behavior.get('unique_users', 0):,}")
+        cols[4].metric("Repeat Rate", f"{behavior.get('repeat_rate', 0):.1%}")
+
+        st.caption("Last 30 days")
+        cols2 = st.columns(5)
+        cols2[0].metric("Conversions", f"{int(_kpi(summary, 'Total conversions L30')):,}")
+        cols2[1].metric("Volume (USD)", fmt_usd(_kpi(summary, "Total volume USD L30")))
+        cols2[2].metric("Revenue (USD)", fmt_usd(_kpi(summary, "Total revenue USD L30")))
 
     def _render_volume(self) -> None:
         """Render the volume bar chart with granularity toggle."""
@@ -354,7 +356,6 @@ class RampSection:
             key="ramp_vol_gran",
         )
         st.plotly_chart(_fig_volume(conv_daily, granularity), width="stretch")
-
 
     def _render_revenue_by_direction(self) -> None:
         """Render the monthly revenue split by direction bar chart."""
@@ -432,4 +433,3 @@ class RampSection:
             st.info("No FX data for this period.")
             return
         st.plotly_chart(_fig_fx_rate(fx), width="stretch")
-

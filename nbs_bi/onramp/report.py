@@ -149,6 +149,10 @@ class OnrampReport:
         unique_conv_users = 0
         revenue_brl = 0.0
         revenue_usdc = 0.0
+        volume_usd = 0.0
+        total_conv_l30 = 0
+        volume_usd_l30 = 0.0
+        revenue_usd_l30 = 0.0
 
         if not conv_df.empty and "direction" in conv_df.columns:
             on_mask = conv_df["direction"].str.lower().isin({"brl_to_usdc", "buy", "onramp"})
@@ -174,6 +178,52 @@ class OnrampReport:
             revenue_brl = float(rev_brl.sum())
             revenue_usdc = float(rev_usdc.sum())
 
+            vol_on = (
+                float(conv_df.loc[on_mask, "to_amount_usdc"].fillna(0.0).sum())
+                if "to_amount_usdc" in conv_df.columns
+                else 0.0
+            )
+            vol_off = (
+                float(conv_df.loc[~on_mask, "from_amount_usdc"].fillna(0.0).sum())
+                if "from_amount_usdc" in conv_df.columns
+                else 0.0
+            )
+            volume_usd = vol_on + vol_off
+
+            if "created_at" in conv_df.columns:
+                cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=30)
+                ts = pd.to_datetime(conv_df["created_at"], utc=True)
+                l30_df = conv_df.loc[ts >= cutoff]
+                if not l30_df.empty:
+                    on_l30 = l30_df["direction"].str.lower().isin({"brl_to_usdc", "buy", "onramp"})
+                    total_conv_l30 = len(l30_df)
+                    vol_on_l30 = (
+                        float(l30_df.loc[on_l30, "to_amount_usdc"].fillna(0.0).sum())
+                        if "to_amount_usdc" in l30_df.columns
+                        else 0.0
+                    )
+                    vol_off_l30 = (
+                        float(l30_df.loc[~on_l30, "from_amount_usdc"].fillna(0.0).sum())
+                        if "from_amount_usdc" in l30_df.columns
+                        else 0.0
+                    )
+                    volume_usd_l30 = vol_on_l30 + vol_off_l30
+                    rev_brl_l30 = l30_df.get("fee_amount_brl", pd.Series(0.0)).fillna(
+                        0.0
+                    ) + l30_df.get("spread_revenue_brl", pd.Series(0.0)).fillna(0.0)
+                    rev_usdc_l30 = l30_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(
+                        0.0
+                    ) + l30_df.get("spread_revenue_usdc", pd.Series(0.0)).fillna(0.0)
+                    if "exchange_rate" in l30_df.columns:
+                        rate_l30 = pd.to_numeric(l30_df["exchange_rate"], errors="coerce").replace(
+                            0, float("nan")
+                        )
+                        revenue_usd_l30 = float((rev_brl_l30 / rate_l30).sum()) + float(
+                            rev_usdc_l30.sum()
+                        )
+                    else:
+                        revenue_usd_l30 = float(rev_usdc_l30.sum())
+
         rows = [
             ("PIX IN (dep)", pix_in, "BRL deposits via PIX"),
             ("PIX OUT (transf)", pix_out, "BRL withdrawals via PIX"),
@@ -188,6 +238,10 @@ class OnrampReport:
             ("Offramp volume BRL", conv_brl_offramp, "USDC→BRL client volume"),
             ("Total revenue BRL", revenue_brl, "Fees + spread in BRL"),
             ("Total revenue USDC", revenue_usdc, "Fees + spread in USDC"),
+            ("Total volume USD", volume_usd, "Onramp + offramp volume in USDC"),
+            ("Total conversions L30", total_conv_l30, "Conversions in last 30 days"),
+            ("Total volume USD L30", volume_usd_l30, "Onramp + offramp USD last 30 days"),
+            ("Total revenue USD L30", revenue_usd_l30, "Fees + spread USD last 30 days"),
         ]
 
         if not conv_df.empty and "exchange_rate" in conv_df.columns:
@@ -201,9 +255,7 @@ class OnrampReport:
             revenue_usd = float((rev_brl / rate).sum()) + float(rev_usdc.sum())
         else:
             revenue_usd = revenue_usdc
-        rows.append(
-            ("Total revenue USD", revenue_usd, "BRL fees at per-tx rate + USDC fees")
-        )
+        rows.append(("Total revenue USD", revenue_usd, "BRL fees at per-tx rate + USDC fees"))
 
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
 
@@ -229,10 +281,9 @@ class OnrampReport:
         )
         raw_rate = df.get("exchange_rate", pd.Series(dtype=float))
         rate = pd.to_numeric(raw_rate, errors="coerce").replace(0, float("nan"))
-        df["fee_usd"] = (
-            df["fee_amount_brl"].fillna(0.0) / rate
-            + df.get("fee_amount_usdc", pd.Series(0.0, index=df.index)).fillna(0.0)
-        )
+        df["fee_usd"] = df["fee_amount_brl"].fillna(0.0) / rate + df.get(
+            "fee_amount_usdc", pd.Series(0.0, index=df.index)
+        ).fillna(0.0)
         spread_brl = df.get("spread_revenue_brl", pd.Series(0.0, index=df.index))
         spread_usdc = df.get("spread_revenue_usdc", pd.Series(0.0, index=df.index))
         df["spread_usd"] = spread_brl.fillna(0.0) / rate + spread_usdc.fillna(0.0)
