@@ -103,6 +103,15 @@ def _default_date_range() -> tuple[str, str]:
     return start.isoformat(), exclusive_end.isoformat()
 
 
+def _render_sidebar() -> None:
+    """Render sidebar controls including a cache-clear button."""
+    with st.sidebar:
+        st.caption("Cache")
+        if st.button("Clear cache & reload", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+
 # ---------------------------------------------------------------------------
 # Tab renderers
 # ---------------------------------------------------------------------------
@@ -214,6 +223,7 @@ def main() -> None:
     )
 
     st.title("NBS Data Analytics")
+    _render_sidebar()
 
     invoice_total, _invoice_id, _invoice_period = _latest_rain_invoice_total()
     start_date, end_date = _default_date_range()
