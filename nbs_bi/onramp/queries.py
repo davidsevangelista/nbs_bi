@@ -143,6 +143,30 @@ WHERE status = 'settled'
   AND created_at <  :end_date
 """
 
+_CARD_FEES_MONTHLY_SQL = """
+SELECT
+    date_trunc('month', paid_at)::DATE AS month,
+    COALESCE(SUM(amount_usdc::FLOAT), 0.0) AS card_fee_usd
+FROM card_annual_fees
+WHERE status = 'paid'
+  AND paid_at >= :start_date
+  AND paid_at <  :end_date
+GROUP BY 1
+ORDER BY 1
+"""
+
+_BILLING_MONTHLY_SQL = """
+SELECT
+    date_trunc('month', created_at)::DATE AS month,
+    COALESCE(SUM(amount::FLOAT / 1000000.0), 0.0) AS billing_usd
+FROM billing_charges
+WHERE status = 'settled'
+  AND created_at >= :start_date
+  AND created_at <  :end_date
+GROUP BY 1
+ORDER BY 1
+"""
+
 _SWAPS_ACTIVE_SQL = """
 SELECT user_id::TEXT AS user_id, "timestamp" AS created_at
 FROM swap_transactions
@@ -542,9 +566,7 @@ class OnrampQueries:
         Returns:
             DataFrame with one row per swap transaction.
         """
-        return self._run(
-            "swaps_active", _SWAPS_ACTIVE_SQL, self._date_params(start_date, end_date)
-        )
+        return self._run("swaps_active", _SWAPS_ACTIVE_SQL, self._date_params(start_date, end_date))
 
     def payouts_active(
         self,
@@ -600,3 +622,31 @@ class OnrampQueries:
             Sum of amount / 1_000_000 for settled billing_charges records.
         """
         return self._run_scalar(_BILLING_REVENUE_SQL, self._date_params(start_date, end_date))
+
+    def card_revenue_monthly(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Monthly card revenue split into card fees and billing charges (USD).
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with columns: month (timestamp), card_fee_usd, billing_usd.
+        """
+        params = self._date_params(start_date, end_date)
+        fees = self._run("card_fees_monthly", _CARD_FEES_MONTHLY_SQL, params)
+        billing = self._run("billing_monthly", _BILLING_MONTHLY_SQL, params)
+
+        if fees.empty and billing.empty:
+            return pd.DataFrame(columns=["month", "card_fee_usd", "billing_usd"])
+
+        fees["month"] = pd.to_datetime(fees["month"])
+        billing["month"] = pd.to_datetime(billing["month"])
+
+        merged = fees.merge(billing, on="month", how="outer").fillna(0.0)
+        return merged.sort_values("month").reset_index(drop=True)

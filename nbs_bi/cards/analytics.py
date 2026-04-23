@@ -105,6 +105,25 @@ WHERE status = 'completed'
 ORDER BY posted_at
 """
 
+_SQL_TOP_SPENDERS = """\
+SELECT
+    ct.user_id::text,
+    COUNT(*)                        AS n_transactions,
+    SUM(ct.amount)::float / 100     AS total_usd,
+    COUNT(DISTINCT cq.id)::int      AS ramp_conversions
+FROM card_transactions ct
+LEFT JOIN conversion_quotes cq
+       ON cq.user_id = ct.user_id AND cq.used = TRUE
+WHERE ct.status = 'completed'
+  AND ct.transaction_type = 'spend'
+  AND ct.posted_at IS NOT NULL
+  AND (:date_from IS NULL OR ct.posted_at >= :date_from)
+  AND (:date_to   IS NULL OR ct.posted_at <  :date_to)
+GROUP BY ct.user_id
+ORDER BY total_usd DESC
+LIMIT 20
+"""
+
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
@@ -145,6 +164,43 @@ def load_card_transactions(
     if date_to:
         raw = raw[raw["posted_at"].dt.date <= date_to]
     return raw
+
+
+def load_top_card_spenders(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db_url: str = "",
+) -> pd.DataFrame:
+    """Fetch per-user card spend aggregates with a ramp cross-sell signal.
+
+    Args:
+        date_from: Inclusive start filter on ``posted_at``.
+        date_to: Exclusive end filter on ``posted_at``.
+        db_url: Override the database URL; falls back to READONLY_DATABASE_URL.
+
+    Returns:
+        DataFrame with columns ``user_id`` (text), ``n_transactions`` (int),
+        ``total_usd`` (float64), ``ramp_conversions`` (int), sorted descending
+        by ``total_usd``.  Contains at most 20 rows.
+
+    Raises:
+        RuntimeError: If no database URL is configured.
+    """
+    url = db_url or READONLY_DATABASE_URL
+    if not url:
+        raise RuntimeError("No database URL configured. Set READONLY_DATABASE_URL in .env.")
+    params = {
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+    }
+    engine = sa.create_engine(url)
+    with engine.connect() as conn:
+        df = pd.read_sql(sa.text(_SQL_TOP_SPENDERS), conn, params=params)
+    df["n_transactions"] = df["n_transactions"].astype("int64")
+    df["ramp_conversions"] = df["ramp_conversions"].astype("int64")
+    df["total_usd"] = df["total_usd"].astype("float64")
+    logger.info("Loaded top %d card spenders from DB", len(df))
+    return df
 
 
 # ---------------------------------------------------------------------------

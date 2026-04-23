@@ -883,7 +883,15 @@ class CardAnalyticsSection:
             f"Invoice {selected_model.inputs.invoice_id} ({selected_period}) — "
             f"modelled ${total:,.2f} USD{billed_str}."
         )
-        CardSection(selected_model, history=history).render()
+        top_spenders = None
+        if self._db_url:
+            try:
+                top_spenders = self._load_top_spenders(
+                    self._db_url, self._date_from, self._date_to
+                )
+            except Exception as exc:
+                st.warning(f"Could not load top card spenders: {exc}")
+        CardSection(selected_model, history=history, top_spenders=top_spenders).render()
 
     def _render_evolution(self) -> None:
         """Render the Evolução sub-tab: aggregate cross-invoice cost analysis."""
@@ -1161,3 +1169,24 @@ class CardAnalyticsSection:
         from nbs_bi.cards.analytics import load_card_transactions
 
         return load_card_transactions(date_from=date_from, date_to=date_to, db_url=db_url)
+
+    @staticmethod
+    @st.cache_data(show_spinner="Loading top card spenders…")
+    def _load_top_spenders(
+        db_url: str,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> pd.DataFrame:
+        """Cached top-spenders fetch with ramp cross-sell signal.
+
+        Args:
+            db_url: Read-only database URL.
+            date_from: Inclusive start filter.
+            date_to: Exclusive end filter.
+
+        Returns:
+            DataFrame with user_id, n_transactions, total_usd, ramp_conversions.
+        """
+        from nbs_bi.cards.analytics import load_top_card_spenders
+
+        return load_top_card_spenders(date_from=date_from, date_to=date_to, db_url=db_url)

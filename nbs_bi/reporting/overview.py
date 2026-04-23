@@ -23,6 +23,7 @@ from nbs_bi.reporting.theme import (
     BLUE,
     EMERALD,
     TEAL,
+    VIOLET,
     fmt_brl,
     fmt_usd,
     panel,
@@ -165,11 +166,15 @@ def _mom_annotations(series: pd.Series) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _fig_monthly_revenue(revenue_monthly: pd.DataFrame) -> go.Figure | None:
-    """Stacked area: monthly fee + spread revenue in BRL.
+def _fig_monthly_revenue(
+    revenue_monthly: pd.DataFrame,
+    card_revenue_monthly: pd.DataFrame | None = None,
+) -> go.Figure | None:
+    """Stacked bar: monthly conversion + card revenue in USD.
 
     Args:
-        revenue_monthly: DataFrame with columns month, fee_brl, spread_brl.
+        revenue_monthly: DataFrame with columns month, fee_usd, spread_usd.
+        card_revenue_monthly: DataFrame with columns month, card_fee_usd, billing_usd.
 
     Returns:
         Plotly Figure or None if data is empty.
@@ -177,24 +182,28 @@ def _fig_monthly_revenue(revenue_monthly: pd.DataFrame) -> go.Figure | None:
     if _empty(revenue_monthly):
         return None
     fig = go.Figure()
-    for col, label, color in [
-        ("fee_brl", "Fees", TEAL),
-        ("spread_brl", "Spread", BLUE),
-    ]:
-        if col in revenue_monthly.columns:
+    traces = [
+        ("fee_usd", "Conv Fees", TEAL, revenue_monthly),
+        ("spread_usd", "Conv Spread", BLUE, revenue_monthly),
+    ]
+    if not _empty(card_revenue_monthly):
+        traces += [
+            ("card_fee_usd", "Card Fees", AMBER, card_revenue_monthly),
+            ("billing_usd", "Card Billing", VIOLET, card_revenue_monthly),
+        ]
+    for col, label, color, df in traces:
+        if col in df.columns:
             fig.add_trace(
-                go.Scatter(
-                    x=revenue_monthly["month"],
-                    y=revenue_monthly[col],
+                go.Bar(
+                    x=df["month"],
+                    y=df[col],
                     name=label,
-                    stackgroup="rev",
-                    mode="lines",
-                    line=dict(width=1, color=color),
-                    fillcolor=rgba(color),
+                    marker_color=color,
                 )
             )
-    layout = panel("Monthly Revenue (BRL)")
-    layout["yaxis"]["title"] = "BRL"
+    layout = panel("Monthly Revenue (USD)")
+    layout["barmode"] = "stack"
+    layout["yaxis"]["title"] = "USD"
     fig.update_layout(**layout)
     return fig
 
@@ -384,7 +393,6 @@ class OverviewSection:
                 "Revenue",
                 fmt_usd(total_card_rev),
                 f"Fees {fmt_usd(card_fee_usd)} · Billing {fmt_usd(billing_usd)}",
-                highlight=True,
             ),
             unsafe_allow_html=True,
         )
@@ -444,8 +452,11 @@ class OverviewSection:
         s4.markdown(_kpi_strip("KYC %", f"{kyc_pct:.1%}"), unsafe_allow_html=True)
 
     def _render_revenue_trend(self) -> None:
-        """Render the monthly revenue stacked area chart."""
-        fig = _fig_monthly_revenue(_get(self._r, "revenue_monthly"))
+        """Render the monthly revenue stacked bar chart."""
+        fig = _fig_monthly_revenue(
+            _get(self._r, "revenue_monthly"),
+            _get(self._r, "card_revenue_monthly"),
+        )
         if fig is None:
             st.info("No revenue data for this period.")
             return

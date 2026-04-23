@@ -106,13 +106,14 @@ class OnrampReport:
             "new_vs_returning": model.monthly_new_vs_returning() if model else pd.DataFrame(),
             "card_daily": self._build_card_daily(card_tx_df),
             "card_revenue": {
-                "card_fee_usd": q.card_fees_revenue_total(
-                    start_date=start_date, end_date=end_date
-                ),
+                "card_fee_usd": q.card_fees_revenue_total(start_date=start_date, end_date=end_date),
                 "billing_usd": q.billing_charges_revenue_total(
                     start_date=start_date, end_date=end_date
                 ),
             },
+            "card_revenue_monthly": q.card_revenue_monthly(
+                start_date=start_date, end_date=end_date
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -191,19 +192,22 @@ class OnrampReport:
             revenue_usd = float((rev_brl / rate).sum())
         else:
             revenue_usd = 0.0
-        rows.append(("Total revenue USD", revenue_usd, "BRL fees + spread converted at per-tx rate"))
+        rows.append(
+            ("Total revenue USD", revenue_usd, "BRL fees + spread converted at per-tx rate")
+        )
 
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
 
     @staticmethod
     def _build_revenue_monthly(conv_df: pd.DataFrame) -> pd.DataFrame:
-        """Monthly revenue split into explicit fees vs spread.
+        """Monthly revenue split into explicit fees vs spread, in BRL and USD.
 
         Args:
             conv_df: Conversions DataFrame (monetary columns already scaled).
 
         Returns:
-            DataFrame with columns: month, fee_brl, spread_brl, total_revenue_brl.
+            DataFrame with columns: month, fee_brl, spread_brl,
+            total_revenue_brl, fee_usd, spread_usd.
         """
         if conv_df.empty or "fee_amount_brl" not in conv_df.columns:
             return pd.DataFrame()
@@ -214,11 +218,18 @@ class OnrampReport:
             .dt.to_period("M")
             .dt.to_timestamp()
         )
+        raw_rate = df.get("exchange_rate", pd.Series(dtype=float))
+        rate = pd.to_numeric(raw_rate, errors="coerce").replace(0, float("nan"))
+        df["fee_usd"] = df["fee_amount_brl"].fillna(0.0) / rate
+        spread_brl = df.get("spread_revenue_brl", pd.Series(0.0, index=df.index))
+        df["spread_usd"] = spread_brl.fillna(0.0) / rate
         agg = (
             df.groupby("month")
             .agg(
                 fee_brl=("fee_amount_brl", "sum"),
                 spread_brl=("spread_revenue_brl", "sum"),
+                fee_usd=("fee_usd", "sum"),
+                spread_usd=("spread_usd", "sum"),
             )
             .reset_index()
         )
@@ -346,8 +357,7 @@ class OnrampReport:
 
         all_sources = [dep_df, trf_df, card_tx_df, card_fee_df, billing_df, swap_df, payout_df]
         frames = [
-            f for f in all_sources
-            if f is not None and not f.empty and "user_id" in f.columns
+            f for f in all_sources if f is not None and not f.empty and "user_id" in f.columns
         ]
         if not frames:
             return pd.DataFrame()
@@ -390,9 +400,9 @@ class OnrampReport:
             return pd.DataFrame()
 
         df = dep_df.copy()
-        df["created_at"] = (
-            pd.to_datetime(df["created_at"], errors="coerce", utc=True).dt.tz_convert(None)
-        )
+        df["created_at"] = pd.to_datetime(
+            df["created_at"], errors="coerce", utc=True
+        ).dt.tz_convert(None)
         df = df.dropna(subset=["created_at"])
         if df.empty:
             return pd.DataFrame()
