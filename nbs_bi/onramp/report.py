@@ -178,35 +178,49 @@ class OnrampReport:
             revenue_brl = float(rev_brl.sum())
             revenue_usdc = float(rev_usdc.sum())
 
-            vol_on = (
-                float(conv_df.loc[on_mask, "to_amount_usdc"].fillna(0.0).sum())
-                if "to_amount_usdc" in conv_df.columns
-                else 0.0
-            )
-            vol_off = (
-                float(conv_df.loc[~on_mask, "from_amount_usdc"].fillna(0.0).sum())
-                if "from_amount_usdc" in conv_df.columns
-                else 0.0
-            )
-            volume_usd = vol_on + vol_off
+            if "exchange_rate" in conv_df.columns:
+                rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(
+                    0, float("nan")
+                )
+                vol_on = (
+                    float(
+                        (conv_df.loc[on_mask, "from_amount_brl"].fillna(0.0) / rate[on_mask]).sum()
+                    )
+                    if "from_amount_brl" in conv_df.columns
+                    else 0.0
+                )
+                vol_off = (
+                    float(
+                        (conv_df.loc[~on_mask, "to_amount_brl"].fillna(0.0) / rate[~on_mask]).sum()
+                    )
+                    if "to_amount_brl" in conv_df.columns
+                    else 0.0
+                )
+                volume_usd = vol_on + vol_off
 
             if "created_at" in conv_df.columns:
-                cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=30)
-                ts = pd.to_datetime(conv_df["created_at"], utc=True)
+                cutoff = pd.Timestamp.now() - pd.Timedelta(days=30)
+                ts = pd.to_datetime(conv_df["created_at"], utc=True).dt.tz_convert(None)
                 l30_df = conv_df.loc[ts >= cutoff]
                 if not l30_df.empty:
                     on_l30 = l30_df["direction"].str.lower().isin({"brl_to_usdc", "buy", "onramp"})
                     total_conv_l30 = len(l30_df)
-                    vol_on_l30 = (
-                        float(l30_df.loc[on_l30, "to_amount_usdc"].fillna(0.0).sum())
-                        if "to_amount_usdc" in l30_df.columns
-                        else 0.0
-                    )
-                    vol_off_l30 = (
-                        float(l30_df.loc[~on_l30, "from_amount_usdc"].fillna(0.0).sum())
-                        if "from_amount_usdc" in l30_df.columns
-                        else 0.0
-                    )
+                    if "exchange_rate" in l30_df.columns:
+                        rate_l30 = pd.to_numeric(l30_df["exchange_rate"], errors="coerce").replace(
+                            0, float("nan")
+                        )
+                        brl_on_l30 = (
+                            l30_df.loc[on_l30, "from_amount_brl"].fillna(0.0)
+                            if "from_amount_brl" in l30_df.columns
+                            else pd.Series(0.0)
+                        )
+                        brl_off_l30 = (
+                            l30_df.loc[~on_l30, "to_amount_brl"].fillna(0.0)
+                            if "to_amount_brl" in l30_df.columns
+                            else pd.Series(0.0)
+                        )
+                        vol_on_l30 = float((brl_on_l30 / rate_l30[on_l30]).sum())
+                        vol_off_l30 = float((brl_off_l30 / rate_l30[~on_l30]).sum())
                     volume_usd_l30 = vol_on_l30 + vol_off_l30
                     rev_brl_l30 = l30_df.get("fee_amount_brl", pd.Series(0.0)).fillna(
                         0.0
