@@ -30,26 +30,30 @@ import sqlalchemy as sa
 from plotly.subplots import make_subplots
 
 from nbs_bi.config import READONLY_DATABASE_URL
+from nbs_bi.reporting.theme import (
+    AMBER,
+    BG,
+    BLUE,
+    EMERALD,
+    GRID,
+    PLOT_BG,
+    ROSE,
+    TEXT,
+    TEXT_MUTED,
+    VIOLET,
+)
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Palette (light professional theme)
+# Palette — dark theme (background/layout from theme.py)
 # ---------------------------------------------------------------------------
 
-BG = "#FFFFFF"
-PLOT_BG = "#F8FAFC"
-GRID = "#E2E8F0"
-TEXT = "#1E293B"
-TEXT_MUTED = "#64748B"
-BLUE = "#2563EB"
-BLUE_LIGHT = "#BFDBFE"
-AMBER = "#D97706"
-AMBER_LIGHT = "#FDE68A"
-SLATE = "#475569"
-EMERALD = "#059669"
-PURPLE = "#7C3AED"
-ROSE = "#E11D48"
+# Aliases for local usage
+PURPLE = VIOLET
+SLATE = TEXT_MUTED
+BLUE_LIGHT = "rgba(59, 130, 246, 0.35)"  # muted blue for secondary bar fills
+AMBER_LIGHT = "#3B2800"  # dark amber for annotations/row highlights
 
 # Fee model palette — used consistently across all fee charts
 MODEL_COLORS: dict[str, str] = {
@@ -105,7 +109,7 @@ ORDER BY posted_at
 
 _SQL_TOP_SPENDERS = """\
 SELECT
-    ct.user_id::text,
+    agg.user_id::text,
     u.full_name,
     COALESCE(
         ur.source_type,
@@ -114,23 +118,35 @@ SELECT
     )                               AS acquisition_source,
     rc.code                         AS referral_code,
     rc.public_name                  AS referral_code_name,
-    COUNT(*)                        AS n_transactions,
-    SUM(ct.amount)::float / 100     AS total_usd,
-    COUNT(DISTINCT cq.id)::int      AS ramp_conversions
-FROM card_transactions ct
-LEFT JOIN users u               ON u.id = ct.user_id
-LEFT JOIN user_registrations ur ON ur.user_id = ct.user_id
+    agg.n_transactions,
+    agg.total_usd,
+    COALESCE(cq_agg.ramp_conversions, 0)::int AS ramp_conversions
+FROM (
+    SELECT
+        user_id,
+        COUNT(*)                AS n_transactions,
+        SUM(amount)::float / 100 AS total_usd
+    FROM card_transactions
+    WHERE status = 'completed'
+      AND transaction_type = 'spend'
+      AND posted_at IS NOT NULL
+      AND (:date_from IS NULL OR posted_at >= :date_from)
+      AND (:date_to   IS NULL OR posted_at <  :date_to)
+    GROUP BY user_id
+    ORDER BY total_usd DESC
+    LIMIT 20
+) agg
+LEFT JOIN users u               ON u.id = agg.user_id
+LEFT JOIN user_registrations ur ON ur.user_id = agg.user_id
 LEFT JOIN referral_codes rc     ON rc.id = ur.attributed_referral_code_id
-LEFT JOIN founders f            ON f.user_id = ct.user_id
-LEFT JOIN conversion_quotes cq  ON cq.user_id = ct.user_id AND cq.used = TRUE
-WHERE ct.status = 'completed'
-  AND ct.transaction_type = 'spend'
-  AND ct.posted_at IS NOT NULL
-  AND (:date_from IS NULL OR ct.posted_at >= :date_from)
-  AND (:date_to   IS NULL OR ct.posted_at <  :date_to)
-GROUP BY ct.user_id, u.full_name, acquisition_source, rc.code, rc.public_name
-ORDER BY total_usd DESC
-LIMIT 20
+LEFT JOIN founders f            ON f.user_id = agg.user_id
+LEFT JOIN (
+    SELECT user_id, COUNT(*) AS ramp_conversions
+    FROM conversion_quotes
+    WHERE used = TRUE
+    GROUP BY user_id
+) cq_agg                        ON cq_agg.user_id = agg.user_id
+ORDER BY agg.total_usd DESC
 """
 
 # ---------------------------------------------------------------------------
@@ -1412,7 +1428,7 @@ def fig_summary_table(smry: dict[str, Any]) -> go.Figure:
             header=dict(
                 values=["Período", "Transações", "Volume (USD)", "Qtd/dia", "USD/dia"],
                 fill_color=BLUE,
-                font=dict(color=BG, size=11, family="Arial"),
+                font=dict(color=TEXT, size=11, family="Arial"),
                 align="center",
                 height=30,
             ),
@@ -1817,16 +1833,16 @@ def fig_coverage_heatmap(grid_df: pd.DataFrame, rain_cost_usd: float) -> go.Figu
         xaxis_title="Taxa variável (%)",
         yaxis_title="Taxa fixa (USD/tx)",
         xaxis=dict(
-            tickfont=dict(color="#000000"),
-            title=dict(font=dict(color="#000000")),
-            linecolor="#000000",
-            tickcolor="#000000",
+            tickfont=dict(color=TEXT),
+            title=dict(font=dict(color=TEXT_MUTED)),
+            linecolor=GRID,
+            tickcolor=GRID,
         ),
         yaxis=dict(
-            tickfont=dict(color="#000000"),
-            title=dict(font=dict(color="#000000")),
-            linecolor="#000000",
-            tickcolor="#000000",
+            tickfont=dict(color=TEXT),
+            title=dict(font=dict(color=TEXT_MUTED)),
+            linecolor=GRID,
+            tickcolor=GRID,
         ),
         paper_bgcolor=BG,
         plot_bgcolor=PLOT_BG,
