@@ -26,8 +26,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from sqlalchemy import create_engine, text
-
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
@@ -328,6 +326,8 @@ def load_ad_spend_from_db(db_url: str) -> pd.DataFrame | None:
         or ``None`` if the table is missing, empty, or the query fails.
     """
     try:
+        from sqlalchemy import create_engine, text
+
         engine = create_engine(db_url)
         sql = text(
             "SELECT date, SUM(amount_usd) AS daily_spend_usd"
