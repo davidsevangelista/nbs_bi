@@ -191,6 +191,48 @@ def load_card_transactions(
     return raw
 
 
+_SQL_ACTIVE_CARDS = """\
+SELECT
+    card_variant,
+    COUNT(*) AS n_cards
+FROM cards
+WHERE status = 'active'
+GROUP BY card_variant
+"""
+
+
+def load_active_cards_summary(db_url: str = "") -> dict[str, int]:
+    """Query the cards table for live active card counts by variant.
+
+    Args:
+        db_url: Override the database URL; falls back to READONLY_DATABASE_URL.
+
+    Returns:
+        Dict with keys ``total``, ``founder``, ``basic`` (int counts).
+
+    Raises:
+        RuntimeError: If no database URL is configured.
+    """
+    url = db_url or READONLY_DATABASE_URL
+    if not url:
+        raise RuntimeError("No database URL configured. Set READONLY_DATABASE_URL in .env.")
+    engine = sa.create_engine(url)
+    with engine.connect() as conn:
+        rows = pd.read_sql(sa.text(_SQL_ACTIVE_CARDS), conn)
+    counts: dict[str, int] = {"total": 0, "founder": 0, "basic": 0}
+    for _, row in rows.iterrows():
+        variant = str(row["card_variant"]).lower()
+        n = int(row["n_cards"])
+        counts["total"] += n
+        if variant in counts:
+            counts[variant] = n
+    logger.info(
+        "Active cards from DB — total: %d, founder: %d, basic: %d",
+        counts["total"], counts["founder"], counts["basic"],
+    )
+    return counts
+
+
 def load_top_card_spenders(
     date_from: date | None = None,
     date_to: date | None = None,

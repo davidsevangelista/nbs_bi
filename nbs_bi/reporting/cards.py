@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -685,10 +686,12 @@ class CardSection:
         model: CardCostModel,
         history: list[tuple[str, CardCostModel]] | None = None,
         top_spenders: pd.DataFrame | None = None,
+        active_cards_live: dict[str, int] | None = None,
     ) -> None:
         self._model = model
         self._history = history
         self._top_spenders = top_spenders
+        self._active_cards_live = active_cards_live
 
     def render(self) -> None:
         """Render all card cost charts into the current Streamlit context."""
@@ -724,7 +727,16 @@ class CardSection:
             "Cost / Transaction",
             fmt_usd_precise(cpt) if cpt is not None else "—",
         )
-        cols[2].metric("Active Cards", f"{self._model.inputs.n_active_cards:,}")
+        if self._active_cards_live is not None:
+            live = self._active_cards_live
+            cols[2].metric(
+                "Active Cards",
+                f"{live['total']:,}",
+                delta=f"founder {live['founder']:,} · basic {live['basic']:,}",
+                delta_color="off",
+            )
+        else:
+            cols[2].metric("Active Cards", f"{self._model.inputs.n_active_cards:,}")
         cols[3].metric("Card Transactions", f"{self._model.inputs.n_transactions:,}")
         cols[4].metric("Top Cost Driver", top_driver_label)
 
@@ -896,12 +908,23 @@ class CardAnalyticsSection:
             f"modelled ${total:,.2f} USD{billed_str}."
         )
         top_spenders = None
+        active_cards_live = None
         if self._db_url:
             try:
                 top_spenders = self._load_top_spenders(self._db_url, self._date_from, self._date_to)
             except Exception as exc:
                 st.warning(f"Could not load top card spenders: {exc}")
-        CardSection(selected_model, history=history, top_spenders=top_spenders).render()
+            try:
+                from nbs_bi.cards.analytics import load_active_cards_summary
+                active_cards_live = load_active_cards_summary(self._db_url)
+            except Exception as exc:
+                st.warning(f"Could not load live active cards count: {exc}")
+        CardSection(
+            selected_model,
+            history=history,
+            top_spenders=top_spenders,
+            active_cards_live=active_cards_live,
+        ).render()
 
     def _render_evolution(self) -> None:
         """Render the Evolução sub-tab: aggregate cross-invoice cost analysis."""
@@ -943,8 +966,9 @@ class CardAnalyticsSection:
         # Total transactions across all invoice periods
         total_txns = sum(m.inputs.n_transactions for _, m in history)
 
-        # Revenue from DB (annual fees + billing charges)
+        # Revenue + live active cards from DB
         rev: dict = {"annual_fees_usd": 0.0, "billing_usd": 0.0}
+        active_cards_live: dict[str, int] | None = None
         if self._db_url:
             start_str = self._date_from.isoformat() if self._date_from else "2000-01-01"
             end_str = self._date_to.isoformat() if self._date_to else "2099-01-01"
@@ -952,6 +976,23 @@ class CardAnalyticsSection:
                 rev = self._load_card_revenue(self._db_url, start_str, end_str)
             except Exception:
                 pass
+            try:
+                from nbs_bi.cards.analytics import load_active_cards_summary
+                active_cards_live = load_active_cards_summary(self._db_url)
+            except Exception:
+                pass
+
+        def _active_metric(col: Any, label: str) -> None:
+            if active_cards_live is not None:
+                live = active_cards_live
+                col.metric(
+                    label,
+                    f"{live['total']:,}",
+                    delta=f"founder {live['founder']:,} · basic {live['basic']:,}",
+                    delta_color="off",
+                )
+            else:
+                col.metric(label, f"{latest_model.inputs.n_active_cards:,}")
 
         # Row 1 — revenue KPIs
         r1, r2, r3, r4, r5 = st.columns(5)
@@ -962,7 +1003,7 @@ class CardAnalyticsSection:
             "Total Revenue",
             fmt_usd(rev["annual_fees_usd"] + rev["billing_usd"]),
         )
-        r5.metric("Active Cards", f"{latest_model.inputs.n_active_cards:,}")
+        _active_metric(r5, "Active Cards")
 
         # Row 2 — cost KPIs
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -980,7 +1021,7 @@ class CardAnalyticsSection:
             delta_color="inverse",
         )
         c4.metric("Transactions (latest)", f"{latest_model.inputs.n_transactions:,}")
-        c5.metric("Active Cards (latest)", f"{latest_model.inputs.n_active_cards:,}")
+        _active_metric(c5, "Active Cards (latest)")
 
         st.divider()
         st.plotly_chart(_fig_trend(history), width="stretch", key="evo_trend")
