@@ -92,13 +92,13 @@ def _load_client_report(start_date: str, end_date: str, db_url: str, invoice_tot
 
 
 def _default_date_range() -> tuple[str, str]:
-    """Return a default (start, exclusive_end) date range covering ~3 months.
+    """Return a default (start, exclusive_end) date range covering all history.
 
     Returns:
         Tuple of ISO date strings (inclusive start, exclusive end).
     """
     today = date.today()
-    start = (today.replace(day=1) - timedelta(days=60)).replace(day=1)
+    start = date(2025, 8, 15)
     exclusive_end = today + timedelta(days=1)
     return start.isoformat(), exclusive_end.isoformat()
 
