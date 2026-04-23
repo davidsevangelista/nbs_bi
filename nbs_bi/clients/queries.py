@@ -188,6 +188,19 @@ WHERE status = 'completed'
 GROUP BY user_id
 """
 
+_CARD_TXS_MONTHLY_SQL = """
+SELECT
+    user_id::TEXT                               AS user_id,
+    DATE_TRUNC('month', posted_at)::DATE        AS month,
+    COUNT(*)                                    AS n_card_txns
+FROM card_transactions
+WHERE status = 'completed'
+  AND transaction_type = 'spend'
+  AND posted_at IS NOT NULL
+GROUP BY user_id, DATE_TRUNC('month', posted_at)
+ORDER BY user_id, month
+"""
+
 _REVENUE_GENERATING_SQL = """
 SELECT COUNT(DISTINCT user_id) AS revenue_generating_count
 FROM (
@@ -422,6 +435,19 @@ class ClientQueries:
             DataFrame with columns: user_id, user_tx_count, total_tx_count.
         """
         return self._run("card_txs", _CARD_TXS_SQL, self._date_params())
+
+    def card_transactions_monthly(self) -> pd.DataFrame:
+        """Monthly card spend transaction counts per user (full history).
+
+        No date filter — returns all months so that cohort LTV can deduct
+        processing costs at the correct activity month regardless of the
+        analysis window. Used by ``_build_monthly_ltv()`` for per-month cost
+        attribution.
+
+        Returns:
+            DataFrame with columns: user_id, month (date), n_card_txns (int).
+        """
+        return self._run("card_txs_monthly", _CARD_TXS_MONTHLY_SQL, {})
 
     def billing_charges(self) -> pd.DataFrame:
         """Per-user settled billing charges (actual card tx fee revenue).

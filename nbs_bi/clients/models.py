@@ -389,11 +389,30 @@ class ClientModel:
     # Cohort LTV
     # ------------------------------------------------------------------
 
-    def _build_monthly_ltv(self) -> pd.DataFrame:
-        """Build (user_id, signup_month, activity_month, monthly_revenue_usd).
+    def _cost_per_tx(self, card_monthly: pd.DataFrame) -> float:
+        """Derive per-transaction card processing cost from the Rain invoice.
+
+        Args:
+            card_monthly: Full-history monthly card tx counts per user
+                (columns: user_id, month, n_card_txns).
 
         Returns:
-            Long-format DataFrame for cohort pivot computation.
+            USD cost per card transaction (invoice_total / total_txns).
+        """
+        total_txns = int(card_monthly["n_card_txns"].sum()) if not card_monthly.empty else 0
+        return self._invoice_total / max(total_txns, 1)
+
+    def _build_monthly_ltv(self) -> pd.DataFrame:
+        """Build monthly net revenue per user for cohort LTV computation.
+
+        Converts BRL conversion revenue to USD, then deducts the pro-rata
+        Rain card processing cost for each user's card transactions in that
+        calendar month. The per-tx cost is derived from the actual invoice
+        total (``self._invoice_total / total_period_txns``).
+
+        Returns:
+            Long-format DataFrame with columns: user_id, signup_month,
+            acquisition_source, months_since_signup, cum_ltv.
         """
         monthly = self._q.conversion_monthly()
         if monthly.empty:
@@ -403,6 +422,26 @@ class ClientModel:
         fx = self._q.fx_rate()
         monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx
         monthly["month"] = pd.to_datetime(monthly["month"])
+
+        card_monthly = self._q.card_transactions_monthly()
+        cost_per_tx = self._cost_per_tx(card_monthly)
+        logger.debug("Card cost_per_tx=%.4f USD (invoice=%.2f)", cost_per_tx, self._invoice_total)
+
+        if not card_monthly.empty:
+            card_monthly = card_monthly.copy()
+            card_monthly["month"] = pd.to_datetime(card_monthly["month"])
+            card_monthly["card_cost_usd"] = card_monthly["n_card_txns"] * cost_per_tx
+            monthly = monthly.merge(
+                card_monthly[["user_id", "month", "card_cost_usd"]],
+                on=["user_id", "month"],
+                how="left",
+            )
+            monthly["card_cost_usd"] = monthly["card_cost_usd"].fillna(0.0)
+        else:
+            monthly["card_cost_usd"] = 0.0
+
+        monthly["revenue_usd"] = monthly["revenue_usd"] - monthly["card_cost_usd"]
+
         base = self._master[["user_id", "signup_date", "acquisition_source"]].copy()
         base["signup_month"] = (
             pd.to_datetime(base["signup_date"], utc=True).dt.tz_convert(None).dt.to_period("M")
