@@ -186,17 +186,6 @@ WHERE "timestamp" >= :start
 GROUP BY user_id
 """
 
-_PAYOUT_SQL = """
-SELECT
-    user_id::TEXT               AS user_id,
-    SUM(unblockpay_fee::FLOAT)  AS payout_fee_usd
-FROM unblockpay_payouts
-WHERE status = 'completed'
-  AND created_at >= :start
-  AND created_at <  :end
-GROUP BY user_id
-"""
-
 _CARD_TXS_MONTHLY_SQL = """
 SELECT
     user_id::TEXT                               AS user_id,
@@ -247,17 +236,6 @@ SELECT
     ) AS swap_fee_usd
 FROM swap_transactions
 GROUP BY user_id, DATE_TRUNC('month', "timestamp")
-ORDER BY user_id, month
-"""
-
-_PAYOUT_FEES_MONTHLY_SQL = """
-SELECT
-    user_id::TEXT                          AS user_id,
-    DATE_TRUNC('month', created_at)::DATE  AS month,
-    SUM(unblockpay_fee::FLOAT)             AS payout_fee_usd
-FROM unblockpay_payouts
-WHERE status = 'completed'
-GROUP BY user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
 
@@ -555,14 +533,6 @@ class ClientQueries:
         """
         return self._run("swap_fees_monthly", _SWAP_FEES_MONTHLY_SQL, {"usdc_mint": _USDC_MINT})
 
-    def payout_fees_monthly(self) -> pd.DataFrame:
-        """Monthly payout fee revenue per user (full history).
-
-        Returns:
-            DataFrame with columns: user_id, month (date), payout_fee_usd.
-        """
-        return self._run("payout_fees_monthly", _PAYOUT_FEES_MONTHLY_SQL, {})
-
     def cashback_monthly(self) -> pd.DataFrame:
         """Monthly cashback cost per user (full history).
 
@@ -618,14 +588,6 @@ class ClientQueries:
             DataFrame with columns: user_id, swap_fee_usd, n_swaps.
         """
         return self._run("swaps", _SWAP_SQL, {**self._date_params(), "usdc_mint": _USDC_MINT})
-
-    def payouts(self) -> pd.DataFrame:
-        """Per-user completed international payout fee revenue.
-
-        Returns:
-            DataFrame with columns: user_id, payout_fee_usd.
-        """
-        return self._run("payouts", _PAYOUT_SQL, self._date_params())
 
     def revenue_generating_count(self) -> int:
         """All-time count of users with at least one completed transaction.

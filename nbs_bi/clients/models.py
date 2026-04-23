@@ -67,7 +67,6 @@ class ClientModel:
             "cashback": self._q.cashback(),
             "rev_share": self._q.revenue_share(),
             "swaps": self._q.swaps(),
-            "payouts": self._q.payouts(),
         }
         for _, df in streams.items():
             if not df.empty:
@@ -115,7 +114,6 @@ class ClientModel:
             + out.get("card_fee_usd", 0)
             + out.get("card_tx_fee_usd", 0)
             + out.get("swap_fee_usd", 0)
-            + out.get("payout_fee_usd", 0)
             - out.get("cashback_usd", 0)
             - out.get("revenue_share_paid_usd", 0)
             - out["card_cost_allocated_usd"]
@@ -180,7 +178,6 @@ class ClientModel:
             "card_fee_usd",
             "card_tx_fee_usd",
             "swap_fee_usd",
-            "payout_fee_usd",
             "cashback_usd",
             "card_cost_allocated_usd",
             "n_conversions",
@@ -338,7 +335,6 @@ class ClientModel:
             "card_fee_usd",
             "card_tx_fee_usd",
             "swap_fee_usd",
-            "payout_fee_usd",
             # --- deductions ---
             "cashback_usd",
             "revenue_share_paid_usd",
@@ -456,7 +452,6 @@ class ClientModel:
         monthly = self._merge_monthly(monthly, self._q.card_fees_monthly(), "card_fee_usd")
         monthly = self._merge_monthly(monthly, self._q.billing_monthly(), "billing_usd")
         monthly = self._merge_monthly(monthly, self._q.swap_fees_monthly(), "swap_fee_usd")
-        monthly = self._merge_monthly(monthly, self._q.payout_fees_monthly(), "payout_fee_usd")
         monthly = self._merge_monthly(monthly, self._q.cashback_monthly(), "cashback_usd")
         monthly = self._merge_monthly(
             monthly, self._q.revenue_share_monthly(), "revenue_share_usd"
@@ -467,7 +462,6 @@ class ClientModel:
             + monthly["card_fee_usd"]
             + monthly["billing_usd"]
             + monthly["swap_fee_usd"]
-            + monthly["payout_fee_usd"]
             - monthly["cashback_usd"]
             - monthly["revenue_share_usd"]
         )

@@ -94,12 +94,6 @@ swap_rev AS (
     FROM swap_transactions
     GROUP BY user_id::TEXT
 ),
-payout_rev AS (
-    SELECT user_id::TEXT, SUM(unblockpay_fee::FLOAT) AS payout_fee_usd
-    FROM unblockpay_payouts
-    WHERE status = 'completed'
-    GROUP BY user_id::TEXT
-),
 cashback_cost AS (
     SELECT user_id::TEXT, SUM(reward_usd_value::FLOAT) AS cashback_usd
     FROM cashback_rewards
@@ -134,7 +128,6 @@ SELECT
     ROUND(SUM(COALESCE(cf.card_fee_usd, 0))::NUMERIC, 4)                    AS card_fee_usd,
     ROUND(SUM(COALESCE(br.billing_usd,  0))::NUMERIC, 4)                    AS billing_usd,
     ROUND(SUM(COALESCE(sw.swap_fee_usd, 0))::NUMERIC, 4)                    AS swap_fee_usd,
-    ROUND(SUM(COALESCE(po.payout_fee_usd, 0))::NUMERIC, 4)                  AS payout_fee_usd,
     ROUND(SUM(COALESCE(cb.cashback_usd,  0))::NUMERIC, 4)                   AS cashback_usd,
     ROUND(SUM(COALESCE(rs.revenue_share_usd, 0))::NUMERIC, 4)               AS revenue_share_usd,
     ROUND(SUM(
@@ -142,7 +135,6 @@ SELECT
         + COALESCE(cf.card_fee_usd, 0)
         + COALESCE(br.billing_usd,  0)
         + COALESCE(sw.swap_fee_usd, 0)
-        + COALESCE(po.payout_fee_usd, 0)
         - COALESCE(cb.cashback_usd,  0)
         - COALESCE(rs.revenue_share_usd, 0)
     )::NUMERIC, 4)                                                           AS total_revenue_usd
@@ -152,7 +144,6 @@ LEFT JOIN onramp_rev    or_ ON or_.user_id = c.user_id
 LEFT JOIN card_fee_rev  cf  ON cf.user_id  = c.user_id
 LEFT JOIN billing_rev   br  ON br.user_id  = c.user_id
 LEFT JOIN swap_rev      sw  ON sw.user_id  = c.user_id
-LEFT JOIN payout_rev    po  ON po.user_id  = c.user_id
 LEFT JOIN cashback_cost cb  ON cb.user_id  = c.user_id
 LEFT JOIN rev_share_cost rs ON rs.user_id  = c.user_id
 LEFT JOIN transacting   t   ON t.uid       = c.user_id

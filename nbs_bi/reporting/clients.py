@@ -550,7 +550,6 @@ class ClientSection:
             "card_fee_usd",
             "card_tx_fee_usd",
             "swap_fee_usd",
-            "payout_fee_usd",
             # --- deductions ---
             "cashback_usd",
             "revenue_share_paid_usd",
