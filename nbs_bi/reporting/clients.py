@@ -56,6 +56,8 @@ _fmt_usd = fmt_usd
 def _fig_ltv_heatmap(
     cohort_ltv: pd.DataFrame,
     title: str = "Cohort LTV — Avg Cumulative Net Profit (USD)",
+    colorbar_title: str = "Avg LTV (USD)",
+    zmin: float | None = 0,
 ) -> go.Figure | None:
     """Cohort LTV heatmap: cohort_month (rows) × months_since_signup (cols)."""
     if _empty(cohort_ltv):
@@ -69,9 +71,9 @@ def _fig_ltv_heatmap(
             x=x,
             y=y,
             colorscale="YlGn",
-            zmin=0,
+            zmin=zmin,
             hovertemplate="Cohort: %{y}<br>Month +%{x}: $%{z:.2f}<extra></extra>",
-            colorbar=dict(title="Avg LTV (USD)"),
+            colorbar=dict(title=colorbar_title),
             text=[[f"${v:.0f}" if not (v != v) else "" for v in row] for row in z],
             texttemplate="%{text}",
             textfont=dict(size=9, color="black"),
@@ -154,44 +156,6 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
     fig.update_layout(**layout)
     fig.update_xaxes(title="Cohort Month")
     fig.update_yaxes(title="USD")
-    return fig
-
-
-def _fig_cohort_monthly_profit(pivot: pd.DataFrame) -> go.Figure | None:
-    """Stacked bar of total company net profit per calendar month by signup cohort.
-
-    Each bar segment represents one signup cohort's net profit contribution in
-    that calendar month. Negative segments indicate a net-costly cohort.
-
-    Args:
-        pivot: Output of ``ClientModel.cohort_monthly_profit()``.
-            Rows = calendar_month (Period), columns = signup cohort (Period).
-
-    Returns:
-        Plotly Figure or None if data is empty.
-    """
-    if _empty(pivot):
-        return None
-    import plotly.colors as pc
-
-    x_labels = [str(m) for m in pivot.index]
-    n = len(pivot.columns)
-    palette = pc.sample_colorscale("Turbo", [i / max(n - 1, 1) for i in range(n)])
-    fig = go.Figure()
-    for col, color in zip(pivot.columns, palette):
-        fig.add_trace(
-            go.Bar(
-                x=x_labels,
-                y=pivot[col].tolist(),
-                name=str(col),
-                marker_color=color,
-            )
-        )
-    layout = _panel("Company Operational Profit by Cohort (Monthly, USD)")
-    layout["barmode"] = "relative"
-    fig.update_layout(**layout)
-    fig.update_xaxes(title="Calendar Month")
-    fig.update_yaxes(title="Net Profit (USD)")
     return fig
 
 
@@ -574,7 +538,7 @@ class ClientSection:
         cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
         cohort_summary = _get(self._r, "cohort_summary")
         cohort_retention = _get(self._r, "cohort_retention")
-        cohort_monthly_profit = _get(self._r, "cohort_monthly_profit")
+        cohort_total_profit = _get(self._r, "cohort_total_profit")
         ltv_by_source = self._r.get("ltv_by_source", {})
         segments = _get(self._r, "segments")
         cac_be = _get(self._r, "cac_breakeven")
@@ -670,14 +634,19 @@ class ClientSection:
         if fig_totals:
             st.plotly_chart(fig_totals, width="stretch")
 
-        # Row 2b — company operational profit by cohort
+        # Row 2b — cohort total profit heatmap
         st.caption(
-            "Total company net profit per calendar month, stacked by the signup cohort that "
-            "generated it. Negative segments mean a cohort cost more than it earned that month."
+            "Total cumulative net profit for the whole cohort (not per-user average). "
+            "Larger values mean that cohort has generated more absolute profit for the company."
         )
-        fig_monthly_profit = _fig_cohort_monthly_profit(cohort_monthly_profit)
-        if fig_monthly_profit:
-            st.plotly_chart(fig_monthly_profit, width="stretch")
+        fig_total_profit = _fig_ltv_heatmap(
+            cohort_total_profit,
+            title="Cohort Profit — Total Cumulative Net (USD)",
+            colorbar_title="Total Net (USD)",
+            zmin=None,
+        )
+        if fig_total_profit:
+            st.plotly_chart(fig_total_profit, width="stretch")
 
         # Row 3 — LTV curves by acquisition source
         st.caption(

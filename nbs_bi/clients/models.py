@@ -609,6 +609,28 @@ class ClientModel:
         summary["cohort_month"] = summary["signup_month"].astype(str)
         return summary
 
+    def cohort_total_profit(self) -> pd.DataFrame:
+        """Cohort profit matrix: cohort_month × months_since_signup → total cumulative net profit.
+
+        Same structure as ``cohort_ltv()`` but values are the cohort-level sum
+        (not divided by active-user count) — useful for seeing absolute company
+        profit contribution per cohort over time.
+
+        Returns:
+            Pivot DataFrame indexed by cohort_month (Period), columns are
+            months_since_signup (int). Values are total cumulative USD net profit
+            for the whole cohort.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        totals = (
+            df.groupby(["signup_month", "months_since_signup"])["cum_ltv"]
+            .sum()
+            .unstack("months_since_signup")
+        )
+        return totals
+
     def cohort_monthly_profit(self) -> pd.DataFrame:
         """Total company net profit per calendar month, broken down by signup cohort.
 
