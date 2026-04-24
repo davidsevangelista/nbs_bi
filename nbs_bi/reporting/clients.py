@@ -625,16 +625,7 @@ class ClientSection:
         if not fig_gross and not fig_net:
             st.info("No cohort LTV data available for the selected period.")
 
-        # Row 2 — cohort totals with cost load %
-        st.caption(
-            "Are newer cohorts generating more revenue than older ones? "
-            "Rising cost load % (right axis) means each BRL of revenue costs more to produce."
-        )
-        fig_totals = _fig_cohort_totals(cohort_summary)
-        if fig_totals:
-            st.plotly_chart(fig_totals, width="stretch")
-
-        # Row 2b — cohort total profit heatmap
+        # Row 2 — cohort total profit heatmap
         st.caption(
             "Total cumulative net profit for the whole cohort (not per-user average). "
             "Larger values mean that cohort has generated more absolute profit for the company."
@@ -647,6 +638,15 @@ class ClientSection:
         )
         if fig_total_profit:
             st.plotly_chart(fig_total_profit, width="stretch")
+
+        # Row 2b — cohort totals with cost load %
+        st.caption(
+            "Are newer cohorts generating more revenue than older ones? "
+            "Rising cost load % (right axis) means each BRL of revenue costs more to produce."
+        )
+        fig_totals = _fig_cohort_totals(cohort_summary)
+        if fig_totals:
+            st.plotly_chart(fig_totals, width="stretch")
 
         # Row 3 — LTV curves by acquisition source
         st.caption(
