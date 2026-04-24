@@ -15,6 +15,8 @@ Usage::
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -51,16 +53,16 @@ _fmt_usd = fmt_usd
 # ---------------------------------------------------------------------------
 
 
-def _fig_ltv_heatmap(cohort_ltv: pd.DataFrame) -> go.Figure | None:
+def _fig_ltv_heatmap(
+    cohort_ltv: pd.DataFrame,
+    title: str = "Cohort LTV — Avg Cumulative Net Profit (USD)",
+) -> go.Figure | None:
     """Cohort LTV heatmap: cohort_month (rows) × months_since_signup (cols)."""
     if _empty(cohort_ltv):
         return None
     z = cohort_ltv.values.astype(float)
     y = [str(idx) for idx in cohort_ltv.index]
     x = [str(c) for c in cohort_ltv.columns]
-    # Use a sequential green scale anchored at 0 so empty/zero cells are
-    # visually distinct from low-but-positive LTV cells (which "Blues" made
-    # indistinguishable from missing data).
     fig = go.Figure(
         go.Heatmap(
             z=z,
@@ -72,9 +74,49 @@ def _fig_ltv_heatmap(cohort_ltv: pd.DataFrame) -> go.Figure | None:
             colorbar=dict(title="Avg LTV (USD)"),
         )
     )
-    fig.update_layout(**_panel("Cohort LTV — Avg Cumulative Revenue (USD)"))
+    fig.update_layout(**_panel(title))
     fig.update_xaxes(title="Months Since Signup")
     fig.update_yaxes(title="Cohort Month")
+    return fig
+
+
+def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
+    """Grouped bar chart of total gross revenue and net profit per cohort month.
+
+    Args:
+        summary: Output of ``ClientModel.cohort_summary()``.
+
+    Returns:
+        Plotly Figure or None if data is empty.
+    """
+    if _empty(summary):
+        return None
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=summary["cohort_month"],
+            y=summary["total_gross_revenue_usd"],
+            name="Revenue (gross)",
+            marker_color=BLUE,
+            text=[f"${v:,.0f}" for v in summary["total_gross_revenue_usd"]],
+            textposition="outside",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=summary["cohort_month"],
+            y=summary["total_net_revenue_usd"],
+            name="Profit (net)",
+            marker_color=EMERALD,
+            text=[f"${v:,.0f}" for v in summary["total_net_revenue_usd"]],
+            textposition="outside",
+        )
+    )
+    layout = _panel("Revenue & Profit by Cohort (USD)")
+    layout["barmode"] = "group"
+    fig.update_layout(**layout)
+    fig.update_xaxes(title="Cohort Month")
+    fig.update_yaxes(title="USD")
     return fig
 
 
@@ -278,7 +320,6 @@ def _fig_product_adoption_bars(adoption: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
-
 def _fig_adoption_heatmap(adoption: pd.DataFrame, segments: pd.DataFrame) -> go.Figure | None:
     """Product × segment heatmap — % users active in each combination."""
     if _empty(adoption) or _empty(segments):
@@ -353,6 +394,8 @@ class ClientSection:
 
     def _render_ltv(self) -> None:
         cohort_ltv = _get(self._r, "cohort_ltv")
+        cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
+        cohort_summary = _get(self._r, "cohort_summary")
         ltv_by_source = self._r.get("ltv_by_source", {})
         segments = _get(self._r, "segments")
         adoption = _get(self._r, "product_adoption")
@@ -373,6 +416,20 @@ class ClientSection:
                 n_top = max(1, len(rev_pos) // 10)
                 top10_pct = float(rev_pos.nlargest(n_top).sum() / rev_pos.sum() * 100)
 
+        # Months-of-revenue KPI (avg user LTV / avg monthly revenue per user)
+        months_kpi = float("nan")
+        if not _empty(cohort_summary) and "avg_net_per_user_usd" in cohort_summary.columns:
+            stable = cohort_summary[cohort_summary["months_observed"] >= 3]
+            if not stable.empty:
+                avg_user_ltv = float(stable["avg_net_per_user_usd"].mean())
+                total_rev = float(stable["total_net_revenue_usd"].sum())
+                total_user_months = float((stable["n_users"] * stable["months_observed"]).sum())
+                monthly_per_user = (
+                    total_rev / total_user_months if total_user_months > 0 else float("nan")
+                )
+                if monthly_per_user > 0:
+                    months_kpi = avg_user_ltv / monthly_per_user
+
         # KPI cards
         leaderboard = _get(self._r, "leaderboard")
         avg_ltv = leaderboard["net_revenue_usd"].mean() if not _empty(leaderboard) else 0.0
@@ -383,20 +440,33 @@ class ClientSection:
             if not _empty(_get(self._r, "acquisition"))
             else "—"
         )
-        c1, c2, c3, c4, c5 = st.columns(5)
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         c1.metric("Avg Net Revenue (top 50)", _fmt_usd(avg_ltv))
         c2.metric("Best Acquisition Source", best_src)
         c3.metric("FX Rate (BRL/USD)", f"{self._r.get('fx_rate', 0):.4f}")
         c4.metric("Multi-product Users", f"{n_multi:,}", delta=f"{pct_multi:.1f}% of users")
         c5.metric("Top 10% Revenue Share", f"{top10_pct:.1f}%")
+        c6.metric(
+            "Avg Lifetime",
+            f"{months_kpi:.1f} mo" if not math.isnan(months_kpi) else "n/a",
+            delta="months of revenue per user",
+        )
 
         st.divider()
 
-        fig = _fig_ltv_heatmap(cohort_ltv)
-        if fig:
-            st.plotly_chart(fig, width="stretch")
-        else:
+        col_a, col_b = st.columns(2)
+        fig_gross = _fig_ltv_heatmap(cohort_ltv_gross, title="Cohort Revenue — Avg Gross (USD)")
+        fig_net = _fig_ltv_heatmap(cohort_ltv, title="Cohort Profit — Avg Net (USD)")
+        if fig_gross:
+            col_a.plotly_chart(fig_gross, width="stretch")
+        if fig_net:
+            col_b.plotly_chart(fig_net, width="stretch")
+        if not fig_gross and not fig_net:
             st.info("No cohort LTV data available for the selected period.")
+
+        fig_totals = _fig_cohort_totals(cohort_summary)
+        if fig_totals:
+            st.plotly_chart(fig_totals, width="stretch")
 
         fig2 = _fig_ltv_curves(ltv_by_source)
         if fig2:

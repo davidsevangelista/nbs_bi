@@ -66,6 +66,8 @@ class ClientReport:
             "acquisition": self._model.acquisition_summary(),
             "referral_codes": self._model.referral_code_summary(),
             "cohort_ltv": self._model.cohort_ltv(),
+            "cohort_ltv_gross": self._model.cohort_ltv_gross(),
+            "cohort_summary": self._model.cohort_summary(),
             "ltv_by_source": self._model.ltv_by_source(),
             "founders": self._model.founders_report(),
             "at_risk": self._model.at_risk_users(),

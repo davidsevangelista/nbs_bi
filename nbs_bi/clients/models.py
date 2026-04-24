@@ -102,11 +102,11 @@ class ClientModel:
             DataFrame with ``onramp_revenue_usd`` and ``net_revenue_usd`` added.
         """
         out = df.copy()
-        out["onramp_revenue_usd"] = (
-            out.get("onramp_revenue_brl", 0) / fx + out.get("onramp_revenue_usdc", 0)
+        out["onramp_revenue_usd"] = out.get("onramp_revenue_brl", 0) / fx + out.get(
+            "onramp_revenue_usdc", 0
         )
-        out["offramp_revenue_usd"] = (
-            out.get("offramp_revenue_brl", 0) / fx + out.get("offramp_revenue_usdc", 0)
+        out["offramp_revenue_usd"] = out.get("offramp_revenue_brl", 0) / fx + out.get(
+            "offramp_revenue_usdc", 0
         )
         out["net_revenue_usd"] = (
             out["onramp_revenue_usd"]
@@ -403,9 +403,7 @@ class ClientModel:
         return self._invoice_total / max(total_txns, 1)
 
     @staticmethod
-    def _merge_monthly(
-        base: pd.DataFrame, other: pd.DataFrame, col: str
-    ) -> pd.DataFrame:
+    def _merge_monthly(base: pd.DataFrame, other: pd.DataFrame, col: str) -> pd.DataFrame:
         """Left-join a monthly revenue/cost stream into the base DataFrame.
 
         Args:
@@ -453,17 +451,18 @@ class ClientModel:
         monthly = self._merge_monthly(monthly, self._q.billing_monthly(), "billing_usd")
         monthly = self._merge_monthly(monthly, self._q.swap_fees_monthly(), "swap_fee_usd")
         monthly = self._merge_monthly(monthly, self._q.cashback_monthly(), "cashback_usd")
-        monthly = self._merge_monthly(
-            monthly, self._q.revenue_share_monthly(), "revenue_share_usd"
-        )
+        monthly = self._merge_monthly(monthly, self._q.revenue_share_monthly(), "revenue_share_usd")
 
-        monthly["revenue_usd"] = (
+        # Gross = all fee/spread income before cost deductions
+        monthly["gross_revenue_usd"] = (
             monthly["revenue_usd"]
             + monthly["card_fee_usd"]
             + monthly["billing_usd"]
             + monthly["swap_fee_usd"]
-            - monthly["cashback_usd"]
-            - monthly["revenue_share_usd"]
+        )
+        # Net = gross minus costs (cashback, revenue share, card COGS below)
+        monthly["revenue_usd"] = (
+            monthly["gross_revenue_usd"] - monthly["cashback_usd"] - monthly["revenue_share_usd"]
         )
 
         # Deduct pro-rata Rain card processing cost
@@ -497,22 +496,70 @@ class ClientModel:
         ) - df["signup_month"].apply(lambda p: p.year * 12 + p.month)
         df = df[df["months_since_signup"] >= 0].sort_values(["user_id", "months_since_signup"])
         df["cum_ltv"] = df.groupby("user_id")["revenue_usd"].cumsum()
+        df["cum_gross_ltv"] = df.groupby("user_id")["gross_revenue_usd"].cumsum()
         return df[
-            ["user_id", "signup_month", "acquisition_source", "months_since_signup", "cum_ltv"]
+            [
+                "user_id",
+                "signup_month",
+                "acquisition_source",
+                "months_since_signup",
+                "revenue_usd",
+                "gross_revenue_usd",
+                "cum_ltv",
+                "cum_gross_ltv",
+            ]
         ]
 
     def cohort_ltv(self) -> pd.DataFrame:
-        """Cohort LTV matrix: cohort_month × months_since_signup → avg cumulative LTV.
+        """Cohort LTV matrix: cohort_month × months_since_signup → avg cumulative net LTV.
 
         Returns:
             Pivot DataFrame indexed by cohort_month (Period), columns are
-            months_since_signup (int). Values are avg cumulative USD LTV.
+            months_since_signup (int). Values are avg cumulative USD net profit.
         """
         df = self._build_monthly_ltv()
         if df.empty:
             return pd.DataFrame()
         agg = df.groupby(["signup_month", "months_since_signup"])["cum_ltv"].mean()
         return agg.unstack("months_since_signup")
+
+    def cohort_ltv_gross(self) -> pd.DataFrame:
+        """Cohort LTV matrix using gross revenue (before cashback/revshare/card COGS).
+
+        Returns:
+            Pivot DataFrame indexed by cohort_month (Period), columns are
+            months_since_signup (int). Values are avg cumulative USD gross revenue.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        agg = df.groupby(["signup_month", "months_since_signup"])["cum_gross_ltv"].mean()
+        return agg.unstack("months_since_signup")
+
+    def cohort_summary(self) -> pd.DataFrame:
+        """Per-cohort aggregates: users, gross revenue, net profit, months observed.
+
+        Returns:
+            DataFrame with columns: cohort_month, n_users, total_gross_revenue_usd,
+            total_net_revenue_usd, months_observed, avg_gross_per_user_usd,
+            avg_net_per_user_usd.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        grp = df.groupby("signup_month")
+        summary = pd.DataFrame(
+            {
+                "n_users": grp["user_id"].nunique(),
+                "total_gross_revenue_usd": grp["gross_revenue_usd"].sum(),
+                "total_net_revenue_usd": grp["revenue_usd"].sum(),
+                "months_observed": grp["months_since_signup"].max(),
+            }
+        ).reset_index()
+        summary["avg_gross_per_user_usd"] = summary["total_gross_revenue_usd"] / summary["n_users"]
+        summary["avg_net_per_user_usd"] = summary["total_net_revenue_usd"] / summary["n_users"]
+        summary["cohort_month"] = summary["signup_month"].astype(str)
+        return summary
 
     def ltv_by_source(self) -> dict[str, pd.DataFrame]:
         """Cohort LTV matrix broken down by acquisition source.
