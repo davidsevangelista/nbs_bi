@@ -505,6 +505,9 @@ class ClientModel:
                 "months_since_signup",
                 "revenue_usd",
                 "gross_revenue_usd",
+                "card_fee_usd",
+                "billing_usd",
+                "swap_fee_usd",
                 "cum_ltv",
                 "cum_gross_ltv",
             ]
@@ -553,9 +556,18 @@ class ClientModel:
                 "n_users": grp["user_id"].nunique(),
                 "total_gross_revenue_usd": grp["gross_revenue_usd"].sum(),
                 "total_net_revenue_usd": grp["revenue_usd"].sum(),
+                "total_card_fee_usd": grp["card_fee_usd"].sum(),
+                "total_billing_usd": grp["billing_usd"].sum(),
+                "total_swap_fee_usd": grp["swap_fee_usd"].sum(),
                 "months_observed": grp["months_since_signup"].max(),
             }
         ).reset_index()
+        summary["total_conversion_revenue_usd"] = (
+            summary["total_gross_revenue_usd"]
+            - summary["total_card_fee_usd"]
+            - summary["total_billing_usd"]
+            - summary["total_swap_fee_usd"]
+        )
         summary["avg_gross_per_user_usd"] = summary["total_gross_revenue_usd"] / summary["n_users"]
         summary["avg_net_per_user_usd"] = summary["total_net_revenue_usd"] / summary["n_users"]
         summary["cohort_month"] = summary["signup_month"].astype(str)

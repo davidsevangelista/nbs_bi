@@ -84,10 +84,10 @@ def _fig_ltv_heatmap(
 
 
 def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
-    """Grouped bar chart of total gross revenue and net profit per cohort month.
+    """Stacked bar of gross revenue by product per cohort, with cost load % line.
 
-    Includes a secondary y-axis line showing cost load % (cashback + revshare
-    + card COGS as a fraction of gross revenue).
+    Stacks: Conversion (on/off ramp), Card fees, Billing, Swap fees.
+    Secondary y-axis shows cost load % (deductions as fraction of gross).
 
     Args:
         summary: Output of ``ClientModel.cohort_summary()``.
@@ -98,26 +98,23 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
     if _empty(summary):
         return None
     fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=summary["cohort_month"],
-            y=summary["total_gross_revenue_usd"],
-            name="Revenue (gross)",
-            marker_color=BLUE,
-            text=[f"${v:,.0f}" for v in summary["total_gross_revenue_usd"]],
-            textposition="outside",
+    components = [
+        ("total_conversion_revenue_usd", "Conversion (On/Off Ramp)", BLUE),
+        ("total_card_fee_usd", "Card Fees", AMBER),
+        ("total_billing_usd", "Billing", TEAL),
+        ("total_swap_fee_usd", "Swap", VIOLET),
+    ]
+    for col, label, color in components:
+        if col not in summary.columns:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=summary["cohort_month"],
+                y=summary[col],
+                name=label,
+                marker_color=color,
+            )
         )
-    )
-    fig.add_trace(
-        go.Bar(
-            x=summary["cohort_month"],
-            y=summary["total_net_revenue_usd"],
-            name="Profit (net)",
-            marker_color=EMERALD,
-            text=[f"${v:,.0f}" for v in summary["total_net_revenue_usd"]],
-            textposition="outside",
-        )
-    )
     cost_load = (
         (summary["total_gross_revenue_usd"] - summary["total_net_revenue_usd"])
         / summary["total_gross_revenue_usd"].replace(0, float("nan"))
@@ -133,8 +130,8 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
             yaxis="y2",
         )
     )
-    layout = _panel("Revenue & Profit by Cohort (USD)")
-    layout["barmode"] = "group"
+    layout = _panel("Revenue by Product per Cohort (USD)")
+    layout["barmode"] = "stack"
     layout["yaxis2"] = dict(
         title="Cost Load %",
         overlaying="y",
