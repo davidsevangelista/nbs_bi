@@ -113,8 +113,20 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
                 y=summary[col],
                 name=label,
                 marker_color=color,
+                offsetgroup="revenue",
             )
         )
+    fig.add_trace(
+        go.Bar(
+            x=summary["cohort_month"],
+            y=summary["total_net_revenue_usd"],
+            name="Profit (net)",
+            marker_color=EMERALD,
+            offsetgroup="net",
+            text=[f"${v:,.0f}" for v in summary["total_net_revenue_usd"]],
+            textposition="outside",
+        )
+    )
     cost_load = (
         (summary["total_gross_revenue_usd"] - summary["total_net_revenue_usd"])
         / summary["total_gross_revenue_usd"].replace(0, float("nan"))
