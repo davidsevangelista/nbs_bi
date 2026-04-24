@@ -72,6 +72,9 @@ def _fig_ltv_heatmap(
             zmin=0,
             hovertemplate="Cohort: %{y}<br>Month +%{x}: $%{z:.2f}<extra></extra>",
             colorbar=dict(title="Avg LTV (USD)"),
+            text=[[f"${v:.0f}" if not (v != v) else "" for v in row] for row in z],
+            texttemplate="%{text}",
+            textfont=dict(size=9, color="black"),
         )
     )
     fig.update_layout(**_panel(title))
