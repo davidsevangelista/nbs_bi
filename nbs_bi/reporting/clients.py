@@ -86,6 +86,9 @@ def _fig_ltv_heatmap(
 def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
     """Grouped bar chart of total gross revenue and net profit per cohort month.
 
+    Includes a secondary y-axis line showing cost load % (cashback + revshare
+    + card COGS as a fraction of gross revenue).
+
     Args:
         summary: Output of ``ClientModel.cohort_summary()``.
 
@@ -115,11 +118,135 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
             textposition="outside",
         )
     )
+    cost_load = (
+        (summary["total_gross_revenue_usd"] - summary["total_net_revenue_usd"])
+        / summary["total_gross_revenue_usd"].replace(0, float("nan"))
+        * 100
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=summary["cohort_month"],
+            y=cost_load,
+            name="Cost Load %",
+            mode="lines+markers",
+            line=dict(color=ROSE, width=2),
+            yaxis="y2",
+        )
+    )
     layout = _panel("Revenue & Profit by Cohort (USD)")
     layout["barmode"] = "group"
+    layout["yaxis2"] = dict(
+        title="Cost Load %",
+        overlaying="y",
+        side="right",
+        range=[0, 100],
+        showgrid=False,
+    )
     fig.update_layout(**layout)
     fig.update_xaxes(title="Cohort Month")
     fig.update_yaxes(title="USD")
+    return fig
+
+
+def _fig_retention_curves(retention: pd.DataFrame) -> go.Figure | None:
+    """Line chart of monthly retention rate per cohort with avg + 30% threshold.
+
+    Args:
+        retention: Pivot DataFrame from ``ClientModel.cohort_retention()``.
+
+    Returns:
+        Plotly Figure or None if data is empty.
+    """
+    if _empty(retention):
+        return None
+    fig = go.Figure()
+    for idx in retention.index:
+        row = retention.loc[idx].dropna()
+        if row.empty:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=row.index.tolist(),
+                y=(row.values * 100).tolist(),
+                name=str(idx),
+                mode="lines",
+                line=dict(width=1.5),
+                opacity=0.5,
+            )
+        )
+    avg = retention.mean(axis=0).dropna()
+    if not avg.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=avg.index.tolist(),
+                y=(avg.values * 100).tolist(),
+                name="Average",
+                mode="lines+markers",
+                line=dict(color=EMERALD, width=3),
+            )
+        )
+    fig.add_hline(
+        y=30,
+        line_dash="dash",
+        line_color=ROSE,
+        annotation_text="30% threshold",
+        annotation_position="bottom right",
+    )
+    layout = _panel("Cohort Retention Rate (%)")
+    fig.update_layout(**layout)
+    fig.update_xaxes(title="Months Since Signup")
+    fig.update_yaxes(title="% Active", range=[0, 105])
+    return fig
+
+
+def _fig_lorenz(segments: pd.DataFrame) -> go.Figure | None:
+    """Lorenz curve: cumulative % of users vs cumulative % of revenue.
+
+    Args:
+        segments: Per-user DataFrame with ``net_revenue_usd`` column.
+
+    Returns:
+        Plotly Figure or None if no positive-revenue users.
+    """
+    if _empty(segments) or "net_revenue_usd" not in segments.columns:
+        return None
+    rev_pos = (
+        segments["net_revenue_usd"]
+        .dropna()
+        .pipe(lambda s: s[s > 0])
+        .sort_values(ascending=False)
+        .reset_index(drop=True)
+    )
+    if rev_pos.empty:
+        return None
+    n = len(rev_pos)
+    cum_rev = rev_pos.cumsum() / rev_pos.sum() * 100
+    cum_users = (rev_pos.index + 1) / n * 100
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=cum_users.tolist(),
+            y=cum_rev.tolist(),
+            mode="lines",
+            name="Revenue concentration",
+            line=dict(color=BLUE, width=2),
+            fill="tozeroy",
+            fillcolor="rgba(59,130,246,0.1)",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 100],
+            y=[0, 100],
+            mode="lines",
+            name="Perfect equality",
+            line=dict(color=TEXT_MUTED, width=1, dash="dash"),
+        )
+    )
+    layout = _panel("Revenue Concentration (Lorenz Curve)")
+    fig.update_layout(**layout)
+    fig.update_xaxes(title="Cumulative Users (%)", range=[0, 100])
+    fig.update_yaxes(title="Cumulative Revenue (%)", range=[0, 105])
     return fig
 
 
@@ -399,18 +526,41 @@ class ClientSection:
         cohort_ltv = _get(self._r, "cohort_ltv")
         cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
         cohort_summary = _get(self._r, "cohort_summary")
+        cohort_retention = _get(self._r, "cohort_retention")
         ltv_by_source = self._r.get("ltv_by_source", {})
         segments = _get(self._r, "segments")
-        adoption = _get(self._r, "product_adoption")
+        cac_be = _get(self._r, "cac_breakeven")
 
-        # Multi-product users KPI
-        n_multi = 0
-        pct_multi = 0.0
-        if not _empty(adoption) and "n_products" in adoption.columns:
-            n_multi = int((adoption["n_products"] >= 2).sum())
-            pct_multi = n_multi / len(adoption) * 100 if len(adoption) > 0 else 0.0
+        # --- KPI computations ---
+        # CAC (incremental)
+        cac_usd = self._r.get("weighted_cac_usd", float("nan"))
+        if cac_usd is None:
+            cac_usd = float("nan")
 
-        # Top 10% revenue concentration KPI
+        # LTV at M+6
+        ltv_m6 = float("nan")
+        if not _empty(cohort_ltv) and 6 in cohort_ltv.columns:
+            ltv_m6 = float(cohort_ltv[6].mean(skipna=True))
+
+        # LTV:CAC
+        if not math.isnan(ltv_m6) and not math.isnan(cac_usd) and cac_usd > 0:
+            ltv_cac = ltv_m6 / cac_usd
+        else:
+            ltv_cac = float("nan")
+
+        # Payback period (best-case across sources)
+        payback_mo = None
+        if not _empty(cac_be) and "payback_months" in cac_be.columns:
+            valid = cac_be["payback_months"].dropna()
+            if not valid.empty:
+                payback_mo = int(valid.iloc[0])
+
+        # M+1 retention
+        ret_m1 = float("nan")
+        if not _empty(cohort_retention) and 1 in cohort_retention.columns:
+            ret_m1 = float(cohort_retention[1].mean(skipna=True)) * 100
+
+        # Top 10% revenue concentration
         top10_pct = 0.0
         if not _empty(segments) and "net_revenue_usd" in segments.columns:
             rev_all = segments["net_revenue_usd"].dropna()
@@ -419,44 +569,36 @@ class ClientSection:
                 n_top = max(1, len(rev_pos) // 10)
                 top10_pct = float(rev_pos.nlargest(n_top).sum() / rev_pos.sum() * 100)
 
-        # Months-of-revenue KPI (avg user LTV / avg monthly revenue per user)
-        months_kpi = float("nan")
-        if not _empty(cohort_summary) and "avg_net_per_user_usd" in cohort_summary.columns:
-            stable = cohort_summary[cohort_summary["months_observed"] >= 3]
-            if not stable.empty:
-                avg_user_ltv = float(stable["avg_net_per_user_usd"].mean())
-                total_rev = float(stable["total_net_revenue_usd"].sum())
-                total_user_months = float((stable["n_users"] * stable["months_observed"]).sum())
-                monthly_per_user = (
-                    total_rev / total_user_months if total_user_months > 0 else float("nan")
-                )
-                if monthly_per_user > 0:
-                    months_kpi = avg_user_ltv / monthly_per_user
-
-        # KPI cards
-        leaderboard = _get(self._r, "leaderboard")
-        avg_ltv = leaderboard["net_revenue_usd"].mean() if not _empty(leaderboard) else 0.0
-        best_src = (
-            _get(self._r, "acquisition")
-            .sort_values("avg_net_revenue_usd", ascending=False)
-            .iloc[0]["acquisition_source"]
-            if not _empty(_get(self._r, "acquisition"))
-            else "—"
-        )
+        # KPI strip
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c1.metric("Avg Net Revenue (top 50)", _fmt_usd(avg_ltv))
-        c2.metric("Best Acquisition Source", best_src)
-        c3.metric("FX Rate (BRL/USD)", f"{self._r.get('fx_rate', 0):.4f}")
-        c4.metric("Multi-product Users", f"{n_multi:,}", delta=f"{pct_multi:.1f}% of users")
-        c5.metric("Top 10% Revenue Share", f"{top10_pct:.1f}%")
-        c6.metric(
-            "Avg Lifetime",
-            f"{months_kpi:.1f} mo" if not math.isnan(months_kpi) else "n/a",
-            delta="months of revenue per user",
+        c1.metric(
+            "CAC (incremental)",
+            _fmt_usd(cac_usd) if not math.isnan(cac_usd) else "n/a",
         )
+        c2.metric(
+            "LTV at M+6",
+            _fmt_usd(ltv_m6) if not math.isnan(ltv_m6) else "n/a",
+        )
+        c3.metric(
+            "LTV:CAC",
+            f"{ltv_cac:.1f}×" if not math.isnan(ltv_cac) else "n/a",
+            delta="target ≥ 3×",
+        )
+        c4.metric(
+            "Payback Period",
+            f"M+{payback_mo}" if payback_mo is not None else "n/a",
+            delta="target ≤ M+6",
+        )
+        c5.metric(
+            "M+1 Retention",
+            f"{ret_m1:.1f}%" if not math.isnan(ret_m1) else "n/a",
+            delta="target ≥ 30%",
+        )
+        c6.metric("Top 10% Revenue Share", f"{top10_pct:.1f}%")
 
         st.divider()
 
+        # Row 1 — heatmaps
         col_a, col_b = st.columns(2)
         fig_gross = _fig_ltv_heatmap(cohort_ltv_gross, title="Cohort Revenue — Avg Gross (USD)")
         fig_net = _fig_ltv_heatmap(cohort_ltv, title="Cohort Profit — Avg Net (USD)")
@@ -467,13 +609,33 @@ class ClientSection:
         if not fig_gross and not fig_net:
             st.info("No cohort LTV data available for the selected period.")
 
+        # Row 2 — cohort totals with cost load %
         fig_totals = _fig_cohort_totals(cohort_summary)
         if fig_totals:
             st.plotly_chart(fig_totals, width="stretch")
 
-        fig2 = _fig_ltv_curves(ltv_by_source)
-        if fig2:
-            st.plotly_chart(fig2, width="stretch")
+        # Row 3 — LTV curves by acquisition source
+        fig_ltv = _fig_ltv_curves(ltv_by_source)
+        if fig_ltv:
+            st.plotly_chart(fig_ltv, width="stretch")
+
+        # Row 4 — Retention curves
+        st.subheader("Cohort Retention")
+        st.caption("Are users staying? M+1 retention below 30% = stop scaling acquisition.")
+        fig_ret = _fig_retention_curves(cohort_retention)
+        if fig_ret:
+            st.plotly_chart(fig_ret, width="stretch")
+        elif _empty(cohort_retention):
+            st.info("No retention data for this period.")
+
+        # Row 5 — CAC payback + Lorenz concentration side by side
+        col_x, col_y = st.columns(2)
+        fig_payback = _fig_cac_payback(cac_be)
+        fig_lorenz = _fig_lorenz(segments)
+        if fig_payback:
+            col_x.plotly_chart(fig_payback, width="stretch")
+        if fig_lorenz:
+            col_y.plotly_chart(fig_lorenz, width="stretch")
 
     # ------------------------------------------------------------------
     # Tab 2 — Acquisition

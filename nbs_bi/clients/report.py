@@ -12,10 +12,12 @@ Usage::
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 import pandas as pd
 
+from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend_from_db
 from nbs_bi.clients.models import ClientModel
 from nbs_bi.clients.segments import ClientSegments
 
@@ -47,6 +49,25 @@ class ClientReport:
         )
         self._segments = ClientSegments(self._model.master_df)
 
+    def _weighted_cac(self) -> float:
+        """Compute weighted incremental CAC across all detected Meta Ads campaigns.
+
+        Returns:
+            Weighted CAC in USD, or ``nan`` if spend data is unavailable.
+        """
+        db_url = self._model._q._db_url
+        spend_df = load_ad_spend_from_db(db_url)
+        if spend_df is None or spend_df.empty:
+            return float("nan")
+        try:
+            roi = CampaignAnalyzer(spend_df, db_url=db_url).roi_summary()
+            total_spend = float(roi["total_spend_usd"].sum())
+            total_incr = float(roi["incremental_users_est"].sum())
+            return total_spend / total_incr if total_incr > 0 else float("nan")
+        except Exception:
+            logger.warning("CAC computation failed — skipping", exc_info=True)
+            return float("nan")
+
     def build(self) -> dict[str, Any]:
         """Run all analyses and return a structured output dict.
 
@@ -54,9 +75,11 @@ class ClientReport:
             Dict with keys: ``leaderboard``, ``product_adoption``,
             ``segments``, ``segment_summary``, ``acquisition``,
             ``referral_codes``, ``cohort_ltv``, ``ltv_by_source``,
-            ``founders``, ``at_risk``, ``fx_rate``.
+            ``founders``, ``at_risk``, ``fx_rate``, ``cohort_retention``,
+            ``cac_breakeven``, ``weighted_cac_usd``.
         """
         logger.info("Building client report...")
+        weighted_cac = self._weighted_cac()
         return {
             "leaderboard": self._model.revenue_leaderboard(n=50),
             "product_adoption": self._model.product_adoption(),
@@ -68,6 +91,7 @@ class ClientReport:
             "cohort_ltv": self._model.cohort_ltv(),
             "cohort_ltv_gross": self._model.cohort_ltv_gross(),
             "cohort_summary": self._model.cohort_summary(),
+            "cohort_retention": self._model.cohort_retention(),
             "ltv_by_source": self._model.ltv_by_source(),
             "founders": self._model.founders_report(),
             "at_risk": self._model.at_risk_users(),
@@ -76,6 +100,12 @@ class ClientReport:
             "activity_kpis": self._model._q.activity_kpis(),
             "signups_24h": self._model._q.signups_24h(),
             "revenue_totals": self._model.revenue_totals(),
+            "weighted_cac_usd": weighted_cac,
+            "cac_breakeven": (
+                self._model.cac_breakeven(weighted_cac)
+                if not math.isnan(weighted_cac)
+                else pd.DataFrame()
+            ),
         }
 
     def to_json_api(self) -> dict[str, Any]:

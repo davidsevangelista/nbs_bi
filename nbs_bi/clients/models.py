@@ -561,6 +561,21 @@ class ClientModel:
         summary["cohort_month"] = summary["signup_month"].astype(str)
         return summary
 
+    def cohort_retention(self) -> pd.DataFrame:
+        """Per-cohort monthly retention rates (% of cohort still active).
+
+        Returns:
+            Pivot DataFrame: cohort_month (rows) × months_since_signup (cols),
+            values are retention rates 0–1. Month 0 = 1.0 by definition.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        cohort_sizes = df.groupby("signup_month")["user_id"].nunique()
+        active = df.groupby(["signup_month", "months_since_signup"])["user_id"].nunique()
+        retention = (active / cohort_sizes).unstack("months_since_signup")
+        return retention
+
     def ltv_by_source(self) -> dict[str, pd.DataFrame]:
         """Cohort LTV matrix broken down by acquisition source.
 
