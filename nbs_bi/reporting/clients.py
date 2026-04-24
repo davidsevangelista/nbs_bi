@@ -536,7 +536,6 @@ class ClientSection:
 
     def _render_ltv(self) -> None:
         cohort_ltv = _get(self._r, "cohort_ltv")
-        cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
         cohort_active_users = _get(self._r, "cohort_active_users")
         cohort_retention = _get(self._r, "cohort_retention")
         cohort_total_profit = _get(self._r, "cohort_total_profit")
@@ -616,19 +615,14 @@ class ClientSection:
 
         st.divider()
 
-        # Row 1 — heatmaps
+        # Row 1 — avg net heatmap
         st.caption(
-            "Gross shows revenue before cashback and costs; net shows what we actually keep. "
-            "If net diverges sharply from gross, cost load is compressing margins."
+            "Average cumulative net profit per active user, by cohort and months since signup."
         )
-        col_a, col_b = st.columns(2)
-        fig_gross = _fig_ltv_heatmap(cohort_ltv_gross, title="Cohort Revenue — Avg Gross (USD)")
         fig_net = _fig_ltv_heatmap(cohort_ltv, title="Cohort Profit — Avg Net (USD)")
-        if fig_gross:
-            col_a.plotly_chart(fig_gross, width="stretch")
         if fig_net:
-            col_b.plotly_chart(fig_net, width="stretch")
-        if not fig_gross and not fig_net:
+            st.plotly_chart(fig_net, width="stretch")
+        else:
             st.info("No cohort LTV data available for the selected period.")
 
         # Row 2 — cohort total profit heatmap
