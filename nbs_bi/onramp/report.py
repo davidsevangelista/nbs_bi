@@ -82,7 +82,7 @@ class OnrampReport:
         top = model.top_users(n=50) if model else pd.DataFrame()
         if not top.empty and not attr_df.empty:
             top = top.merge(
-                attr_df[["user_id", "acquisition_source", "referral_code_name"]],
+                attr_df[["user_id", "full_name", "acquisition_source", "referral_code_name"]],
                 on="user_id",
                 how="left",
             )

@@ -599,6 +599,10 @@ class ClientSection:
         st.divider()
 
         # Row 1 — heatmaps
+        st.caption(
+            "Gross shows revenue before cashback and costs; net shows what we actually keep. "
+            "If net diverges sharply from gross, cost load is compressing margins."
+        )
         col_a, col_b = st.columns(2)
         fig_gross = _fig_ltv_heatmap(cohort_ltv_gross, title="Cohort Revenue — Avg Gross (USD)")
         fig_net = _fig_ltv_heatmap(cohort_ltv, title="Cohort Profit — Avg Net (USD)")
@@ -610,11 +614,19 @@ class ClientSection:
             st.info("No cohort LTV data available for the selected period.")
 
         # Row 2 — cohort totals with cost load %
+        st.caption(
+            "Are newer cohorts generating more revenue than older ones? "
+            "Rising cost load % (right axis) means each BRL of revenue costs more to produce."
+        )
         fig_totals = _fig_cohort_totals(cohort_summary)
         if fig_totals:
             st.plotly_chart(fig_totals, width="stretch")
 
         # Row 3 — LTV curves by acquisition source
+        st.caption(
+            "Which channel brings the highest-value users over time? "
+            "A steeper slope means faster revenue ramp — prioritise those channels."
+        )
         fig_ltv = _fig_ltv_curves(ltv_by_source)
         if fig_ltv:
             st.plotly_chart(fig_ltv, width="stretch")
@@ -629,6 +641,11 @@ class ClientSection:
             st.info("No retention data for this period.")
 
         # Row 5 — CAC payback + Lorenz concentration side by side
+        st.caption(
+            "Payback > M+6 means we wait too long to recoup acquisition cost. "
+            "A steep Lorenz curve means revenue is concentrated in a few users — "
+            "healthy if those users are sticky, dangerous if they churn."
+        )
         col_x, col_y = st.columns(2)
         fig_payback = _fig_cac_payback(cac_be)
         fig_lorenz = _fig_lorenz(segments)
@@ -650,6 +667,10 @@ class ClientSection:
             return
 
         st.subheader("Revenue by Acquisition Source")
+        st.caption(
+            "Which channels bring users who actually spend? "
+            "High conversion rate + high avg revenue = the channel to double-down on."
+        )
         col1, col2 = st.columns(2)
         with col1:
             fig = _fig_acquisition_bar(acq)
@@ -674,6 +695,10 @@ class ClientSection:
         if not _empty(ref):
             st.divider()
             st.subheader("Referral Code Performance")
+            st.caption(
+                "Net ARPU after commission shows whether the referral cost is justified. "
+                "Negative net ARPU = we're paying more to acquire the user than they generate."
+            )
             display_ref = ref.copy()
             for col in [
                 "avg_net_revenue_usd",
@@ -707,6 +732,10 @@ class ClientSection:
             c2.metric("At-Risk Users", n_risk)
             c3.metric("Champion Revenue", _fmt_usd(rev_champ))
 
+        st.caption(
+            "Champions are your revenue engine — protect them. "
+            "At-risk users are lapsing but still valuable; outreach costs less than re-acquisition."
+        )
         col1, col2 = st.columns([1, 2])
         with col1:
             fig = _fig_segment_donut(summary)
@@ -718,6 +747,9 @@ class ClientSection:
 
         if not _empty(leaderboard):
             st.subheader("Champion Leaderboard (Top 50 by Net Revenue)")
+            st.caption(
+                "Your highest-value users. Know who they are and ensure they're being served well."
+            )
             st.dataframe(leaderboard, width="stretch", hide_index=True)
 
         if not _empty(at_risk):
@@ -749,6 +781,10 @@ class ClientSection:
         c2.metric("Avg Founder Revenue", _fmt_usd(avg_rev))
         c3.metric("Total Founder Revenue", _fmt_usd(total_rev))
 
+        st.caption(
+            "Founders with large networks but low revenue are untapped — "
+            "they recruited users who never transacted. Target them for activation."
+        )
         col1, col2 = st.columns(2)
         with col1:
             fig = _fig_founders_scatter(founders)
@@ -772,6 +808,7 @@ class ClientSection:
                     st.dataframe(top_unused, width="stretch", hide_index=True)
 
         st.subheader("Founders Leaderboard (Top 20 by Revenue)")
+        st.caption("Revenue breakdown per founder shows which product drives their value.")
         cols = [
             "user_id",
             "referral_code",
@@ -806,6 +843,10 @@ class ClientSection:
 
         # -- Activation funnel --
         st.subheader("User Activation Funnel")
+        st.caption(
+            "Signed up but not KYC'd = lost before they started. "
+            "KYC'd but never transacted = activation failure. Fix the leakiest stage first."
+        )
         fig_funnel = _fig_activation_funnel(funnel)
         if fig_funnel:
             st.plotly_chart(fig_funnel, width="stretch")
@@ -832,6 +873,10 @@ class ClientSection:
 
         # -- Product adoption rates --
         st.subheader("Product Adoption")
+        st.caption(
+            "Low adoption on a product means users don't know it exists or see no value in it. "
+            "Multi-product users have higher retention — cross-sell is a retention lever."
+        )
         fig_bars = _fig_product_adoption_bars(adoption)
         if fig_bars:
             st.plotly_chart(fig_bars, width="stretch")
@@ -852,6 +897,10 @@ class ClientSection:
         st.divider()
 
         # -- Segment heatmap --
+        st.caption(
+            "Champions using only one product are your best cross-sell targets. "
+            "Dormant users with high adoption had the intent — find out why they stopped."
+        )
         fig_heat = _fig_adoption_heatmap(adoption, segments)
         if fig_heat:
             st.plotly_chart(fig_heat, width="stretch")

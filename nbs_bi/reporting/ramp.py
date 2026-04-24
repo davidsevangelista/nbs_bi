@@ -392,6 +392,7 @@ class RampSection:
             c
             for c in [
                 "user_id",
+                "full_name",
                 "acquisition_source",
                 "referral_code_name",
                 "volume_brl",
@@ -403,6 +404,7 @@ class RampSection:
         display = display[cols_order]
         rename_map = {
             "user_id": "Client",
+            "full_name": "Name",
             "acquisition_source": "Source",
             "referral_code_name": "Referral Code",
             "volume_brl": "Volume BRL",

@@ -188,6 +188,7 @@ WHERE status = 'completed'
 _USER_ATTRIBUTION_SQL = """
 SELECT
     u.id::TEXT                                   AS user_id,
+    u.full_name,
     COALESCE(ur.source_type, 'organic')          AS acquisition_source,
     COALESCE(rc.public_name, '')                 AS referral_code_name,
     CASE WHEN f.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS is_founder
