@@ -631,6 +631,24 @@ class ClientModel:
         )
         return totals
 
+    def cohort_active_users(self) -> pd.DataFrame:
+        """Cohort active-user count matrix: cohort_month × months_since_signup → n active users.
+
+        Returns:
+            Pivot DataFrame indexed by cohort_month (Period), columns are
+            months_since_signup (int). Values are count of distinct users with
+            at least one transaction at that tenure month.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        counts = (
+            df.groupby(["signup_month", "months_since_signup"])["user_id"]
+            .nunique()
+            .unstack("months_since_signup")
+        )
+        return counts
+
     def cohort_monthly_profit(self) -> pd.DataFrame:
         """Total company net profit per calendar month, broken down by signup cohort.
 

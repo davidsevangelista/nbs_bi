@@ -96,6 +96,7 @@ class ClientReport:
             "cohort_summary": self._model.cohort_summary(),
             "cohort_retention": self._model.cohort_retention(),
             "cohort_total_profit": self._model.cohort_total_profit(),
+            "cohort_active_users": self._model.cohort_active_users(),
             "cohort_monthly_profit": self._model.cohort_monthly_profit(),
             "ltv_by_source": self._model.ltv_by_source(),
             "founders": self._model.founders_report(),

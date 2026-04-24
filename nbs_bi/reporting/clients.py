@@ -58,6 +58,7 @@ def _fig_ltv_heatmap(
     title: str = "Cohort LTV — Avg Cumulative Net Profit (USD)",
     colorbar_title: str = "Avg LTV (USD)",
     zmin: float | None = 0,
+    value_fmt: str = "${v:.0f}",
 ) -> go.Figure | None:
     """Cohort LTV heatmap: cohort_month (rows) × months_since_signup (cols)."""
     if _empty(cohort_ltv):
@@ -72,9 +73,9 @@ def _fig_ltv_heatmap(
             y=y,
             colorscale="YlGn",
             zmin=zmin,
-            hovertemplate="Cohort: %{y}<br>Month +%{x}: $%{z:.2f}<extra></extra>",
+            hovertemplate="Cohort: %{y}<br>Month +%{x}: %{z:.2f}<extra></extra>",
             colorbar=dict(title=colorbar_title),
-            text=[[f"${v:.0f}" if not (v != v) else "" for v in row] for row in z],
+            text=[[value_fmt.format(v=v) if not (v != v) else "" for v in row] for row in z],
             texttemplate="%{text}",
             textfont=dict(size=9, color="black"),
         )
@@ -536,7 +537,7 @@ class ClientSection:
     def _render_ltv(self) -> None:
         cohort_ltv = _get(self._r, "cohort_ltv")
         cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
-        cohort_summary = _get(self._r, "cohort_summary")
+        cohort_active_users = _get(self._r, "cohort_active_users")
         cohort_retention = _get(self._r, "cohort_retention")
         cohort_total_profit = _get(self._r, "cohort_total_profit")
         ltv_by_source = self._r.get("ltv_by_source", {})
@@ -639,14 +640,20 @@ class ClientSection:
         if fig_total_profit:
             st.plotly_chart(fig_total_profit, width="stretch")
 
-        # Row 2b — cohort totals with cost load %
+        # Row 2b — active users per cohort heatmap
         st.caption(
-            "Are newer cohorts generating more revenue than older ones? "
-            "Rising cost load % (right axis) means each BRL of revenue costs more to produce."
+            "How many users in each cohort are still active at each month since signup? "
+            "A steep drop in the first 1–2 months signals an onboarding or activation problem."
         )
-        fig_totals = _fig_cohort_totals(cohort_summary)
-        if fig_totals:
-            st.plotly_chart(fig_totals, width="stretch")
+        fig_active_users = _fig_ltv_heatmap(
+            cohort_active_users,
+            title="Active Users by Cohort (Monthly)",
+            colorbar_title="Users",
+            zmin=0,
+            value_fmt="{v:.0f}",
+        )
+        if fig_active_users:
+            st.plotly_chart(fig_active_users, width="stretch")
 
         # Row 3 — LTV curves by acquisition source
         st.caption(
