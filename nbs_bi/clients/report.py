@@ -53,9 +53,8 @@ class ClientReport:
         Returns:
             Dict with keys: ``leaderboard``, ``product_adoption``,
             ``segments``, ``segment_summary``, ``acquisition``,
-            ``referral_codes``, ``cohort_ltv``, ``cohort_ltv_gross``,
-            ``cohort_ltv_total``, ``cohort_ltv_gross_total``,
-            ``ltv_by_source``, ``founders``, ``at_risk``, ``fx_rate``.
+            ``referral_codes``, ``cohort_ltv``, ``ltv_by_source``,
+            ``founders``, ``at_risk``, ``fx_rate``.
         """
         logger.info("Building client report...")
         return {
@@ -68,8 +67,6 @@ class ClientReport:
             "referral_codes": self._model.referral_code_summary(),
             "cohort_ltv": self._model.cohort_ltv(),
             "cohort_ltv_gross": self._model.cohort_ltv_gross(),
-            "cohort_ltv_total": self._model.cohort_ltv_total(),
-            "cohort_ltv_gross_total": self._model.cohort_ltv_gross_total(),
             "cohort_summary": self._model.cohort_summary(),
             "ltv_by_source": self._model.ltv_by_source(),
             "founders": self._model.founders_report(),
