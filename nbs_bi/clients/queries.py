@@ -113,6 +113,28 @@ GROUP BY user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
 
+_DAILY_ACTIVITY_SQL = """
+SELECT DISTINCT
+    user_id::TEXT                              AS user_id,
+    DATE_TRUNC('day', activity_ts)::DATE       AS activity_date
+FROM (
+    SELECT user_id, created_at AS activity_ts
+    FROM conversion_quotes
+    WHERE used = TRUE
+      AND created_at >= :start
+      AND created_at <  :end
+    UNION ALL
+    SELECT user_id, posted_at AS activity_ts
+    FROM card_transactions
+    WHERE status = 'completed'
+      AND transaction_type = 'spend'
+      AND posted_at IS NOT NULL
+      AND posted_at >= :start
+      AND posted_at <  :end
+) sub
+ORDER BY user_id, activity_date
+"""
+
 _CARD_FEES_SQL = """
 SELECT
     user_id::TEXT           AS user_id,
@@ -486,6 +508,17 @@ class ClientQueries:
             conversion_revenue_brl.
         """
         return self._run("conv_monthly", _CONVERSION_MONTHLY_SQL, self._date_params())
+
+    def daily_activity(self) -> pd.DataFrame:
+        """Distinct (user_id, activity_date) pairs within the analysis window.
+
+        A user is considered active on a day if they made at least one
+        conversion (onramp/offramp) or card spend transaction on that date.
+
+        Returns:
+            DataFrame with columns: user_id (str), activity_date (date).
+        """
+        return self._run("daily_activity", _DAILY_ACTIVITY_SQL, self._date_params())
 
     def card_fees(self) -> pd.DataFrame:
         """All-time paid card annual fees per user (no date filter).

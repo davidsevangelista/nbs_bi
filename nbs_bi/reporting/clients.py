@@ -654,6 +654,23 @@ class ClientSection:
         if fig_active_users:
             st.plotly_chart(fig_active_users, width="stretch")
 
+        # Row 2c — Avg DAU per cohort heatmap
+        cohort_avg_dau = _get(self._r, "cohort_avg_dau")
+        st.caption(
+            "Average number of distinct users active per day within each cohort-month. "
+            "Low DAU relative to monthly actives means sporadic usage — "
+            "a signal to improve engagement loops."
+        )
+        fig_avg_dau = _fig_ltv_heatmap(
+            cohort_avg_dau,
+            title="Avg Daily Active Users by Cohort (Monthly)",
+            colorbar_title="Avg DAU",
+            zmin=0,
+            value_fmt="{v:.1f}",
+        )
+        if fig_avg_dau:
+            st.plotly_chart(fig_avg_dau, width="stretch")
+
         # Row 3 — LTV curves by acquisition source
         st.caption(
             "Which channel brings the highest-value users over time? "

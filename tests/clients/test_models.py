@@ -254,9 +254,33 @@ def _make_conversion_monthly() -> pd.DataFrame:
     )
 
 
+def _make_daily_activity() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "user_id": [
+                "user_0000-xxxx",
+                "user_0000-xxxx",
+                "user_0000-xxxx",
+                "user_0001-xxxx",
+                "user_0001-xxxx",
+            ],
+            "activity_date": pd.to_datetime(
+                ["2026-01-10", "2026-01-15", "2026-02-03", "2026-01-10", "2026-02-20"]
+            ).date,
+        }
+    )
+
+
 def _build_model_with_monthly(fx: float = 5.80) -> ClientModel:
     mock = _make_queries_mock(fx)
     mock.conversion_monthly.return_value = _make_conversion_monthly()
+    return ClientModel("2026-01-01", "2026-04-13", _queries=mock)
+
+
+def _build_model_with_daily(fx: float = 5.80) -> ClientModel:
+    mock = _make_queries_mock(fx)
+    mock.conversion_monthly.return_value = _make_conversion_monthly()
+    mock.daily_activity.return_value = _make_daily_activity()
     return ClientModel("2026-01-01", "2026-04-13", _queries=mock)
 
 
@@ -383,3 +407,35 @@ def test_product_adoption_n_products_uses_four_categories():
     pa = model.product_adoption()
     # n_products counts: conversion, card, swap, crossborder (max 4)
     assert pa["n_products"].max() <= 4
+
+
+# ---------------------------------------------------------------------------
+# Cohort avg DAU
+# ---------------------------------------------------------------------------
+
+
+def test_cohort_avg_dau_not_empty():
+    model = _build_model_with_daily()
+    result = model.cohort_avg_dau()
+    assert not result.empty
+
+
+def test_cohort_avg_dau_columns_are_nonneg_ints():
+    model = _build_model_with_daily()
+    result = model.cohort_avg_dau()
+    assert all(isinstance(c, int) and c >= 0 for c in result.columns)
+
+
+def test_cohort_avg_dau_values_nonneg():
+    model = _build_model_with_daily()
+    result = model.cohort_avg_dau()
+    assert (result.fillna(0) >= 0).all().all()
+
+
+def test_cohort_avg_dau_empty_when_no_daily_activity():
+    mock = _make_queries_mock()
+    mock.conversion_monthly.return_value = _make_conversion_monthly()
+    mock.daily_activity.return_value = pd.DataFrame()
+    model = ClientModel("2026-01-01", "2026-04-13", _queries=mock)
+    result = model.cohort_avg_dau()
+    assert result.empty

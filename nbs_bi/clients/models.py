@@ -649,6 +649,47 @@ class ClientModel:
         )
         return counts
 
+    def cohort_avg_dau(self) -> pd.DataFrame:
+        """Cohort average daily active users: cohort_month × months_since_signup → avg DAU.
+
+        Avg DAU for a cell = mean over calendar days of distinct active user
+        count per day. More sensitive than monthly active users: reveals
+        engagement depth within each tenure month.
+
+        Returns:
+            Pivot DataFrame indexed by cohort_month (Period), columns are
+            months_since_signup (int). Values are mean DAU (float).
+        """
+        df = self._q.daily_activity()
+        if df.empty:
+            return pd.DataFrame()
+
+        base = self._master[["user_id", "signup_date"]].copy()
+        base["signup_month"] = (
+            pd.to_datetime(base["signup_date"], utc=True)
+            .dt.tz_convert(None)
+            .dt.to_period("M")
+        )
+        df = df.merge(base, on="user_id", how="inner")
+        df["activity_month"] = pd.to_datetime(df["activity_date"]).dt.to_period("M")
+        df["months_since_signup"] = (
+            df["activity_month"].apply(lambda p: p.year * 12 + p.month)
+            - df["signup_month"].apply(lambda p: p.year * 12 + p.month)
+        )
+        df = df[df["months_since_signup"] >= 0]
+
+        daily_counts = (
+            df.groupby(["signup_month", "months_since_signup", "activity_date"])["user_id"]
+            .nunique()
+            .reset_index(name="dau")
+        )
+        avg_dau = (
+            daily_counts.groupby(["signup_month", "months_since_signup"])["dau"]
+            .mean()
+            .unstack("months_since_signup")
+        )
+        return avg_dau
+
     def cohort_monthly_profit(self) -> pd.DataFrame:
         """Total company net profit per calendar month, broken down by signup cohort.
 
