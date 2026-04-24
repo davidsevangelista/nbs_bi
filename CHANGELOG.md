@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-04-24
+
+Cohort analytics accuracy fix and new company-level profit heatmap in the LTV & Cohorts tab.
+
+### Added
+- `clients/models.py` — `_active_user_counts()`: private helper returning count of ever-transacted users per cohort (users who appear at least once in `_build_monthly_ltv()`); used as the shared denominator for all cohort averages
+- `clients/models.py` — `cohort_total_profit()`: pivot with same shape as `cohort_ltv()` (cohort_month × months_since_signup) but values are cohort-level sums of cumulative net profit — shows absolute company profit contribution per cohort at each tenure month, not a per-user average
+- `reporting/clients.py` — "Cohort Profit — Total Cumulative Net (USD)" heatmap: full-width YlGn heatmap rendered below the Revenue by Product chart in the LTV & Cohorts tab; `zmin=None` so negative-profit cohorts display in correct color range
+
+### Changed
+- `clients/models.py` — `cohort_ltv()` / `cohort_ltv_gross()`: denominator changed from implicit `.mean()` (users with activity in that specific month) to `sum / n_active_users` (ever-transacted users per cohort); churned users now lower later-month averages instead of silently dropping from the denominator, giving a more conservative and accurate view of cohort LTV trajectory
+- `clients/models.py` — `cohort_summary()`: `avg_gross_per_user_usd` and `avg_net_per_user_usd` now divide by `n_active_users` (ever-transacted) instead of `n_users` (all registered); `n_active_users` column added to output alongside existing `n_users` for funnel context
+- `reporting/clients.py` — `_fig_ltv_heatmap()` accepts `zmin: float | None = 0` and `colorbar_title: str` parameters, allowing reuse for both avg and total heatmaps
+
 ## [1.5.0] — 2026-04-22
 
 Cloud deployment hardening, dedicated Neon ads DB, and conversion revenue accuracy fix.

@@ -91,7 +91,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] `reporting/overview.py` — Tab 1: dark CSS KPI cards; 6-metric strip (users, KYC rate, active rate, conversions, volume BRL, revenue BRL); 4 charts (monthly revenue, monthly volume with MoM deltas, daily active users, activation funnel)
 - [x] `reporting/ramp.py` — Tab 2: 4 subtabs (Visão Geral, Receita, Clientes, FX & Volume); granularity toggle; 8+ charts
 - [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + **line-per-driver evolution** + summary table + revenue KPI row); fully translated to English
-- [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs (avg LTV, best source, FX rate, multi-product users %, top-10% revenue concentration) + revenue-per-user histogram (log scale); Founders leaderboard shows full 9-column revenue breakdown per user
+- [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs + revenue histogram + cohort total profit heatmap (YlGn, absolute sums); avg heatmaps now use active-user denominator
 - [x] `reporting/marketing.py` — Tab 5: `MetaAdsSection`; auto-loads most-recent Rain CSV from `data/nbs_corp_card/`; shows only most-recent campaign; 3-chart stack (cumulative spend vs cohort revenue; cumulative contribution margin with dual-axis card txns + conversions; stacked revenue breakdown by source); KPI strip (spend, revenue, ROAS, CAC, net contribution margin); referral selectbox filters entire cohort analysis; tracking start gated at `2026-04-12`
 - [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed; title "NBS Data Analytics"
 - [x] `use_container_width=True` → `width="stretch"` everywhere (Streamlit deprecation)
@@ -105,7 +105,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 - [x] Define spec (see [specs/clients.md](specs/clients.md))
 - [x] `clients/queries.py` — 11 SQL queries, Parquet cache
-- [x] `clients/models.py` — `ClientModel`: master join, unified USD LTV, product adoption, cohort LTV, activation funnel, CAC breakeven
+- [x] `clients/models.py` — `ClientModel`: master join, unified USD LTV, product adoption, cohort LTV, activation funnel, CAC breakeven; active-user denominator fix; `cohort_total_profit()` and `cohort_monthly_profit()` added
 - [x] `clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant
 - [x] `clients/report.py` — `ClientReport.build()` dict
 - [x] `clients/campaigns.py` — `CampaignAnalyzer`: `load_ad_spend()`, `_detect_campaigns()`, `roi_summary()`, `daily_context()`, `cumulative_revenue()`, `cumulative_profit()`, `referral_code_options()`
@@ -118,7 +118,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-22 (v1.5.0)
+## Current State — 2026-04-24 (v1.6.0)
 
 ### What's been built
 
@@ -145,6 +145,10 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - Per-transaction card COGS: `cost_per_txn = invoice_total / invoice_txn_count` × daily cohort txn count
 - Contribution margin = Revenue − Card Program COGS (Meta Ads spend is acquisition cost, tracked separately)
 - Referral filter on all cohort queries; `referral_code_options()` populates UI selectbox dynamically
+- **LTV & Cohort tab (v1.6.0 changes):**
+  - Avg heatmaps (gross + net) now divide by `n_active_users` (ever-transacted) not all registered users — denominator fixed across `cohort_ltv()`, `cohort_ltv_gross()`, and `cohort_summary()`
+  - New `cohort_total_profit()` pivot: same shape as `cohort_ltv()` but absolute USD sums — shows company-level profit contribution per cohort at each tenure month
+  - New "Cohort Profit — Total Cumulative Net (USD)" heatmap rendered full-width below Revenue by Product chart (`zmin=None` so negative cohorts display correctly)
 
 **Deployment**:
 - Live on Streamlit Community Cloud at `nbs-data-analytics.streamlit.app`
@@ -173,12 +177,15 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ## Backlog
 
-### Immediate
-- [ ] Verify Overview KPI values are correct after revenue USD fix (check conversion revenue USD vs known period)
-- [ ] Upload future Rain CSV exports to Neon as new ad spend data arrives (`nbs-ads-upload <file> --db-url $ADS_DATABASE_URL`)
+### Dashboard performance (identified 2026-04-24)
+- [ ] Add `@st.cache_data(ttl=3600)` to `_load_all_invoice_models()` in `reporting/cards.py:93` — currently uncached, called 3× per Card tab render on every rerun
+- [ ] Move `_latest_rain_invoice_total()` call (dashboard.py:228) inside `_tab_cards()` — currently fires before any tab is selected
+- [ ] Implement lazy tab loading via `st.session_state` — all 5 tabs render eagerly on first load (highest-impact fix)
+- [ ] Verify `DB_CACHE_DIR` is set in `.env` — if unset, Parquet cache is disabled and every query hits the DB cold on first load
 
 ### Campaign monitoring
 - [ ] Watch campaign_3 ROAS at ~30-day cohort mark (~May 14, 2026); compare referral filter vs all-users
+- [ ] Upload future Rain CSV exports to Neon as new ad spend data arrives (`nbs-ads-upload <file> --db-url $ADS_DATABASE_URL`)
 
 ### Cards
 - [ ] Investigate and close the ~$1,500 unmodelled fee gap in NKEMEJLO-0009 (March 2026)
