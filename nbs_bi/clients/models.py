@@ -536,6 +536,32 @@ class ClientModel:
         agg = df.groupby(["signup_month", "months_since_signup"])["cum_gross_ltv"].mean()
         return agg.unstack("months_since_signup")
 
+    def cohort_ltv_total(self) -> pd.DataFrame:
+        """Cohort LTV matrix: total (sum) cumulative net profit per cohort×month.
+
+        Returns:
+            Pivot DataFrame indexed by cohort_month (Period), columns are
+            months_since_signup (int). Values are total cumulative USD net profit.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        agg = df.groupby(["signup_month", "months_since_signup"])["cum_ltv"].sum()
+        return agg.unstack("months_since_signup")
+
+    def cohort_ltv_gross_total(self) -> pd.DataFrame:
+        """Cohort LTV matrix: total (sum) cumulative gross revenue per cohort×month.
+
+        Returns:
+            Pivot DataFrame indexed by cohort_month (Period), columns are
+            months_since_signup (int). Values are total cumulative USD gross revenue.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        agg = df.groupby(["signup_month", "months_since_signup"])["cum_gross_ltv"].sum()
+        return agg.unstack("months_since_signup")
+
     def cohort_summary(self) -> pd.DataFrame:
         """Per-cohort aggregates: users, gross revenue, net profit, months observed.
 

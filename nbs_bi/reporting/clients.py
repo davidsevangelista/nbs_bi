@@ -115,8 +115,34 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
             textposition="outside",
         )
     )
+    fig.add_trace(
+        go.Scatter(
+            x=summary["cohort_month"],
+            y=summary["avg_gross_per_user_usd"],
+            name="Avg Revenue/user",
+            mode="lines+markers",
+            line=dict(color=BLUE, dash="dot", width=2),
+            yaxis="y2",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=summary["cohort_month"],
+            y=summary["avg_net_per_user_usd"],
+            name="Avg Profit/user",
+            mode="lines+markers",
+            line=dict(color=EMERALD, dash="dot", width=2),
+            yaxis="y2",
+        )
+    )
     layout = _panel("Revenue & Profit by Cohort (USD)")
     layout["barmode"] = "group"
+    layout["yaxis2"] = dict(
+        title="Avg per User (USD)",
+        overlaying="y",
+        side="right",
+        showgrid=False,
+    )
     fig.update_layout(**layout)
     fig.update_xaxes(title="Cohort Month")
     fig.update_yaxes(title="USD")
@@ -398,6 +424,8 @@ class ClientSection:
     def _render_ltv(self) -> None:
         cohort_ltv = _get(self._r, "cohort_ltv")
         cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
+        cohort_ltv_total = _get(self._r, "cohort_ltv_total")
+        cohort_ltv_gross_total = _get(self._r, "cohort_ltv_gross_total")
         cohort_summary = _get(self._r, "cohort_summary")
         ltv_by_source = self._r.get("ltv_by_source", {})
         segments = _get(self._r, "segments")
@@ -457,14 +485,28 @@ class ClientSection:
 
         st.divider()
 
-        col_a, col_b = st.columns(2)
         fig_gross = _fig_ltv_heatmap(cohort_ltv_gross, title="Cohort Revenue — Avg Gross (USD)")
+        fig_gross_total = _fig_ltv_heatmap(
+            cohort_ltv_gross_total, title="Cohort Revenue — Total Gross (USD)"
+        )
         fig_net = _fig_ltv_heatmap(cohort_ltv, title="Cohort Profit — Avg Net (USD)")
-        if fig_gross:
-            col_a.plotly_chart(fig_gross, width="stretch")
-        if fig_net:
-            col_b.plotly_chart(fig_net, width="stretch")
-        if not fig_gross and not fig_net:
+        fig_net_total = _fig_ltv_heatmap(cohort_ltv_total, title="Cohort Profit — Total Net (USD)")
+
+        if fig_gross or fig_gross_total:
+            row1_a, row1_b = st.columns(2)
+            if fig_gross:
+                row1_a.plotly_chart(fig_gross, width="stretch")
+            if fig_gross_total:
+                row1_b.plotly_chart(fig_gross_total, width="stretch")
+
+        if fig_net or fig_net_total:
+            row2_a, row2_b = st.columns(2)
+            if fig_net:
+                row2_a.plotly_chart(fig_net, width="stretch")
+            if fig_net_total:
+                row2_b.plotly_chart(fig_net_total, width="stretch")
+
+        if not any([fig_gross, fig_gross_total, fig_net, fig_net_total]):
             st.info("No cohort LTV data available for the selected period.")
 
         fig_totals = _fig_cohort_totals(cohort_summary)
