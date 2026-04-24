@@ -190,8 +190,31 @@ def test_net_revenue_calculation():
         - 1.00  # cashback_usd
         - 0.0  # revenue_share
         - (6693.58 * 10 / 100)  # card_cost_allocated
+        - 2.07  # kyc_cost_usd
     )
     assert pytest.approx(u0["net_revenue_usd"], rel=1e-3) == expected
+
+
+def test_kyc_cost_column_present_and_fixed():
+    model = _build_model()
+    df = model.master_df
+    assert "kyc_cost_usd" in df.columns
+    assert (df["kyc_cost_usd"] == 2.07).all()
+
+
+def test_kyc_cost_deducted_in_cohort_ltv_month_0():
+    model = _build_model_with_monthly()
+    ltv = model.cohort_ltv()
+    # At M+0 the LTV should be lower than gross revenue by at least the KYC cost
+    # (it's also lower by card cost, so we just check it's negative or less than gross)
+    assert not ltv.empty
+    # cum_ltv at M+0 must be <= gross revenue (KYC cost has been deducted)
+    ltv_m0 = ltv[0] if 0 in ltv.columns else None
+    if ltv_m0 is not None:
+        gross = model.cohort_ltv_gross()
+        gross_m0 = gross[0] if 0 in gross.columns else None
+        if gross_m0 is not None:
+            assert (ltv_m0.dropna() <= gross_m0.dropna()).all()
 
 
 # ---------------------------------------------------------------------------

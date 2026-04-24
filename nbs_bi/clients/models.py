@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _RAIN_INVOICE_DEFAULT_USD = 6_693.58
+_KYC_COST_USD = 2.07  # One-time KYC verification cost per user at signup
 
 
 class ClientModel:
@@ -108,6 +109,7 @@ class ClientModel:
         out["offramp_revenue_usd"] = out.get("offramp_revenue_brl", 0) / fx + out.get(
             "offramp_revenue_usdc", 0
         )
+        out["kyc_cost_usd"] = _KYC_COST_USD
         out["net_revenue_usd"] = (
             out["onramp_revenue_usd"]
             + out["offramp_revenue_usd"]
@@ -117,6 +119,7 @@ class ClientModel:
             - out.get("cashback_usd", 0)
             - out.get("revenue_share_paid_usd", 0)
             - out["card_cost_allocated_usd"]
+            - out["kyc_cost_usd"]
         )
         return out
 
@@ -180,6 +183,7 @@ class ClientModel:
             "swap_fee_usd",
             "cashback_usd",
             "card_cost_allocated_usd",
+            "kyc_cost_usd",
             "n_conversions",
             "n_swaps",
             "tenure_months",
@@ -495,6 +499,9 @@ class ClientModel:
             lambda p: p.year * 12 + p.month
         ) - df["signup_month"].apply(lambda p: p.year * 12 + p.month)
         df = df[df["months_since_signup"] >= 0].sort_values(["user_id", "months_since_signup"])
+        # Deduct one-time KYC cost in each user's first active month
+        first_active = df.groupby("user_id")["months_since_signup"].transform("min")
+        df.loc[df["months_since_signup"] == first_active, "revenue_usd"] -= _KYC_COST_USD
         df["cum_ltv"] = df.groupby("user_id")["revenue_usd"].cumsum()
         df["cum_gross_ltv"] = df.groupby("user_id")["gross_revenue_usd"].cumsum()
         return df[
