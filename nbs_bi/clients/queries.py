@@ -47,7 +47,7 @@ SELECT
         ur.source_type,
         CASE WHEN f.invite_code IS NOT NULL AND f.invite_code <> ''
              THEN 'founder_invite'
-             ELSE 'unknown' END
+             ELSE 'organic' END
     )                               AS acquisition_source,
     ur.attributed_referral_code_id::TEXT AS referral_code_id,
     rc.code                         AS referral_code,
@@ -74,10 +74,10 @@ _CONVERSION_REVENUE_SQL = """
 SELECT
     user_id::TEXT AS user_id,
     SUM(CASE WHEN direction = 'brl_to_usdc'
-             THEN (fee_amount_brl + spread_revenue_brl)::FLOAT / 100.0
+             THEN (fee_amount_brl + spread_revenue_brl)::FLOAT
              ELSE 0 END) AS onramp_revenue_brl,
     SUM(CASE WHEN direction = 'usdc_to_brl'
-             THEN (fee_amount_brl + spread_revenue_brl)::FLOAT / 100.0
+             THEN (fee_amount_brl + spread_revenue_brl)::FLOAT
              ELSE 0 END) AS offramp_revenue_brl,
     SUM(CASE WHEN direction = 'brl_to_usdc'
              THEN (fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0
@@ -87,7 +87,7 @@ SELECT
              ELSE 0 END) AS offramp_revenue_usdc,
     COUNT(*) AS n_conversions,
     SUM(CASE WHEN direction = 'brl_to_usdc'
-             THEN (from_amount_brl)::FLOAT / 100.0
+             THEN (from_amount_brl)::FLOAT
              ELSE 0 END) AS onramp_volume_brl,
     SUM(CASE WHEN direction = 'usdc_to_brl'
              THEN (from_amount_usdc)::FLOAT / 1000000.0
@@ -103,7 +103,7 @@ _CONVERSION_MONTHLY_SQL = """
 SELECT
     user_id::TEXT                                                        AS user_id,
     DATE_TRUNC('month', created_at)::DATE                                AS month,
-    SUM(fee_amount_brl + spread_revenue_brl)::FLOAT / 100.0             AS conversion_revenue_brl,
+    SUM(fee_amount_brl + spread_revenue_brl)::FLOAT                     AS conversion_revenue_brl,
     SUM(fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0       AS conversion_revenue_usdc
 FROM conversion_quotes
 WHERE used = TRUE
