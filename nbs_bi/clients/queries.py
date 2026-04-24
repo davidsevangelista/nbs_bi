@@ -107,6 +107,8 @@ SELECT
     SUM(fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0       AS conversion_revenue_usdc
 FROM conversion_quotes
 WHERE used = TRUE
+  AND created_at >= :start
+  AND created_at <  :end
 GROUP BY user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
@@ -195,6 +197,8 @@ FROM card_transactions
 WHERE status = 'completed'
   AND transaction_type = 'spend'
   AND posted_at IS NOT NULL
+  AND posted_at >= :start
+  AND posted_at <  :end
 GROUP BY user_id, DATE_TRUNC('month', posted_at)
 ORDER BY user_id, month
 """
@@ -206,6 +210,8 @@ SELECT
     SUM(amount_usdc::FLOAT)                AS card_fee_usd
 FROM card_annual_fees
 WHERE status = 'paid'
+  AND created_at >= :start
+  AND created_at <  :end
 GROUP BY user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
@@ -217,6 +223,8 @@ SELECT
     SUM(amount::FLOAT / 1000000.0)         AS billing_usd
 FROM billing_charges
 WHERE status = 'settled'
+  AND created_at >= :start
+  AND created_at <  :end
 GROUP BY user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
@@ -235,6 +243,8 @@ SELECT
         END
     ) AS swap_fee_usd
 FROM swap_transactions
+WHERE "timestamp" >= :start
+  AND "timestamp" <  :end
 GROUP BY user_id, DATE_TRUNC('month', "timestamp")
 ORDER BY user_id, month
 """
@@ -246,6 +256,8 @@ SELECT
     SUM(reward_usd_value::FLOAT)           AS cashback_usd
 FROM cashback_rewards
 WHERE status = 'completed'
+  AND created_at >= :start
+  AND created_at <  :end
 GROUP BY user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
@@ -257,6 +269,8 @@ SELECT
     SUM(reward_usd_value::FLOAT)           AS revenue_share_usd
 FROM revenue_share_rewards
 WHERE status = 'completed'
+  AND created_at >= :start
+  AND created_at <  :end
 GROUP BY source_user_id, DATE_TRUNC('month', created_at)
 ORDER BY user_id, month
 """
@@ -462,7 +476,7 @@ class ClientQueries:
         return self._run("conv_rev", _CONVERSION_REVENUE_SQL, self._date_params())
 
     def conversion_monthly(self) -> pd.DataFrame:
-        """Full-history monthly conversion revenue per user (no date filter).
+        """Monthly conversion revenue per user within the analysis window.
 
         Sums both onramp and offramp directions. Used to build the cohort
         LTV time-series.
@@ -471,7 +485,7 @@ class ClientQueries:
             DataFrame with columns: user_id, month (date),
             conversion_revenue_brl.
         """
-        return self._run("conv_monthly", _CONVERSION_MONTHLY_SQL, {})
+        return self._run("conv_monthly", _CONVERSION_MONTHLY_SQL, self._date_params())
 
     def card_fees(self) -> pd.DataFrame:
         """All-time paid card annual fees per user (no date filter).
@@ -497,57 +511,58 @@ class ClientQueries:
         return self._run("card_txs", _CARD_TXS_SQL, self._date_params())
 
     def card_transactions_monthly(self) -> pd.DataFrame:
-        """Monthly card spend transaction counts per user (full history).
+        """Monthly card spend transaction counts per user within the analysis window.
 
-        No date filter — returns all months so that cohort LTV can deduct
-        processing costs at the correct activity month regardless of the
-        analysis window. Used by ``_build_monthly_ltv()`` for per-month cost
-        attribution.
+        Used by ``_build_monthly_ltv()`` for per-month Rain invoice cost attribution.
 
         Returns:
             DataFrame with columns: user_id, month (date), n_card_txns (int).
         """
-        return self._run("card_txs_monthly", _CARD_TXS_MONTHLY_SQL, {})
+        return self._run("card_txs_monthly", _CARD_TXS_MONTHLY_SQL, self._date_params())
 
     def card_fees_monthly(self) -> pd.DataFrame:
-        """Monthly card annual fee revenue per user (full history).
+        """Monthly card annual fee revenue per user within the analysis window.
 
         Returns:
             DataFrame with columns: user_id, month (date), card_fee_usd.
         """
-        return self._run("card_fees_monthly", _CARD_FEES_MONTHLY_SQL, {})
+        return self._run("card_fees_monthly", _CARD_FEES_MONTHLY_SQL, self._date_params())
 
     def billing_monthly(self) -> pd.DataFrame:
-        """Monthly billing charge revenue per user (full history).
+        """Monthly billing charge revenue per user within the analysis window.
 
         Returns:
             DataFrame with columns: user_id, month (date), billing_usd.
         """
-        return self._run("billing_monthly", _BILLING_MONTHLY_SQL, {})
+        return self._run("billing_monthly", _BILLING_MONTHLY_SQL, self._date_params())
 
     def swap_fees_monthly(self) -> pd.DataFrame:
-        """Monthly swap fee revenue per user, USDC pairs only (full history).
+        """Monthly swap fee revenue per user, USDC pairs only, within the analysis window.
 
         Returns:
             DataFrame with columns: user_id, month (date), swap_fee_usd.
         """
-        return self._run("swap_fees_monthly", _SWAP_FEES_MONTHLY_SQL, {"usdc_mint": _USDC_MINT})
+        return self._run(
+            "swap_fees_monthly",
+            _SWAP_FEES_MONTHLY_SQL,
+            {**self._date_params(), "usdc_mint": _USDC_MINT},
+        )
 
     def cashback_monthly(self) -> pd.DataFrame:
-        """Monthly cashback cost per user (full history).
+        """Monthly cashback cost per user within the analysis window.
 
         Returns:
             DataFrame with columns: user_id, month (date), cashback_usd.
         """
-        return self._run("cashback_monthly", _CASHBACK_MONTHLY_SQL, {})
+        return self._run("cashback_monthly", _CASHBACK_MONTHLY_SQL, self._date_params())
 
     def revenue_share_monthly(self) -> pd.DataFrame:
-        """Monthly revenue share cost per user (full history).
+        """Monthly revenue share cost per user within the analysis window.
 
         Returns:
             DataFrame with columns: user_id, month (date), revenue_share_usd.
         """
-        return self._run("rev_share_monthly", _REVENUE_SHARE_MONTHLY_SQL, {})
+        return self._run("rev_share_monthly", _REVENUE_SHARE_MONTHLY_SQL, self._date_params())
 
     def billing_charges(self) -> pd.DataFrame:
         """Per-user settled billing charges (actual card tx fee revenue).
