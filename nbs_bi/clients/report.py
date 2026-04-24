@@ -63,9 +63,7 @@ class ClientReport:
         if spend_df is None or spend_df.empty:
             return float("nan")
         try:
-            roi = CampaignAnalyzer(
-                spend_df, db_url=self._model._q._db_url
-            ).roi_summary()
+            roi = CampaignAnalyzer(spend_df, db_url=self._model._q._db_url).roi_summary()
             total_spend = float(roi["total_spend_usd"].sum())
             total_incr = float(roi["incremental_users_est"].sum())
             return total_spend / total_incr if total_incr > 0 else float("nan")
@@ -97,6 +95,7 @@ class ClientReport:
             "cohort_ltv_gross": self._model.cohort_ltv_gross(),
             "cohort_summary": self._model.cohort_summary(),
             "cohort_retention": self._model.cohort_retention(),
+            "cohort_monthly_profit": self._model.cohort_monthly_profit(),
             "ltv_by_source": self._model.ltv_by_source(),
             "founders": self._model.founders_report(),
             "at_risk": self._model.at_risk_users(),

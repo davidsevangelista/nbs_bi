@@ -157,6 +157,44 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _fig_cohort_monthly_profit(pivot: pd.DataFrame) -> go.Figure | None:
+    """Stacked bar of total company net profit per calendar month by signup cohort.
+
+    Each bar segment represents one signup cohort's net profit contribution in
+    that calendar month. Negative segments indicate a net-costly cohort.
+
+    Args:
+        pivot: Output of ``ClientModel.cohort_monthly_profit()``.
+            Rows = calendar_month (Period), columns = signup cohort (Period).
+
+    Returns:
+        Plotly Figure or None if data is empty.
+    """
+    if _empty(pivot):
+        return None
+    import plotly.colors as pc
+
+    x_labels = [str(m) for m in pivot.index]
+    n = len(pivot.columns)
+    palette = pc.sample_colorscale("Turbo", [i / max(n - 1, 1) for i in range(n)])
+    fig = go.Figure()
+    for col, color in zip(pivot.columns, palette):
+        fig.add_trace(
+            go.Bar(
+                x=x_labels,
+                y=pivot[col].tolist(),
+                name=str(col),
+                marker_color=color,
+            )
+        )
+    layout = _panel("Company Operational Profit by Cohort (Monthly, USD)")
+    layout["barmode"] = "relative"
+    fig.update_layout(**layout)
+    fig.update_xaxes(title="Calendar Month")
+    fig.update_yaxes(title="Net Profit (USD)")
+    return fig
+
+
 def _fig_retention_curves(retention: pd.DataFrame) -> go.Figure | None:
     """Line chart of monthly retention rate per cohort with avg + 30% threshold.
 
@@ -536,6 +574,7 @@ class ClientSection:
         cohort_ltv_gross = _get(self._r, "cohort_ltv_gross")
         cohort_summary = _get(self._r, "cohort_summary")
         cohort_retention = _get(self._r, "cohort_retention")
+        cohort_monthly_profit = _get(self._r, "cohort_monthly_profit")
         ltv_by_source = self._r.get("ltv_by_source", {})
         segments = _get(self._r, "segments")
         cac_be = _get(self._r, "cac_breakeven")
@@ -630,6 +669,15 @@ class ClientSection:
         fig_totals = _fig_cohort_totals(cohort_summary)
         if fig_totals:
             st.plotly_chart(fig_totals, width="stretch")
+
+        # Row 2b — company operational profit by cohort
+        st.caption(
+            "Total company net profit per calendar month, stacked by the signup cohort that "
+            "generated it. Negative segments mean a cohort cost more than it earned that month."
+        )
+        fig_monthly_profit = _fig_cohort_monthly_profit(cohort_monthly_profit)
+        if fig_monthly_profit:
+            st.plotly_chart(fig_monthly_profit, width="stretch")
 
         # Row 3 — LTV curves by acquisition source
         st.caption(

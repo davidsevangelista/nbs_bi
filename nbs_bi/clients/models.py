@@ -513,44 +513,78 @@ class ClientModel:
             ]
         ]
 
+    def _active_user_counts(self) -> pd.Series:
+        """Count of users per cohort who had at least one transaction.
+
+        Returns:
+            Series indexed by signup_month with count of ever-transacted users.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.Series(dtype=int)
+        return df.groupby("signup_month")["user_id"].nunique()
+
     def cohort_ltv(self) -> pd.DataFrame:
         """Cohort LTV matrix: cohort_month × months_since_signup → avg cumulative net LTV.
 
+        Denominator is the count of ever-transacted users in the cohort, not
+        all registered users. Churned users contribute 0 to months after their
+        last transaction, which lowers later-month averages accurately.
+
         Returns:
             Pivot DataFrame indexed by cohort_month (Period), columns are
-            months_since_signup (int). Values are avg cumulative USD net profit.
+            months_since_signup (int). Values are avg cumulative USD net profit
+            per ever-transacted user.
         """
         df = self._build_monthly_ltv()
         if df.empty:
             return pd.DataFrame()
-        agg = df.groupby(["signup_month", "months_since_signup"])["cum_ltv"].mean()
-        return agg.unstack("months_since_signup")
+        n_active = self._active_user_counts()
+        totals = (
+            df.groupby(["signup_month", "months_since_signup"])["cum_ltv"]
+            .sum()
+            .unstack("months_since_signup")
+        )
+        return totals.div(n_active, axis=0)
 
     def cohort_ltv_gross(self) -> pd.DataFrame:
         """Cohort LTV matrix using gross revenue (before cashback/revshare/card COGS).
 
+        Denominator is ever-transacted users per cohort (see ``cohort_ltv``).
+
         Returns:
             Pivot DataFrame indexed by cohort_month (Period), columns are
-            months_since_signup (int). Values are avg cumulative USD gross revenue.
+            months_since_signup (int). Values are avg cumulative USD gross revenue
+            per ever-transacted user.
         """
         df = self._build_monthly_ltv()
         if df.empty:
             return pd.DataFrame()
-        agg = df.groupby(["signup_month", "months_since_signup"])["cum_gross_ltv"].mean()
-        return agg.unstack("months_since_signup")
+        n_active = self._active_user_counts()
+        totals = (
+            df.groupby(["signup_month", "months_since_signup"])["cum_gross_ltv"]
+            .sum()
+            .unstack("months_since_signup")
+        )
+        return totals.div(n_active, axis=0)
 
     def cohort_summary(self) -> pd.DataFrame:
         """Per-cohort aggregates: users, gross revenue, net profit, months observed.
 
+        ``n_active_users`` counts users who ever transacted (the denominator for
+        per-user averages). ``n_users`` retains the total registered count for
+        funnel context.
+
         Returns:
-            DataFrame with columns: cohort_month, n_users, total_gross_revenue_usd,
-            total_net_revenue_usd, months_observed, avg_gross_per_user_usd,
-            avg_net_per_user_usd.
+            DataFrame with columns: cohort_month, n_users, n_active_users,
+            total_gross_revenue_usd, total_net_revenue_usd, months_observed,
+            avg_gross_per_user_usd, avg_net_per_user_usd.
         """
         df = self._build_monthly_ltv()
         if df.empty:
             return pd.DataFrame()
         grp = df.groupby("signup_month")
+        n_active = self._active_user_counts().rename("n_active_users")
         summary = pd.DataFrame(
             {
                 "n_users": grp["user_id"].nunique(),
@@ -562,16 +596,40 @@ class ClientModel:
                 "months_observed": grp["months_since_signup"].max(),
             }
         ).reset_index()
+        summary = summary.join(n_active, on="signup_month")
+        denom = summary["n_active_users"].replace(0, float("nan"))
         summary["total_conversion_revenue_usd"] = (
             summary["total_gross_revenue_usd"]
             - summary["total_card_fee_usd"]
             - summary["total_billing_usd"]
             - summary["total_swap_fee_usd"]
         )
-        summary["avg_gross_per_user_usd"] = summary["total_gross_revenue_usd"] / summary["n_users"]
-        summary["avg_net_per_user_usd"] = summary["total_net_revenue_usd"] / summary["n_users"]
+        summary["avg_gross_per_user_usd"] = summary["total_gross_revenue_usd"] / denom
+        summary["avg_net_per_user_usd"] = summary["total_net_revenue_usd"] / denom
         summary["cohort_month"] = summary["signup_month"].astype(str)
         return summary
+
+    def cohort_monthly_profit(self) -> pd.DataFrame:
+        """Total company net profit per calendar month, broken down by signup cohort.
+
+        Returns:
+            Pivot DataFrame: rows = calendar_month (Period), columns = signup cohort
+            (Period), values = total net profit in USD. Filled with 0 where no
+            activity occurred. Sorted chronologically by calendar month.
+        """
+        df = self._build_monthly_ltv()
+        if df.empty:
+            return pd.DataFrame()
+        df = df.copy()
+        df["calendar_month"] = df["signup_month"] + df["months_since_signup"].astype(int)
+        pivot = (
+            df.groupby(["calendar_month", "signup_month"])["revenue_usd"]
+            .sum()
+            .unstack("signup_month")
+            .fillna(0.0)
+            .sort_index()
+        )
+        return pivot
 
     def cohort_retention(self) -> pd.DataFrame:
         """Per-cohort monthly retention rates (% of cohort still active).
