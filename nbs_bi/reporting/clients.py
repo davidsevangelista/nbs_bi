@@ -582,32 +582,37 @@ class ClientSection:
                 n_top = max(1, len(rev_pos) // 10)
                 top10_pct = float(rev_pos.nlargest(n_top).sum() / rev_pos.sum() * 100)
 
+        # DAU from activity_kpis
+        activity = self._r.get("activity_kpis") or {}
+        dau = int(activity.get("dau", 0))
+
         # KPI strip
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c1.metric(
+        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+        c1.metric("Avg Daily Active Users", f"{dau:,}")
+        c2.metric(
             "CAC (incremental)",
             _fmt_usd(cac_usd) if not math.isnan(cac_usd) else "n/a",
         )
-        c2.metric(
+        c3.metric(
             "LTV at M+6",
             _fmt_usd(ltv_m6) if not math.isnan(ltv_m6) else "n/a",
         )
-        c3.metric(
+        c4.metric(
             "LTV:CAC",
             f"{ltv_cac:.1f}×" if not math.isnan(ltv_cac) else "n/a",
             delta="target ≥ 3×",
         )
-        c4.metric(
+        c5.metric(
             "Payback Period",
             f"M+{payback_mo}" if payback_mo is not None else "n/a",
             delta="target ≤ M+6",
         )
-        c5.metric(
+        c6.metric(
             "M+1 Retention",
             f"{ret_m1:.1f}%" if not math.isnan(ret_m1) else "n/a",
             delta="target ≥ 30%",
         )
-        c6.metric("Top 10% Revenue Share", f"{top10_pct:.1f}%")
+        c7.metric("Top 10% Revenue Share", f"{top10_pct:.1f}%")
 
         st.divider()
 
