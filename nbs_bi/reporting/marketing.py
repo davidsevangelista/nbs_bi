@@ -805,14 +805,19 @@ class MetaAdsSection:
         )
 
         self._render_kpis(summary, cum_profit_df)
-        if analyzer is not None:
-            try:
-                funnel = analyzer.cohort_funnel(latest_id, referral_code=referral_code)
-                fig_funnel = _fig_campaign_funnel(funnel)
-                if fig_funnel:
-                    st.plotly_chart(fig_funnel, width="stretch")
-            except Exception as _exc:
-                st.warning(f"Could not render activation funnel: {_exc}")
+        if not summary.empty:
+            signups = int(summary["cohort_users"].sum())
+            activated = int(summary["transacting_users"].sum())
+            kyc_done = (
+                analyzer.cohort_kyc_count(latest_id, referral_code=referral_code)
+                if analyzer is not None
+                else 0
+            )
+            fig_funnel = _fig_campaign_funnel(
+                {"signups": signups, "kyc_done": kyc_done, "activated": activated}
+            )
+            if fig_funnel:
+                st.plotly_chart(fig_funnel, width="stretch")
         st.divider()
         self._render_spend_charts(summary, daily, spend_df, campaigns, cum_rev_df, cum_profit_df)
         st.divider()
