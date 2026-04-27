@@ -958,8 +958,21 @@ class MetaAdsSection:
         total_spend = float(summary["total_spend_usd"].sum())
         total_rev = float(summary["total_revenue_usd"].sum())
         transacting = int(summary["transacting_users"].sum())
+        cohort_users = int(summary["cohort_users"].sum())
         overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
-        cac_active = total_spend / transacting if transacting > 0 else float("nan")
+
+        _has_kyc_cost = (
+            cum_profit_df is not None
+            and not cum_profit_df.empty
+            and "cum_kyc_cost_usd" in cum_profit_df.columns
+        )
+        if _has_kyc_cost:
+            kyc_cost = float(cum_profit_df["cum_kyc_cost_usd"].iloc[-1])  # type: ignore[index]
+        else:
+            from nbs_bi.clients.models import _KYC_COST_USD
+
+            kyc_cost = cohort_users * _KYC_COST_USD
+        cac_active = (total_spend + kyc_cost) / transacting if transacting > 0 else float("nan")
 
         has_profit = (
             cum_profit_df is not None
@@ -976,7 +989,7 @@ class MetaAdsSection:
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
         cols[3].metric(
-            "CAC (active users)",
+            "CAC (spend + KYC)",
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
         )
         if has_profit:
