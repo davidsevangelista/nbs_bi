@@ -75,6 +75,19 @@ GROUP BY 1
 ORDER BY 1
 """
 
+_COHORT_KYC_LEVEL_SQL = """
+SELECT COUNT(*) AS kyc_count
+FROM users
+WHERE created_at >= :cohort_start
+  AND created_at <  :cohort_end
+  AND kyc_level >= 1
+  AND (:referral_code = '' OR id IN (
+      SELECT ur.user_id FROM user_registrations ur
+      JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+      WHERE rc.code = :referral_code
+  ))
+"""
+
 _REFERRAL_CODES_SQL = """
 SELECT DISTINCT rc.code
 FROM referral_codes rc
@@ -698,14 +711,14 @@ class CampaignAnalyzer:
         return pd.DataFrame(rows)
 
     def cohort_kyc_count(self, campaign_id: str, referral_code: str = "") -> int:
-        """Return total GREEN KYC completions for users in a campaign cohort.
+        """Return count of cohort users who have completed KYC (kyc_level >= 1).
 
         Args:
             campaign_id: Campaign identifier from :attr:`campaigns`.
             referral_code: Optional referral-code filter (empty = all sources).
 
         Returns:
-            Count of KYC completions, or 0 if unavailable.
+            Count of KYC-verified users in the cohort, or 0 if unavailable.
         """
         campaign = next((c for c in self._campaigns if c["campaign_id"] == campaign_id), None)
         if campaign is None:
@@ -713,10 +726,17 @@ class CampaignAnalyzer:
         start_str = str(campaign["start"])
         end_str = str((pd.Timestamp(campaign["end"]) + pd.Timedelta(days=1)).date())
         try:
-            kyc_df = self._cohort_kyc(start_str, end_str, referral_code=referral_code)
-            return int(kyc_df["kyc_count"].sum()) if not kyc_df.empty else 0
+            df = self._run(
+                _COHORT_KYC_LEVEL_SQL,
+                {
+                    "cohort_start": start_str,
+                    "cohort_end": end_str,
+                    "referral_code": referral_code,
+                },
+            )
+            return int(df["kyc_count"].iloc[0]) if not df.empty else 0
         except Exception:
-            logger.warning("Could not fetch KYC counts for cohort funnel", exc_info=True)
+            logger.warning("Could not fetch KYC count for cohort funnel", exc_info=True)
             return 0
 
     def daily_context(self, context_days_before: int = 14) -> pd.DataFrame:
