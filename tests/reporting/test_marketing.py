@@ -237,7 +237,7 @@ def test_zero_spend_roas_is_nan():
 
 
 def _make_cum_profit_df() -> pd.DataFrame:
-    """Minimal cum_profit_df with the new column schema."""
+    """Minimal cum_profit_df with the current column schema."""
     dates = pd.date_range("2026-04-14", periods=5, freq="D")
     return pd.DataFrame(
         {
@@ -251,6 +251,9 @@ def _make_cum_profit_df() -> pd.DataFrame:
             "cum_rev_usd": [6.0, 16.0, 23.5, 31.5, 42.5],
             "cum_card_cogs_usd": [3.0, 7.0, 10.5, 13.5, 18.0],
             "cum_profit_usd": [-15.0, -20.0, -16.0, -11.0, -4.5],
+            "cum_contribution_margin_usd": [-33.0, -44.0, -40.0, -35.0, -28.5],
+            "cum_txn_count": [10, 20, 28, 35, 44],
+            "cum_conversion_count": [3, 7, 10, 13, 17],
         }
     )
 
@@ -261,12 +264,12 @@ def test_fig_cumulative_profit_returns_figure():
     assert fig is not None
 
 
-def test_fig_cumulative_profit_three_traces():
+def test_fig_cumulative_profit_six_traces():
     df = _make_cum_profit_df()
     fig = _fig_cumulative_profit(df)
     assert fig is not None
-    # Revenue, Card Cost, Net Profit
-    assert len(fig.data) == 3
+    # Revenue, Card Cost, Contribution Margin, Operational Profit, Card Txns, Conversions
+    assert len(fig.data) == 6
 
 
 def test_fig_cumulative_profit_returns_none_when_empty():

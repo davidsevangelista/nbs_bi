@@ -199,16 +199,16 @@ def _fig_cumulative_spend(
     _has_profit = (
         cum_profit_df is not None
         and not cum_profit_df.empty
-        and "cum_profit_usd" in cum_profit_df.columns
+        and "cum_contribution_margin_usd" in cum_profit_df.columns
     )
     if _has_profit:
         fig.add_trace(
             go.Scatter(
                 x=cum_profit_df["date"].astype(str),  # type: ignore[union-attr]
-                y=cum_profit_df["cum_profit_usd"],  # type: ignore[index]
+                y=cum_profit_df["cum_contribution_margin_usd"],  # type: ignore[index]
                 mode="lines",
                 line=dict(color=VIOLET, width=2, dash="dot"),
-                name="Cumulative Profit — latest cohort (USD)",
+                name="Cumulative Contribution Margin — latest cohort (USD)",
                 hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
             )
         )
@@ -309,10 +309,10 @@ def _fig_campaign_roi(
     _has_profit = (
         cum_profit_df is not None
         and not cum_profit_df.empty
-        and "cum_profit_usd" in cum_profit_df.columns
+        and "cum_contribution_margin_usd" in cum_profit_df.columns
     )
     if _has_profit:
-        net_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[union-attr]
+        net_profit = float(cum_profit_df["cum_contribution_margin_usd"].iloc[-1])  # type: ignore[union-attr]
         latest_id = summary["campaign_id"].iloc[-1]
         fig.add_trace(
             go.Scatter(
