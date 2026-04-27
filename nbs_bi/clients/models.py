@@ -279,6 +279,32 @@ class ClientModel:
             }
         ).reset_index()
 
+    def cumulative_profit_by_source(self) -> pd.DataFrame:
+        """Cumulative operational profit by acquisition source over signup date.
+
+        Groups users by signup date and acquisition source, sums
+        ``net_revenue_usd`` (revenue after card COGS and KYC cost), then
+        computes a cumulative total per channel ordered by date.
+
+        Returns:
+            DataFrame with columns: ``signup_date``, ``acquisition_source``,
+            ``daily_net_revenue_usd``, ``cumulative_net_revenue_usd``.
+        """
+        df = self._master.copy()
+        df["signup_date"] = (
+            pd.to_datetime(df["signup_date"], utc=True).dt.tz_convert(None).dt.normalize()
+        )
+        daily = (
+            df.groupby(["signup_date", "acquisition_source"], as_index=False)["net_revenue_usd"]
+            .sum()
+            .rename(columns={"net_revenue_usd": "daily_net_revenue_usd"})
+            .sort_values("signup_date")
+        )
+        daily["cumulative_net_revenue_usd"] = daily.groupby("acquisition_source")[
+            "daily_net_revenue_usd"
+        ].cumsum()
+        return daily.reset_index(drop=True)
+
     def referral_code_summary(self) -> pd.DataFrame:
         """Per referral-code user economics including commission cost.
 
@@ -673,16 +699,13 @@ class ClientModel:
 
         base = self._master[["user_id", "signup_date"]].copy()
         base["signup_month"] = (
-            pd.to_datetime(base["signup_date"], utc=True)
-            .dt.tz_convert(None)
-            .dt.to_period("M")
+            pd.to_datetime(base["signup_date"], utc=True).dt.tz_convert(None).dt.to_period("M")
         )
         df = df.merge(base, on="user_id", how="inner")
         df["activity_month"] = pd.to_datetime(df["activity_date"]).dt.to_period("M")
-        df["months_since_signup"] = (
-            df["activity_month"].apply(lambda p: p.year * 12 + p.month)
-            - df["signup_month"].apply(lambda p: p.year * 12 + p.month)
-        )
+        df["months_since_signup"] = df["activity_month"].apply(
+            lambda p: p.year * 12 + p.month
+        ) - df["signup_month"].apply(lambda p: p.year * 12 + p.month)
         df = df[df["months_since_signup"] >= 0]
 
         daily_counts = (

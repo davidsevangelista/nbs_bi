@@ -90,6 +90,7 @@ class ClientReport:
             "segments": self._segments.classify(),
             "segment_summary": self._segments.segment_summary(),
             "acquisition": self._model.acquisition_summary(),
+            "profit_by_source_daily": self._model.cumulative_profit_by_source(),
             "referral_codes": self._model.referral_code_summary(),
             "cohort_ltv": self._model.cohort_ltv(),
             "cohort_ltv_gross": self._model.cohort_ltv_gross(),
