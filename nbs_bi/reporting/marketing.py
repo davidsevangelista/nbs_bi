@@ -856,7 +856,6 @@ class MetaAdsSection:
         total_rev = float(summary["total_revenue_usd"].sum())
         transacting = int(summary["transacting_users"].sum())
         overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
-        best_roas = float(summary["roas"].max()) if "roas" in summary.columns else 0.0
         cac_active = total_spend / transacting if transacting > 0 else float("nan")
 
         has_profit = (
@@ -873,7 +872,7 @@ class MetaAdsSection:
             delta=f"{'above' if overall_roas >= 1 else 'below'} break-even",
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
-        cols[3].metric("Best Campaign ROAS", f"{best_roas:.2f}×")
+        cols[3].metric("Activated Users", f"{transacting:,}")
         cols[4].metric(
             "CAC (active users)",
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
