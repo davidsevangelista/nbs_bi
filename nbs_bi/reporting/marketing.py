@@ -887,15 +887,6 @@ class MetaAdsSection:
                 delta_color="normal" if net_profit >= 0 else "inverse",
             )
 
-        st.caption(
-            "Revenue is from ALL users who signed up during campaign windows — "
-            "includes organic signups. "
-            "CAC (active users) = ad spend ÷ transacting users in cohort. "
-            "CAC (incremental) = ad spend ÷ signups above organic baseline. "
-            "Operational Profit deducts card COGS (Rain invoice), ad spend, "
-            "and KYC cost ($2.07/user)."
-        )
-
     def _render_spend_charts(  # pragma: no cover
         self,
         summary: pd.DataFrame,
