@@ -358,7 +358,7 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         "date",
         "cum_rev_usd",
         "cum_card_cogs_usd",
-        "cum_kyc_cost_usd",
+        "cum_contribution_margin_usd",
         "cum_profit_usd",
         "cum_txn_count",
         "cum_conversion_count",
@@ -394,10 +394,10 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
     fig.add_trace(
         go.Scatter(
             x=x,
-            y=cum_profit_df["cum_kyc_cost_usd"],
+            y=cum_profit_df["cum_contribution_margin_usd"],
             mode="lines",
-            line=dict(color=AMBER, width=1, dash="dash"),
-            name="Cumulative KYC Cost (USD)",
+            line=dict(color=VIOLET, width=1.5, dash="dot"),
+            name="Cumulative Contribution Margin (USD)",
             yaxis="y1",
             hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
         )
@@ -408,7 +408,7 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
             y=cum_profit_df["cum_profit_usd"],
             mode="lines",
             line=dict(color=VIOLET, width=2),
-            name="Operational Profit (USD)",
+            name="Cumulative Operational Profit (USD)",
             yaxis="y1",
             hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
         )
@@ -446,7 +446,7 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         annotation_font_size=10,
         annotation_font_color=TEXT_MUTED,
     )
-    layout = panel("Operational Profit — Latest Cohort (USD)")
+    layout = panel("Operational Profit & Contribution Margin — Latest Cohort (USD)")
     layout["xaxis"]["title"] = "Date"
     layout["yaxis"]["title"] = "USD"
     layout["yaxis2"] = {

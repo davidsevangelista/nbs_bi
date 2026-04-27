@@ -900,6 +900,7 @@ class CampaignAnalyzer:
             "daily_card_cogs_usd",
             "daily_ad_spend_usd",
             "daily_kyc_cost_usd",
+            "daily_contribution_margin_usd",
             "daily_profit_usd",
             "daily_txn_count",
             "daily_conversion_count",
@@ -912,6 +913,7 @@ class CampaignAnalyzer:
             "cum_rev_usd",
             "cum_card_cogs_usd",
             "cum_kyc_cost_usd",
+            "cum_contribution_margin_usd",
             "cum_profit_usd",
             "cum_txn_count",
             "cum_conversion_count",
@@ -951,7 +953,9 @@ class CampaignAnalyzer:
         conv_full["conv_count"] = conv_full["conv_count"].fillna(0).astype("int64")
 
         signup_df = self._daily_signups(cohort_start, cohort_end)
-        if not signup_df.empty:
+        if signup_df.empty:
+            signup_df = pd.DataFrame(columns=["signup_date", "new_signups"])
+        else:
             signup_df["signup_date"] = pd.to_datetime(signup_df["signup_date"])
         signup_full = all_dates.rename(columns={"date": "signup_date"}).merge(
             signup_df, on="signup_date", how="left"
@@ -985,11 +989,13 @@ class CampaignAnalyzer:
         result["daily_kyc_cost_usd"] = (
             signup_full["new_signups"].values.astype("float64") * _KYC_COST_USD
         )
-        result["daily_profit_usd"] = (
+        result["daily_contribution_margin_usd"] = (
             result["daily_rev_total_usd"]
             - result["daily_card_cogs_usd"]
             - result["daily_ad_spend_usd"]
-            - result["daily_kyc_cost_usd"]
+        )
+        result["daily_profit_usd"] = (
+            result["daily_contribution_margin_usd"] - result["daily_kyc_cost_usd"]
         )
         result["daily_txn_count"] = txn_full["txn_count"].values
         result["daily_conversion_count"] = conv_full["conv_count"].values
@@ -1002,6 +1008,7 @@ class CampaignAnalyzer:
         result["cum_rev_usd"] = result["daily_rev_total_usd"].cumsum()
         result["cum_card_cogs_usd"] = result["daily_card_cogs_usd"].cumsum()
         result["cum_kyc_cost_usd"] = result["daily_kyc_cost_usd"].cumsum()
+        result["cum_contribution_margin_usd"] = result["daily_contribution_margin_usd"].cumsum()
         result["cum_profit_usd"] = result["daily_profit_usd"].cumsum()
         result["cum_txn_count"] = result["daily_txn_count"].cumsum()
         result["cum_conversion_count"] = result["daily_conversion_count"].cumsum()
