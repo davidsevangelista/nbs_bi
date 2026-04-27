@@ -992,10 +992,10 @@ class CampaignAnalyzer:
         result["daily_contribution_margin_usd"] = (
             result["daily_rev_total_usd"]
             - result["daily_card_cogs_usd"]
-            - result["daily_ad_spend_usd"]
+            - result["daily_kyc_cost_usd"]
         )
         result["daily_profit_usd"] = (
-            result["daily_contribution_margin_usd"] - result["daily_kyc_cost_usd"]
+            result["daily_contribution_margin_usd"] - result["daily_ad_spend_usd"]
         )
         result["daily_txn_count"] = txn_full["txn_count"].values
         result["daily_conversion_count"] = conv_full["conv_count"].values
