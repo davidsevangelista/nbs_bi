@@ -54,18 +54,23 @@ GROUP BY 1
 ORDER BY 1
 """
 
-_COHORT_SIGNUPS_SQL = """
+_COHORT_KYC_SQL = """
 SELECT
-    DATE(created_at AT TIME ZONE 'UTC') AS signup_date,
-    COUNT(*)                             AS new_signups
-FROM users
-WHERE created_at >= :cohort_start
-  AND created_at <  :cohort_end
-  AND (:referral_code = '' OR id IN (
-      SELECT ur.user_id FROM user_registrations ur
-      JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
-      WHERE rc.code = :referral_code
-  ))
+    DATE(kv.completed_at AT TIME ZONE 'UTC') AS kyc_date,
+    COUNT(*)                                  AS kyc_count
+FROM kyc_verifications kv
+WHERE kv.status = 'completed'
+  AND kv.review_answer = 'GREEN'
+  AND kv.user_id::TEXT IN (
+      SELECT id::TEXT FROM users
+      WHERE created_at >= :cohort_start
+        AND created_at <  :cohort_end
+        AND (:referral_code = '' OR id IN (
+            SELECT ur.user_id FROM user_registrations ur
+            JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+            WHERE rc.code = :referral_code
+        ))
+  )
 GROUP BY 1
 ORDER BY 1
 """
@@ -560,17 +565,17 @@ class CampaignAnalyzer:
         """Return daily signup counts for the given window (end is exclusive)."""
         return self._run(_DAILY_SIGNUPS_SQL, {"start": start, "end": end})
 
-    def _cohort_signups(
+    def _cohort_kyc(
         self, cohort_start: str, cohort_end: str, referral_code: str = ""
     ) -> pd.DataFrame:
-        """Return daily signup counts scoped to the campaign cohort.
+        """Return daily completed-KYC counts for the campaign cohort.
 
-        Unlike ``_daily_signups``, this applies the same referral-code filter
-        used by the revenue and card-COGS queries, so KYC cost is attributed
-        only to cohort users.
+        Counts only GREEN-approved verifications from ``kyc_verifications``,
+        scoped to cohort users by the same referral-code filter used by revenue
+        and card-COGS queries.  Grouped by ``completed_at`` date, not signup date.
         """
         return self._run(
-            _COHORT_SIGNUPS_SQL,
+            _COHORT_KYC_SQL,
             {
                 "cohort_start": cohort_start,
                 "cohort_end": cohort_end,
@@ -986,15 +991,15 @@ class CampaignAnalyzer:
         )
         conv_full["conv_count"] = conv_full["conv_count"].fillna(0).astype("int64")
 
-        signup_df = self._cohort_signups(cohort_start, cohort_end, referral_code=referral_code)
-        if signup_df.empty:
-            signup_df = pd.DataFrame(columns=["signup_date", "new_signups"])
+        kyc_df = self._cohort_kyc(cohort_start, cohort_end, referral_code=referral_code)
+        if kyc_df.empty:
+            kyc_df = pd.DataFrame(columns=["kyc_date", "kyc_count"])
         else:
-            signup_df["signup_date"] = pd.to_datetime(signup_df["signup_date"])
-        signup_full = all_dates.rename(columns={"date": "signup_date"}).merge(
-            signup_df, on="signup_date", how="left"
+            kyc_df["kyc_date"] = pd.to_datetime(kyc_df["kyc_date"])
+        kyc_full = all_dates.rename(columns={"date": "kyc_date"}).merge(
+            kyc_df, on="kyc_date", how="left"
         )
-        signup_full["new_signups"] = signup_full["new_signups"].fillna(0).astype("int64")
+        kyc_full["kyc_count"] = kyc_full["kyc_count"].fillna(0).astype("int64")
 
         cogs_series = _cogs_for_cohort_txns(txn_full, cost_per_txn)
 
@@ -1021,7 +1026,7 @@ class CampaignAnalyzer:
             result["date"].map(spend_indexed).fillna(0.0).astype("float64")
         )
         result["daily_kyc_cost_usd"] = (
-            signup_full["new_signups"].values.astype("float64") * _KYC_COST_USD
+            kyc_full["kyc_count"].values.astype("float64") * _KYC_COST_USD
         )
         result["daily_profit_usd"] = (
             result["daily_rev_total_usd"]

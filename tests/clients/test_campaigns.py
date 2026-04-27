@@ -123,6 +123,14 @@ def _make_analyzer(spend=None, revenue_row=None):
                     {"conv_date": "2026-04-15", "conv_count": 18},
                 ]
             )
+        # Cohort KYC completions query
+        if "kyc_verifications" in sql or "kyc_date" in sql:
+            return pd.DataFrame(
+                [
+                    {"kyc_date": "2026-04-14", "kyc_count": 25},
+                    {"kyc_date": "2026-04-15", "kyc_count": 18},
+                ]
+            )
         # Aggregate cohort revenue (roi_summary)
         return pd.DataFrame([revenue_row])
 
