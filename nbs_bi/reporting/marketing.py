@@ -966,7 +966,7 @@ class MetaAdsSection:
             and not cum_profit_df.empty
             and "cum_contribution_margin_usd" in cum_profit_df.columns
         )
-        cols = st.columns(6 if has_profit else 5)
+        cols = st.columns(5 if has_profit else 4)
         cols[0].metric("Total Meta Spend", fmt_usd(total_spend))
         cols[1].metric("Cohort Revenue", fmt_usd(total_rev))
         cols[2].metric(
@@ -975,14 +975,13 @@ class MetaAdsSection:
             delta=f"{'above' if overall_roas >= 1 else 'below'} break-even",
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
-        cols[3].metric("Activated Users", f"{transacting:,}")
-        cols[4].metric(
+        cols[3].metric(
             "CAC (active users)",
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
         )
         if has_profit:
             net_profit = float(cum_profit_df["cum_contribution_margin_usd"].iloc[-1])  # type: ignore[union-attr]
-            cols[5].metric(
+            cols[4].metric(
                 "Net Profit (latest cohort)",
                 fmt_usd(net_profit),
                 delta="profitable" if net_profit >= 0 else "loss",
