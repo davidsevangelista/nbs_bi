@@ -221,6 +221,47 @@ def _apply_light_theme(fig_dict: dict) -> None:
             ann["font"]["color"] = "#374151"
 
 
+def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
+    """Render a light-themed Plotly figure to PNG bytes via kaleido.
+
+    Tries ``plotly.io.to_image`` first (more robust in multi-threaded
+    contexts such as Streamlit) and falls back to ``fig.to_image``.
+    Raises the last exception if both attempts fail so callers can surface
+    the error rather than silently producing a chart-free PDF.
+
+    Args:
+        fig: Light-themed Plotly figure (already themed and shape-stripped).
+        px_w: Output width in pixels.
+        px_h: Output height in pixels.
+
+    Returns:
+        PNG bytes.
+
+    Raises:
+        Exception: If both kaleido invocations fail.
+    """
+    import plotly.io as pio
+
+    last_exc: Exception | None = None
+
+    try:
+        png = pio.to_image(fig, format="png", width=px_w, height=px_h, engine="kaleido")
+        if png:
+            return png
+    except Exception as exc:  # noqa: BLE001
+        log.warning("pio.to_image failed (%s), retrying via fig.to_image", exc)
+        last_exc = exc
+
+    try:
+        png = fig.to_image(format="png", width=px_w, height=px_h, engine="kaleido")
+        if png:
+            return png
+    except Exception as exc:  # noqa: BLE001
+        last_exc = exc
+
+    raise RuntimeError("kaleido could not render figure") from last_exc
+
+
 def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | None:
     """Render a Plotly figure to a ReportLab Image at the given dimensions.
 
@@ -235,6 +276,10 @@ def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | 
 
     Returns:
         ReportLab ``Image`` flowable, or None if rendering fails.
+
+    Raises:
+        RuntimeError: Propagates kaleido failure so ``_render_export_button``
+            can display it via ``st.error``.
     """
     px_w = int(width_pt * 2)  # 2× for crisp output
     px_h = int(height_pt * 2)
@@ -244,11 +289,7 @@ def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | 
     _apply_light_theme(fig_dict)
     light_fig = go.Figure(fig_dict)
 
-    try:
-        png_bytes = light_fig.to_image(format="png", width=px_w, height=px_h)
-    except Exception as exc:
-        log.exception("kaleido failed to render figure: %s", exc)
-        return None
+    png_bytes = _render_light_fig(light_fig, px_w, px_h)
 
     if not png_bytes:
         log.warning("kaleido returned empty bytes for figure")
