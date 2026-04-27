@@ -269,6 +269,9 @@ def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | 
     the figure's dict representation (safe deep copy). Strips per-day vlines
     that break kaleido's static renderer on categorical x-axes.
 
+    Individual chart failures are logged and return None so that one bad chart
+    does not abort the entire PDF build.
+
     Args:
         fig: Plotly figure to render.
         width_pt: Target width in PDF points.
@@ -276,27 +279,41 @@ def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | 
 
     Returns:
         ReportLab ``Image`` flowable, or None if rendering fails.
-
-    Raises:
-        RuntimeError: Propagates kaleido failure so ``_render_export_button``
-            can display it via ``st.error``.
     """
     px_w = int(width_pt * 2)  # 2× for crisp output
     px_h = int(height_pt * 2)
 
-    fig_dict = copy.deepcopy(fig.to_dict())
-    _strip_string_axis_shapes(fig_dict)
-    _apply_light_theme(fig_dict)
-    light_fig = go.Figure(fig_dict)
-
-    png_bytes = _render_light_fig(light_fig, px_w, px_h)
+    try:
+        fig_dict = copy.deepcopy(fig.to_dict())
+        _strip_string_axis_shapes(fig_dict)
+        _apply_light_theme(fig_dict)
+        light_fig = go.Figure(fig_dict)
+        png_bytes = _render_light_fig(light_fig, px_w, px_h)
+    except Exception as exc:
+        log.exception("kaleido failed for figure (title=%r): %s", _fig_title(fig), exc)
+        return None
 
     if not png_bytes:
-        log.warning("kaleido returned empty bytes for figure")
+        log.warning("kaleido returned empty bytes for figure %r", _fig_title(fig))
         return None
 
     buf = io.BytesIO(png_bytes)
     return Image(buf, width=width_pt, height=height_pt)
+
+
+def _fig_title(fig: go.Figure) -> str:
+    """Return the figure's layout title text, or an empty string.
+
+    Args:
+        fig: Plotly figure.
+
+    Returns:
+        Title string or empty string if not set.
+    """
+    try:
+        return str(fig.layout.title.text or "")
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------

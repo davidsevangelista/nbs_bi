@@ -980,9 +980,9 @@ class MetaAdsSection:
                             funnel=funnel,
                             kyc_done=kyc_done,
                         )
-                    except Exception:
+                    except Exception as exc:
                         _log.exception("PDF export failed")
-                        st.error("PDF generation failed — check server logs.")
+                        st.error(f"PDF generation failed: {exc}")
                         st.session_state.pop(_skey, None)
 
         pdf_bytes: bytes | None = st.session_state.get(_skey)
