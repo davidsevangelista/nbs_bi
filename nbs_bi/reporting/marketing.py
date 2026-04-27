@@ -866,13 +866,18 @@ class MetaAdsSection:
             if analyzer is not None
             else 0
         )
+
+        # --- Export button (top of analysis, before KPIs) ----------------------
+        signups = int(summary["cohort_users"].sum()) if not summary.empty else 0
+        activated = int(summary["transacting_users"].sum()) if not summary.empty else 0
+        funnel = {"signups": signups, "kyc_done": kyc_done, "activated": activated}
+        self._render_export_button(
+            summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns, funnel, kyc_done
+        )
+
         self._render_kpis(summary, cum_profit_df, kyc_done=kyc_done)
         if not summary.empty:
-            signups = int(summary["cohort_users"].sum())
-            activated = int(summary["transacting_users"].sum())
-            fig_funnel = _fig_campaign_funnel(
-                {"signups": signups, "kyc_done": kyc_done, "activated": activated}
-            )
+            fig_funnel = _fig_campaign_funnel(funnel)
             if fig_funnel:
                 st.plotly_chart(fig_funnel, width="stretch")
         st.divider()
@@ -881,6 +886,65 @@ class MetaAdsSection:
         self._render_channel(summary, cum_profit_df)
         st.divider()
         self._render_summary_table(summary)
+
+    def _render_export_button(  # pragma: no cover
+        self,
+        summary: pd.DataFrame,
+        cum_profit_df: pd.DataFrame | None,
+        cum_rev_df: pd.DataFrame | None,
+        daily: pd.DataFrame,
+        spend_df: pd.DataFrame,
+        campaigns: list[dict],
+        funnel: dict,
+        kyc_done: int,
+    ) -> None:
+        """Render a PDF export button that downloads the marketing briefing.
+
+        Generates the A4 PDF on click via :func:`nbs_bi.reporting.export.build_marketing_pdf`
+        and surfaces it as a ``st.download_button`` so the browser triggers a
+        native file-save dialog without any intermediate page.
+
+        Args:
+            summary: ``roi_summary()`` DataFrame (latest campaign rows).
+            cum_profit_df: ``cumulative_profit()`` DataFrame (may be None).
+            cum_rev_df: ``cumulative_revenue()`` DataFrame (may be None).
+            daily: ``daily_context()`` DataFrame.
+            spend_df: Date-filtered ad spend DataFrame.
+            campaigns: List of campaign dicts.
+            funnel: Dict with ``signups``, ``kyc_done``, ``activated`` counts.
+            kyc_done: KYC-completed count for CAC calculation.
+        """
+        import logging
+
+        from nbs_bi.reporting.export import build_marketing_pdf
+
+        _log = logging.getLogger(__name__)
+
+        col, _ = st.columns([1, 5])
+        with col:
+            if st.button("Export Report (PDF)", key="ads_export_pdf"):
+                with st.spinner("Generating PDF…"):
+                    try:
+                        pdf_bytes = build_marketing_pdf(
+                            summary=summary,
+                            cum_profit_df=cum_profit_df,
+                            cum_rev_df=cum_rev_df,
+                            daily=daily,
+                            spend_df=spend_df,
+                            campaigns=campaigns,
+                            funnel=funnel,
+                            kyc_done=kyc_done,
+                        )
+                        st.download_button(
+                            label="Download PDF",
+                            data=pdf_bytes,
+                            file_name="nbs_marketing_report.pdf",
+                            mime="application/pdf",
+                            key="ads_export_pdf_download",
+                        )
+                    except Exception:
+                        _log.exception("PDF export failed")
+                        st.error("PDF generation failed — check logs for details.")
 
     def _try_upload(self) -> dict | None:  # pragma: no cover
         """Load campaign data: DB first, then local CSV, then file uploader.
