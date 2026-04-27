@@ -686,13 +686,56 @@ class MetaAdsSection:
             if campaign_data is None:
                 return
 
-        summary: pd.DataFrame = campaign_data.get("summary", pd.DataFrame())
-        daily: pd.DataFrame = campaign_data.get("daily", pd.DataFrame())
         spend_df: pd.DataFrame = campaign_data.get("spend_df", pd.DataFrame())
-        campaigns: list[dict] = campaign_data.get("campaigns", [])
+        invoice_history: list = campaign_data.get("invoice_history", [])
+
+        if spend_df.empty:
+            st.warning("No FACEBK spend rows found in the uploaded CSV.")
+            return
+
+        # --- Date range filter --------------------------------------------------
+        spend_dates = pd.to_datetime(spend_df["date"])
+        min_date = spend_dates.min().date()
+        max_date = spend_dates.max().date()
+        col_start, col_end = st.columns(2)
+        with col_start:
+            start_date = st.date_input(
+                "Analysis start",
+                value=min_date,
+                min_value=min_date,
+                max_value=max_date,
+                key="ads_start_date",
+            )
+        with col_end:
+            end_date = st.date_input(
+                "Analysis end",
+                value=max_date,
+                min_value=min_date,
+                max_value=max_date,
+                key="ads_end_date",
+            )
+
+        if start_date > end_date:
+            st.error("Start date must be before end date.")
+            return
+
+        date_mask = (spend_dates.dt.date >= start_date) & (spend_dates.dt.date <= end_date)
+        spend_df = spend_df[date_mask].reset_index(drop=True)
+        if spend_df.empty:
+            st.warning("No spend data in the selected date range.")
+            return
+
+        # Rebuild analyzer scoped to the selected window so that campaign
+        # detection, roi_summary, and daily_context all reflect the filter.
+        from nbs_bi.clients.campaigns import CampaignAnalyzer
+
+        analyzer = CampaignAnalyzer(spend_df, db_url=self._analytics_db_url or self._db_url)
+        campaigns: list[dict] = analyzer.campaigns
+        summary: pd.DataFrame = analyzer.roi_summary()
+        daily: pd.DataFrame = analyzer.daily_context()
 
         if summary.empty:
-            st.warning("No FACEBK spend rows found in the uploaded CSV.")
+            st.warning("No campaign detected in the selected date range.")
             return
 
         # Focus all campaign-level charts on the most recent campaign only.
@@ -703,9 +746,6 @@ class MetaAdsSection:
             latest_start = pd.to_datetime(summary["start"].iloc[0])
             cutoff = latest_start - pd.Timedelta(days=14)
             daily = daily[pd.to_datetime(daily["date"]) >= cutoff].reset_index(drop=True)
-
-        analyzer = campaign_data.get("analyzer")
-        invoice_history: list = campaign_data.get("invoice_history", [])
 
         referral_code = ""
         if analyzer is not None:
