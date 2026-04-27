@@ -822,7 +822,7 @@ class MetaAdsSection:
         has_profit = (
             cum_profit_df is not None
             and not cum_profit_df.empty
-            and "cum_profit_usd" in cum_profit_df.columns
+            and "cum_contribution_margin_usd" in cum_profit_df.columns
         )
         cols = st.columns(6 if has_profit else 5)
         cols[0].metric("Total Meta Spend", fmt_usd(total_spend))
@@ -839,7 +839,7 @@ class MetaAdsSection:
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
         )
         if has_profit:
-            net_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[union-attr]
+            net_profit = float(cum_profit_df["cum_contribution_margin_usd"].iloc[-1])  # type: ignore[union-attr]
             cols[5].metric(
                 "Net Profit (latest cohort)",
                 fmt_usd(net_profit),
