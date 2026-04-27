@@ -697,6 +697,33 @@ class CampaignAnalyzer:
             )
         return pd.DataFrame(rows)
 
+    def cohort_funnel(self, campaign_id: str, referral_code: str = "") -> dict[str, int]:
+        """Return signup → KYC → activated funnel counts for a campaign cohort.
+
+        Args:
+            campaign_id: Campaign identifier from :attr:`campaigns`.
+            referral_code: Optional referral-code filter (empty = all sources).
+
+        Returns:
+            Dict with keys ``signups``, ``kyc_done``, ``activated``.
+        """
+        campaign = next((c for c in self._campaigns if c["campaign_id"] == campaign_id), None)
+        if campaign is None:
+            return {"signups": 0, "kyc_done": 0, "activated": 0}
+
+        start_str = str(campaign["start"])
+        end_str = str((pd.Timestamp(campaign["end"]) + pd.Timedelta(days=1)).date())
+
+        rev = self._cohort_revenue(start_str, end_str, referral_code=referral_code)
+        kyc_df = self._cohort_kyc(start_str, end_str, referral_code=referral_code)
+        kyc_done = int(kyc_df["kyc_count"].sum()) if not kyc_df.empty else 0
+
+        return {
+            "signups": int(rev["cohort_users"]),
+            "kyc_done": kyc_done,
+            "activated": int(rev["transacting_users"]),
+        }
+
     def daily_context(self, context_days_before: int = 14) -> pd.DataFrame:
         """Daily signups and ad spend for all campaign windows + context window.
 

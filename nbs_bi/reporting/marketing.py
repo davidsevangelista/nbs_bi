@@ -646,6 +646,39 @@ def _fig_channel_comparison(comparison: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _fig_campaign_funnel(funnel: dict) -> go.Figure | None:
+    """Funnel chart: Sign-ups → KYC Done → Activated for a campaign cohort.
+
+    Args:
+        funnel: Dict with keys ``signups``, ``kyc_done``, ``activated``.
+
+    Returns:
+        Plotly Figure or None if funnel is empty.
+    """
+    if not funnel or funnel.get("signups", 0) == 0:
+        return None
+    total = funnel["signups"] or 1
+    labels = ["Sign-ups", "KYC Done", "Activated"]
+    values = [funnel["signups"], funnel["kyc_done"], funnel["activated"]]
+    colors = [BLUE, TEAL, EMERALD]
+    texts = [f"{v:,}  ({100 * v / total:.1f}%)" for v in values]
+    fig = go.Figure(
+        go.Funnel(
+            y=labels,
+            x=values,
+            marker_color=colors,
+            text=texts,
+            textposition="inside",
+            textinfo="text",
+        )
+    )
+    layout = panel("Cohort Activation Funnel")
+    layout.pop("xaxis", None)
+    layout.pop("yaxis", None)
+    fig.update_layout(**layout)
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # Section class
 # ---------------------------------------------------------------------------
@@ -772,6 +805,11 @@ class MetaAdsSection:
         )
 
         self._render_kpis(summary, cum_profit_df)
+        if analyzer is not None:
+            funnel = analyzer.cohort_funnel(latest_id, referral_code=referral_code)
+            fig_funnel = _fig_campaign_funnel(funnel)
+            if fig_funnel:
+                st.plotly_chart(fig_funnel, width="stretch")
         st.divider()
         self._render_spend_charts(summary, daily, spend_df, campaigns, cum_rev_df, cum_profit_df)
         st.divider()
