@@ -861,15 +861,15 @@ class MetaAdsSection:
             else pd.DataFrame()
         )
 
-        self._render_kpis(summary, cum_profit_df)
+        kyc_done = (
+            analyzer.cohort_kyc_count(latest_id, referral_code=referral_code)
+            if analyzer is not None
+            else 0
+        )
+        self._render_kpis(summary, cum_profit_df, kyc_done=kyc_done)
         if not summary.empty:
             signups = int(summary["cohort_users"].sum())
             activated = int(summary["transacting_users"].sum())
-            kyc_done = (
-                analyzer.cohort_kyc_count(latest_id, referral_code=referral_code)
-                if analyzer is not None
-                else 0
-            )
             fig_funnel = _fig_campaign_funnel(
                 {"signups": signups, "kyc_done": kyc_done, "activated": activated}
             )
@@ -947,6 +947,7 @@ class MetaAdsSection:
         self,
         summary: pd.DataFrame,
         cum_profit_df: pd.DataFrame | None = None,
+        kyc_done: int = 0,
     ) -> None:
         """Render KPI strip including net profit when profit data is available.
 
@@ -954,24 +955,17 @@ class MetaAdsSection:
             summary: Output of ``CampaignAnalyzer.roi_summary()``.
             cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()``
                 — when provided, adds a Net Profit KPI tile.
+            kyc_done: Count of cohort users who completed KYC (kyc_level >= 1),
+                used to compute KYC cost component of CAC.
         """
+        from nbs_bi.clients.models import _KYC_COST_USD
+
         total_spend = float(summary["total_spend_usd"].sum())
         total_rev = float(summary["total_revenue_usd"].sum())
         transacting = int(summary["transacting_users"].sum())
-        cohort_users = int(summary["cohort_users"].sum())
         overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
 
-        _has_kyc_cost = (
-            cum_profit_df is not None
-            and not cum_profit_df.empty
-            and "cum_kyc_cost_usd" in cum_profit_df.columns
-        )
-        if _has_kyc_cost:
-            kyc_cost = float(cum_profit_df["cum_kyc_cost_usd"].iloc[-1])  # type: ignore[index]
-        else:
-            from nbs_bi.clients.models import _KYC_COST_USD
-
-            kyc_cost = cohort_users * _KYC_COST_USD
+        kyc_cost = kyc_done * _KYC_COST_USD
         cac_active = (total_spend + kyc_cost) / transacting if transacting > 0 else float("nan")
 
         has_profit = (
