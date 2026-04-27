@@ -715,8 +715,12 @@ class CampaignAnalyzer:
         end_str = str((pd.Timestamp(campaign["end"]) + pd.Timedelta(days=1)).date())
 
         rev = self._cohort_revenue(start_str, end_str, referral_code=referral_code)
-        kyc_df = self._cohort_kyc(start_str, end_str, referral_code=referral_code)
-        kyc_done = int(kyc_df["kyc_count"].sum()) if not kyc_df.empty else 0
+        try:
+            kyc_df = self._cohort_kyc(start_str, end_str, referral_code=referral_code)
+            kyc_done = int(kyc_df["kyc_count"].sum()) if not kyc_df.empty else 0
+        except Exception:
+            logger.warning("Could not fetch KYC counts for cohort funnel", exc_info=True)
+            kyc_done = 0
 
         return {
             "signups": int(rev["cohort_users"]),
