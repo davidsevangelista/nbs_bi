@@ -118,7 +118,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-24 (v1.6.0)
+## Current State — 2026-04-25 (v1.7.0)
 
 ### What's been built
 
@@ -141,10 +141,17 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - Default date range: full history from 2025-08-15 to today
 
 **Phase 7 — Clients** (`nbs_bi.clients`): Full per-user revenue pipeline + Meta Ads cohort P&L:
-- Discriminated revenue SQL: conversion spread, card fees, billing charges, swap fees (revenue); cashback + rev share cohort-scoped (costs)
+- Discriminated revenue SQL: conversion spread, card fees, billing charges; cashback + rev share cohort-scoped (costs)
+- Swap fees **zeroed out** via `INCLUDE_SWAP_FEES = False` in `config.py` — flip to `True` to re-enable everywhere at once
 - Per-transaction card COGS: `cost_per_txn = invoice_total / invoice_txn_count` × daily cohort txn count
 - Contribution margin = Revenue − Card Program COGS (Meta Ads spend is acquisition cost, tracked separately)
 - Referral filter on all cohort queries; `referral_code_options()` populates UI selectbox dynamically
+- **Revenue/cost computation centralization (v1.7.0):**
+  - Canonical net revenue: `ClientModel._compute_revenues()` in `clients/models.py` — single source of truth
+  - `clients/queries.py`: `swaps()` and `swap_fees_monthly()` respect `INCLUDE_SWAP_FEES` flag; return empty DataFrames when off
+  - `clients/campaigns.py`: `_cohort_revenue()` and `cumulative_revenue()` apply the same flag — swap zeroed before totals are returned
+  - Swap formula fixed in both `_COHORT_REVENUE_SQL` and `_DAILY_COHORT_REVENUE_SQL`: now uses `CASE WHEN input_mint = :usdc_mint … WHEN output_mint = :usdc_mint` matching `clients/queries.py`
+  - `_USDC_MINT` Solana address defined as named constant in `campaigns.py`, passed as bound parameter
 - **LTV & Cohort tab (v1.6.0 changes):**
   - Avg heatmaps (gross + net) now divide by `n_active_users` (ever-transacted) not all registered users — denominator fixed across `cohort_ltv()`, `cohort_ltv_gross()`, and `cohort_summary()`
   - New `cohort_total_profit()` pivot: same shape as `cohort_ltv()` but absolute USD sums — shows company-level profit contribution per cohort at each tenure month

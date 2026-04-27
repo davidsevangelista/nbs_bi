@@ -358,6 +358,7 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         "date",
         "cum_rev_usd",
         "cum_card_cogs_usd",
+        "cum_kyc_cost_usd",
         "cum_profit_usd",
         "cum_txn_count",
         "cum_conversion_count",
@@ -393,10 +394,21 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
     fig.add_trace(
         go.Scatter(
             x=x,
+            y=cum_profit_df["cum_kyc_cost_usd"],
+            mode="lines",
+            line=dict(color=AMBER, width=1, dash="dash"),
+            name="Cumulative KYC Cost (USD)",
+            yaxis="y1",
+            hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
             y=cum_profit_df["cum_profit_usd"],
             mode="lines",
             line=dict(color=VIOLET, width=2),
-            name="Cumulative Contribution Margin (USD)",
+            name="Operational Profit (USD)",
             yaxis="y1",
             hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
         )
@@ -434,7 +446,7 @@ def _fig_cumulative_profit(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         annotation_font_size=10,
         annotation_font_color=TEXT_MUTED,
     )
-    layout = panel("Cumulative Contribution Margin — Latest Cohort (USD)")
+    layout = panel("Operational Profit — Latest Cohort (USD)")
     layout["xaxis"]["title"] = "Date"
     layout["yaxis"]["title"] = "USD"
     layout["yaxis2"] = {
@@ -840,7 +852,8 @@ class MetaAdsSection:
             "includes organic signups. "
             "CAC (active users) = ad spend ÷ transacting users in cohort. "
             "CAC (incremental) = ad spend ÷ signups above organic baseline. "
-            "Net Profit deducts card COGS (Rain invoice) and ad spend."
+            "Operational Profit deducts card COGS (Rain invoice), ad spend, "
+            "and KYC cost ($2.07/user)."
         )
 
     def _render_spend_charts(  # pragma: no cover

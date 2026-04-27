@@ -7,6 +7,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-04-27
+
+Operational profit on Marketing - Ads tab: all costs now included.
+
+### Changed
+- `clients/campaigns.py` — `cumulative_profit()`: adds `daily_kyc_cost_usd` ($2.07 × daily new cohort signups) and `cum_kyc_cost_usd` columns; deducts KYC cost from `daily_profit_usd` so `cum_profit_usd` now represents true operational profit (all revenue minus all costs: card COGS, ad spend, KYC, cashback, revenue share)
+- `reporting/marketing.py` — `_fig_cumulative_profit()`: renamed chart to "Operational Profit — Latest Cohort (USD)"; renamed violet line to "Operational Profit"; added AMBER dashed "Cumulative KYC Cost" trace; updated caption
+
+## [1.7.0] — 2026-04-25
+
+Revenue and cost computation centralization; swap fee feature flag; swap formula correctness fix.
+
+### Added
+- `config.py` — `INCLUDE_SWAP_FEES: bool = False`: single feature flag controlling whether swap fee revenue is counted across the entire platform; set to `True` in one place to re-enable everywhere
+- `clients/campaigns.py` — `_USDC_MINT` constant (Solana USDC token address) defined explicitly as a named constant and passed as a bound SQL parameter `:usdc_mint` in both `_COHORT_REVENUE_SQL` and `_DAILY_COHORT_REVENUE_SQL`
+
+### Changed
+- `clients/queries.py` — `swaps()`: returns empty DataFrame (`user_id`, `swap_fee_usd`, `n_swaps`) when `INCLUDE_SWAP_FEES = False`; otherwise unchanged
+- `clients/queries.py` — `swap_fees_monthly()`: returns empty DataFrame (`user_id`, `month`, `swap_fee_usd`) when `INCLUDE_SWAP_FEES = False`; otherwise unchanged
+- `clients/campaigns.py` — `_cohort_revenue()`: zeroes `swap_fee_usd` and subtracts it from `total_revenue_usd` before returning when `INCLUDE_SWAP_FEES = False`
+- `clients/campaigns.py` — `cumulative_revenue()`: subtracts `daily_rev_swap_usd` from `daily_rev_usd` and zeroes `daily_rev_swap_usd` before cumsum when `INCLUDE_SWAP_FEES = False`; `cumulative_profit()` receives correct zeroed data automatically
+
+### Fixed
+- `clients/campaigns.py` — `_COHORT_REVENUE_SQL` swap CTE: was using only `input_amount` with no mint filter (counted all swaps regardless of token pair); now uses `CASE WHEN input_mint = :usdc_mint … WHEN output_mint = :usdc_mint` matching the canonical formula in `clients/queries.py._SWAP_SQL`
+- `clients/campaigns.py` — `_DAILY_COHORT_REVENUE_SQL` swap UNION branch: same formula fix — USDC-side selection now covers both input and output mint, excluding non-USDC pairs
+- `clients/campaigns.py` — `_run()`: added comment explaining why `_scale_brl()` is not called (all BRL is converted to USD inline in SQL via `÷100 ÷ fx.rate`; no `*_brl` column reaches Python)
+
 ## [1.6.0] — 2026-04-24
 
 Cohort analytics accuracy fix and new company-level profit heatmap in the LTV & Cohorts tab.

@@ -26,12 +26,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from nbs_bi.clients.models import _KYC_COST_USD
+from nbs_bi.config import INCLUDE_SWAP_FEES
+
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
 _DB_CACHE_DIR = Path(os.environ.get("DB_CACHE_DIR", "data/processed/db_cache"))
+
+# Solana USDC mint address — same constant as in clients/queries.py.
+_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 # ------------------------------------------------------------------
 # SQL — fixed, schema-grounded
@@ -89,8 +95,15 @@ billing_rev AS (
 ),
 swap_rev AS (
     SELECT user_id::TEXT,
-           SUM(input_amount::FLOAT / 1000000.0
-               * platform_fee_bps::FLOAT / 10000.0) AS swap_fee_usd
+           SUM(
+               CASE
+                   WHEN input_mint  = :usdc_mint
+                   THEN input_amount::FLOAT  / 1000000.0 * platform_fee_bps::FLOAT / 10000.0
+                   WHEN output_mint = :usdc_mint
+                   THEN output_amount::FLOAT / 1000000.0 * platform_fee_bps::FLOAT / 10000.0
+                   ELSE 0
+               END
+           ) AS swap_fee_usd
     FROM swap_transactions
     GROUP BY user_id::TEXT
 ),
@@ -211,9 +224,14 @@ FROM (
       AND bc.user_id::TEXT IN (SELECT user_id FROM cohort)
     UNION ALL
     SELECT DATE(st."timestamp" AT TIME ZONE 'UTC')                     AS rev_date,
-           st.input_amount::FLOAT / 1000000.0
-               * st.platform_fee_bps::FLOAT / 10000.0                 AS rev_usd,
-           'swap'                                                       AS src
+           CASE
+               WHEN st.input_mint  = :usdc_mint
+               THEN st.input_amount::FLOAT  / 1000000.0
+               WHEN st.output_mint = :usdc_mint
+               THEN st.output_amount::FLOAT / 1000000.0
+               ELSE 0
+           END * st.platform_fee_bps::FLOAT / 10000.0                  AS rev_usd,
+           'swap'                                                        AS src
     FROM swap_transactions st
     WHERE st.user_id::TEXT IN (SELECT user_id FROM cohort)
     UNION ALL
@@ -508,6 +526,9 @@ class CampaignAnalyzer:
         return _DB_CACHE_DIR / f"campaign_{key}.parquet"
 
     def _run(self, sql: str, params: dict) -> pd.DataFrame:
+        # Unlike ClientQueries._run(), no _scale_brl() is needed here: all SQL
+        # in this module converts BRL to USD inline (÷100 then ÷fx.rate), so
+        # output columns are already USD-denominated and no *_brl column reaches Python.
         path = self._cache_path(sql, params)
         if path.exists():
             return pd.read_parquet(path)
@@ -531,6 +552,7 @@ class CampaignAnalyzer:
                 "cohort_start": cohort_start,
                 "cohort_end": cohort_end,
                 "referral_code": referral_code,
+                "usdc_mint": _USDC_MINT,
             },
         )
         if df.empty:
@@ -543,7 +565,11 @@ class CampaignAnalyzer:
                 "billing_usd": 0.0,
             }
         row = df.iloc[0]
-        return {k: float(row[k]) if row[k] is not None else 0.0 for k in df.columns}
+        result = {k: float(row[k]) if row[k] is not None else 0.0 for k in df.columns}
+        if not INCLUDE_SWAP_FEES:
+            result["total_revenue_usd"] -= result.get("swap_fee_usd", 0.0)
+            result["swap_fee_usd"] = 0.0
+        return result
 
     def _baseline_rate(self, campaign_start) -> float:
         """Avg daily signups in the ``baseline_window_days`` before campaign_start."""
@@ -746,6 +772,7 @@ class CampaignAnalyzer:
                 "cohort_start": cohort_start,
                 "cohort_end": cohort_end,
                 "referral_code": referral_code,
+                "usdc_mint": _USDC_MINT,
             },
         )
         if rev_df.empty:
@@ -766,6 +793,9 @@ class CampaignAnalyzer:
             "daily_rev_usd",
         ):
             result[col] = result[col].fillna(0.0).astype("float64")
+        if not INCLUDE_SWAP_FEES:
+            result["daily_rev_usd"] -= result["daily_rev_swap_usd"]
+            result["daily_rev_swap_usd"] = 0.0
         result["cum_rev_usd"] = result["daily_rev_usd"].cumsum()
         return result
 
@@ -853,8 +883,9 @@ class CampaignAnalyzer:
             ``date``, ``daily_rev_conversion_usd``,
             ``daily_rev_card_fees_usd``, ``daily_rev_total_usd``,
             ``daily_card_cogs_usd``, ``daily_ad_spend_usd``,
-            ``daily_profit_usd``, ``cum_rev_usd``, ``cum_card_cogs_usd``,
-            ``cum_profit_usd``.
+            ``daily_kyc_cost_usd``, ``daily_profit_usd``,
+            ``cum_rev_usd``, ``cum_card_cogs_usd``, ``cum_kyc_cost_usd``,
+            ``cum_profit_usd`` (operational profit: all revenue minus all costs).
             Sorted by date; missing days are zero-filled.
         """
         _empty_cols = [
@@ -868,6 +899,7 @@ class CampaignAnalyzer:
             "daily_rev_total_usd",
             "daily_card_cogs_usd",
             "daily_ad_spend_usd",
+            "daily_kyc_cost_usd",
             "daily_profit_usd",
             "daily_txn_count",
             "daily_conversion_count",
@@ -879,6 +911,7 @@ class CampaignAnalyzer:
             "cum_cost_rev_share_usd",
             "cum_rev_usd",
             "cum_card_cogs_usd",
+            "cum_kyc_cost_usd",
             "cum_profit_usd",
             "cum_txn_count",
             "cum_conversion_count",
@@ -917,6 +950,14 @@ class CampaignAnalyzer:
         )
         conv_full["conv_count"] = conv_full["conv_count"].fillna(0).astype("int64")
 
+        signup_df = self._daily_signups(cohort_start, cohort_end)
+        if not signup_df.empty:
+            signup_df["signup_date"] = pd.to_datetime(signup_df["signup_date"])
+        signup_full = all_dates.rename(columns={"date": "signup_date"}).merge(
+            signup_df, on="signup_date", how="left"
+        )
+        signup_full["new_signups"] = signup_full["new_signups"].fillna(0).astype("int64")
+
         cogs_series = _cogs_for_cohort_txns(txn_full, cost_per_txn)
 
         spend = self._spend.copy()
@@ -941,10 +982,14 @@ class CampaignAnalyzer:
         result["daily_ad_spend_usd"] = (
             result["date"].map(spend_indexed).fillna(0.0).astype("float64")
         )
+        result["daily_kyc_cost_usd"] = (
+            signup_full["new_signups"].values.astype("float64") * _KYC_COST_USD
+        )
         result["daily_profit_usd"] = (
             result["daily_rev_total_usd"]
             - result["daily_card_cogs_usd"]
             - result["daily_ad_spend_usd"]
+            - result["daily_kyc_cost_usd"]
         )
         result["daily_txn_count"] = txn_full["txn_count"].values
         result["daily_conversion_count"] = conv_full["conv_count"].values
@@ -956,6 +1001,7 @@ class CampaignAnalyzer:
         result["cum_cost_rev_share_usd"] = result["daily_cost_rev_share_usd"].cumsum()
         result["cum_rev_usd"] = result["daily_rev_total_usd"].cumsum()
         result["cum_card_cogs_usd"] = result["daily_card_cogs_usd"].cumsum()
+        result["cum_kyc_cost_usd"] = result["daily_kyc_cost_usd"].cumsum()
         result["cum_profit_usd"] = result["daily_profit_usd"].cumsum()
         result["cum_txn_count"] = result["daily_txn_count"].cumsum()
         result["cum_conversion_count"] = result["daily_conversion_count"].cumsum()

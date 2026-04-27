@@ -32,3 +32,12 @@ ADS_DATABASE_URL = os.environ.get("ADS_DATABASE_URL", "")
 
 # Parquet cache directory for DB query results (set DB_CACHE_DIR= to disable)
 DB_CACHE_DIR = os.getenv("DB_CACHE_DIR", "")
+
+# ---------------------------------------------------------------------------
+# Revenue feature flags
+# ---------------------------------------------------------------------------
+
+# Set to True to include swap fee revenue in all computations.
+# When False, swap_fee_usd is forced to 0 everywhere — queries.py and
+# campaigns.py both honour this flag; no other file needs to change.
+INCLUDE_SWAP_FEES: bool = False

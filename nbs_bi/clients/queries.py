@@ -25,7 +25,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from nbs_bi.config import DB_CACHE_DIR, READONLY_DATABASE_URL
+from nbs_bi.config import DB_CACHE_DIR, INCLUDE_SWAP_FEES, READONLY_DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -572,9 +572,13 @@ class ClientQueries:
     def swap_fees_monthly(self) -> pd.DataFrame:
         """Monthly swap fee revenue per user, USDC pairs only, within the analysis window.
 
+        Returns zero rows when ``INCLUDE_SWAP_FEES`` is ``False``.
+
         Returns:
             DataFrame with columns: user_id, month (date), swap_fee_usd.
         """
+        if not INCLUDE_SWAP_FEES:
+            return pd.DataFrame(columns=["user_id", "month", "swap_fee_usd"])
         return self._run(
             "swap_fees_monthly",
             _SWAP_FEES_MONTHLY_SQL,
@@ -632,9 +636,13 @@ class ClientQueries:
         (USDC→token) and output_amount for USDC-output swaps (token→USDC).
         Non-USDC pairs are excluded — no on-chain price oracle is available.
 
+        Returns zero rows when ``INCLUDE_SWAP_FEES`` is ``False``.
+
         Returns:
             DataFrame with columns: user_id, swap_fee_usd, n_swaps.
         """
+        if not INCLUDE_SWAP_FEES:
+            return pd.DataFrame(columns=["user_id", "swap_fee_usd", "n_swaps"])
         return self._run("swaps", _SWAP_SQL, {**self._date_params(), "usdc_mint": _USDC_MINT})
 
     def revenue_generating_count(self) -> int:
