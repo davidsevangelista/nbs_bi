@@ -22,6 +22,7 @@ Usage::
 
 from __future__ import annotations
 
+import copy
 import io
 import logging
 from datetime import UTC, datetime
@@ -65,14 +66,15 @@ _PAGE_W, _PAGE_H = A4  # 595.27 x 841.89 pt
 _MARGIN = 18 * mm
 _CONTENT_W = _PAGE_W - 2 * _MARGIN
 
-# Brand colours as ReportLab Color objects
-_DARK_BG = colors.HexColor("#0D1117")
-_ACCENT = colors.HexColor("#3B82F6")
-_MUTED = colors.HexColor("#8B949E")
+# Light-theme colours for print
+_DARK_TEXT = colors.HexColor("#111827")
+_ACCENT = colors.HexColor("#1D4ED8")
+_MUTED = colors.HexColor("#6B7280")
 _WHITE = colors.white
-_LIGHT_GRAY = colors.HexColor("#E6EDF3")
-_ROSE = colors.HexColor("#F43F5E")
-_EMERALD = colors.HexColor("#10B981")
+_LIGHT_BG = colors.HexColor("#F3F4F6")
+_BORDER = colors.HexColor("#D1D5DB")
+_HEADER_BG = colors.HexColor("#1E3A5F")
+_ROW_ALT = colors.HexColor("#EFF6FF")
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +95,7 @@ def _styles() -> dict[str, ParagraphStyle]:
             parent=base["Title"],
             fontSize=20,
             textColor=_WHITE,
-            backColor=_DARK_BG,
+            backColor=_HEADER_BG,
             spaceAfter=4,
             fontName="Helvetica-Bold",
         ),
@@ -101,8 +103,8 @@ def _styles() -> dict[str, ParagraphStyle]:
             "nbs_subtitle",
             parent=base["Normal"],
             fontSize=9,
-            textColor=_MUTED,
-            backColor=_DARK_BG,
+            textColor=colors.HexColor("#BFDBFE"),
+            backColor=_HEADER_BG,
             spaceAfter=8,
             fontName="Helvetica",
         ),
@@ -119,7 +121,7 @@ def _styles() -> dict[str, ParagraphStyle]:
             "nbs_body",
             parent=base["Normal"],
             fontSize=9,
-            textColor=_LIGHT_GRAY,
+            textColor=_DARK_TEXT,
             spaceAfter=4,
             fontName="Helvetica",
         ),
@@ -129,13 +131,13 @@ def _styles() -> dict[str, ParagraphStyle]:
             fontSize=8,
             textColor=_MUTED,
             fontName="Helvetica",
-            alignment=1,  # centre
+            alignment=1,
         ),
         "kpi_value": ParagraphStyle(
             "nbs_kpi_value",
             parent=base["Normal"],
             fontSize=14,
-            textColor=_WHITE,
+            textColor=_ACCENT,
             fontName="Helvetica-Bold",
             alignment=1,
         ),
@@ -151,7 +153,7 @@ def _styles() -> dict[str, ParagraphStyle]:
             "nbs_td",
             parent=base["Normal"],
             fontSize=8,
-            textColor=_LIGHT_GRAY,
+            textColor=_DARK_TEXT,
             fontName="Helvetica",
             alignment=1,
         ),
@@ -163,10 +165,68 @@ def _styles() -> dict[str, ParagraphStyle]:
 # ---------------------------------------------------------------------------
 
 
+def _strip_string_axis_shapes(fig_dict: dict) -> None:
+    """Remove per-data-point vline shapes that use string x-axis references.
+
+    ``add_vline`` on a string (categorical) x-axis produces shapes with
+    ``xref="x"`` and a string ``x0``/``x1``. These can cause kaleido's static
+    renderer to fail silently. Campaign-start marker shapes (also ``xref="x"``)
+    are kept if there are ≤ 5 of them (typically one per campaign).
+
+    Args:
+        fig_dict: Mutable Plotly figure dict (modified in-place).
+    """
+    shapes = fig_dict.get("layout", {}).get("shapes", []) or []
+    x_shapes = [s for s in shapes if s.get("xref") == "x"]
+    non_x_shapes = [s for s in shapes if s.get("xref") != "x"]
+    # Keep campaign markers (few) but drop per-day spend markers (many)
+    keep_x = x_shapes if len(x_shapes) <= 6 else []
+    fig_dict["layout"]["shapes"] = non_x_shapes + keep_x
+
+    # Also trim annotations to avoid per-day label clutter
+    annotations = fig_dict.get("layout", {}).get("annotations", []) or []
+    x_annots = [a for a in annotations if a.get("xref") == "x"]
+    non_x_annots = [a for a in annotations if a.get("xref") != "x"]
+    keep_annots = x_annots if len(x_annots) <= 6 else []
+    fig_dict["layout"]["annotations"] = non_x_annots + keep_annots
+
+
+def _apply_light_theme(fig_dict: dict) -> None:
+    """Apply a print-friendly white theme to a Plotly figure dict in-place.
+
+    Args:
+        fig_dict: Mutable Plotly figure dict (modified in-place).
+    """
+    layout = fig_dict.setdefault("layout", {})
+    layout.update(
+        paper_bgcolor="white",
+        plot_bgcolor="#F8FAFC",
+        font={"color": "#111827", "family": "Helvetica, Arial, sans-serif"},
+    )
+    for ax in ("xaxis", "yaxis", "yaxis2"):
+        axis = layout.setdefault(ax, {})
+        axis.update(
+            gridcolor="#E5E7EB",
+            linecolor="#9CA3AF",
+            tickfont={"color": "#111827"},
+            title_font={"color": "#374151"},
+            zerolinecolor="#D1D5DB",
+        )
+    legend = layout.setdefault("legend", {})
+    legend.update(font={"color": "#111827"}, bgcolor="white", bordercolor="#D1D5DB")
+
+    # Lighten annotation text so it reads on white
+    for ann in layout.get("annotations", []) or []:
+        if ann.get("font", {}).get("color") in ("#8B949E", "#6B7280", "rgba(139,148,158,1)"):
+            ann["font"]["color"] = "#374151"
+
+
 def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | None:
     """Render a Plotly figure to a ReportLab Image at the given dimensions.
 
-    Uses a white-background variant of the figure so it reads well on paper.
+    Converts to a white-background, print-friendly variant by operating on
+    the figure's dict representation (safe deep copy). Strips per-day vlines
+    that break kaleido's static renderer on categorical x-axes.
 
     Args:
         fig: Plotly figure to render.
@@ -176,24 +236,22 @@ def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | 
     Returns:
         ReportLab ``Image`` flowable, or None if rendering fails.
     """
-    # Scale to ~2× for crisp output on screen and print
-    px_w = int(width_pt * 2)
+    px_w = int(width_pt * 2)  # 2× for crisp output
     px_h = int(height_pt * 2)
 
-    light_fig = go.Figure(fig)
-    light_fig.update_layout(
-        paper_bgcolor="white",
-        plot_bgcolor="#F8FAFC",
-        font_color="#111827",
-        legend=dict(font=dict(color="#111827")),
-    )
-    light_fig.update_xaxes(gridcolor="#E5E7EB", linecolor="#9CA3AF", tickfont=dict(color="#111827"))
-    light_fig.update_yaxes(gridcolor="#E5E7EB", linecolor="#9CA3AF", tickfont=dict(color="#111827"))
+    fig_dict = copy.deepcopy(fig.to_dict())
+    _strip_string_axis_shapes(fig_dict)
+    _apply_light_theme(fig_dict)
+    light_fig = go.Figure(fig_dict)
 
     try:
         png_bytes = light_fig.to_image(format="png", width=px_w, height=px_h)
-    except Exception:
-        log.exception("Failed to render figure to PNG")
+    except Exception as exc:
+        log.exception("kaleido failed to render figure: %s", exc)
+        return None
+
+    if not png_bytes:
+        log.warning("kaleido returned empty bytes for figure")
         return None
 
     buf = io.BytesIO(png_bytes)
@@ -218,7 +276,7 @@ def _build_kpi_table(
         content_w: Available width in PDF points.
 
     Returns:
-        ReportLab ``Table`` flowable styled as dark KPI tiles.
+        ReportLab ``Table`` flowable styled as light KPI tiles.
     """
     n = len(kpis)
     col_w = content_w / n
@@ -233,8 +291,8 @@ def _build_kpi_table(
     tbl.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#161B22")),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#30363D")),
+                ("BACKGROUND", (0, 0), (-1, -1), _LIGHT_BG),
+                ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
                 ("LEFTPADDING", (0, 0), (-1, -1), 4),
@@ -300,19 +358,14 @@ def _build_summary_table(
     tbl.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1C2128")),
-                ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#161B22")),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#30363D")),
+                ("BACKGROUND", (0, 0), (-1, 0), _HEADER_BG),
+                ("BACKGROUND", (0, 1), (-1, -1), _WHITE),
+                ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                (
-                    "ROWBACKGROUNDS",
-                    (0, 1),
-                    (-1, -1),
-                    [colors.HexColor("#161B22"), colors.HexColor("#1C2128")],
-                ),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [_WHITE, _ROW_ALT]),
             ]
         )
     )
@@ -403,7 +456,7 @@ def build_marketing_pdf(
     _add_charts(story, s, summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns)
     _add_summary_table(story, s, summary)
 
-    doc.build(story, onFirstPage=_page_background, onLaterPages=_page_background)
+    doc.build(story)
     return buf.getvalue()
 
 
@@ -423,7 +476,7 @@ def _add_header(story: list[Any], s: dict[str, ParagraphStyle]) -> None:
     story.append(Paragraph("NBS SPSAV LTDA — Marketing Analysis", s["title"]))
     subtitle = f"Meta Ads · Cohort ROI Briefing &nbsp;&nbsp;|&nbsp;&nbsp; Generated {now}"
     story.append(Paragraph(subtitle, s["subtitle"]))
-    story.append(HRFlowable(width=_CONTENT_W, thickness=1, color=_ACCENT, spaceAfter=8))
+    story.append(HRFlowable(width=_CONTENT_W, thickness=1.5, color=_ACCENT, spaceAfter=8))
 
 
 def _add_kpi_strip(
@@ -521,28 +574,25 @@ def _add_charts(
     chart_h_half = 140.0
 
     figs_full: list[tuple[go.Figure, float]] = []
-    figs_pair: list[go.Figure | None] = []
 
     if not spend_df.empty:
         cum_df = _build_cumulative_spend(spend_df, campaigns)
         fig_spend = _fig_cumulative_spend(cum_df, campaigns, cum_rev_df, cum_profit_df)
-        if fig_spend:
+        if fig_spend is not None:
             figs_full.append((fig_spend, chart_h_full))
 
     if cum_profit_df is not None and not cum_profit_df.empty:
         fig_profit = _fig_cumulative_profit(cum_profit_df)
-        if fig_profit:
+        if fig_profit is not None:
             figs_full.append((fig_profit, chart_h_full))
         fig_breakdown = _fig_revenue_breakdown(cum_profit_df)
-        if fig_breakdown:
+        if fig_breakdown is not None:
             figs_full.append((fig_breakdown, chart_h_full))
 
     if not daily.empty:
         fig_daily = _fig_campaign_daily(daily)
-        if fig_daily:
+        if fig_daily is not None:
             figs_full.append((fig_daily, chart_h_full))
-
-    figs_pair = [_fig_campaign_roi(summary, cum_profit_df), _fig_campaign_cac(summary)]
 
     for fig, h in figs_full:
         img = _fig_to_image(fig, full_w, h)
@@ -550,7 +600,12 @@ def _add_charts(
             story.append(img)
             story.append(Spacer(1, 4))
 
-    _add_paired_charts(story, figs_pair, half_w, chart_h_half)
+    _add_paired_charts(
+        story,
+        [_fig_campaign_roi(summary, cum_profit_df), _fig_campaign_cac(summary)],
+        half_w,
+        chart_h_half,
+    )
 
 
 def _add_paired_charts(
@@ -575,10 +630,11 @@ def _add_paired_charts(
             img = _fig_to_image(fig, half_w, h)
             cells.append(img if img else "")
 
-    tbl = Table([cells], colWidths=[half_w, half_w])
-    tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    story.append(tbl)
-    story.append(Spacer(1, 4))
+    if any(c != "" for c in cells):
+        tbl = Table([cells], colWidths=[half_w, half_w])
+        tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(tbl)
+        story.append(Spacer(1, 4))
 
 
 def _add_summary_table(
@@ -598,21 +654,3 @@ def _add_summary_table(
         return
     story.append(Paragraph("Campaign Summary", s["section"]))
     story.append(tbl)
-
-
-# ---------------------------------------------------------------------------
-# Page canvas callback
-# ---------------------------------------------------------------------------
-
-
-def _page_background(canvas: Any, doc: Any) -> None:
-    """Draw dark background on every page.
-
-    Args:
-        canvas: ReportLab canvas object.
-        doc: ReportLab document object (unused — required by callback signature).
-    """
-    canvas.saveState()
-    canvas.setFillColor(_DARK_BG)
-    canvas.rect(0, 0, _PAGE_W, _PAGE_H, fill=1, stroke=0)
-    canvas.restoreState()
