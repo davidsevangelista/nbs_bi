@@ -54,6 +54,22 @@ GROUP BY 1
 ORDER BY 1
 """
 
+_COHORT_SIGNUPS_SQL = """
+SELECT
+    DATE(created_at AT TIME ZONE 'UTC') AS signup_date,
+    COUNT(*)                             AS new_signups
+FROM users
+WHERE created_at >= :cohort_start
+  AND created_at <  :cohort_end
+  AND (:referral_code = '' OR id IN (
+      SELECT ur.user_id FROM user_registrations ur
+      JOIN referral_codes rc ON rc.id = ur.attributed_referral_code_id
+      WHERE rc.code = :referral_code
+  ))
+GROUP BY 1
+ORDER BY 1
+"""
+
 _REFERRAL_CODES_SQL = """
 SELECT DISTINCT rc.code
 FROM referral_codes rc
@@ -544,6 +560,24 @@ class CampaignAnalyzer:
         """Return daily signup counts for the given window (end is exclusive)."""
         return self._run(_DAILY_SIGNUPS_SQL, {"start": start, "end": end})
 
+    def _cohort_signups(
+        self, cohort_start: str, cohort_end: str, referral_code: str = ""
+    ) -> pd.DataFrame:
+        """Return daily signup counts scoped to the campaign cohort.
+
+        Unlike ``_daily_signups``, this applies the same referral-code filter
+        used by the revenue and card-COGS queries, so KYC cost is attributed
+        only to cohort users.
+        """
+        return self._run(
+            _COHORT_SIGNUPS_SQL,
+            {
+                "cohort_start": cohort_start,
+                "cohort_end": cohort_end,
+                "referral_code": referral_code,
+            },
+        )
+
     def _cohort_revenue(self, cohort_start: str, cohort_end: str, referral_code: str = "") -> dict:
         """Return aggregate revenue metrics for the signup cohort (end exclusive)."""
         df = self._run(
@@ -952,7 +986,7 @@ class CampaignAnalyzer:
         )
         conv_full["conv_count"] = conv_full["conv_count"].fillna(0).astype("int64")
 
-        signup_df = self._daily_signups(cohort_start, cohort_end)
+        signup_df = self._cohort_signups(cohort_start, cohort_end, referral_code=referral_code)
         if signup_df.empty:
             signup_df = pd.DataFrame(columns=["signup_date", "new_signups"])
         else:
