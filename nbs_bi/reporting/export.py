@@ -221,6 +221,33 @@ def _apply_light_theme(fig_dict: dict) -> None:
             ann["font"]["color"] = "#374151"
 
 
+_CHROME_CANDIDATES = [
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/snap/bin/chromium",
+]
+
+
+def _ensure_browser_path() -> None:
+    """Set ``BROWSER_PATH`` env var if not already set and Chrome is found.
+
+    choreographer (kaleido's renderer) checks ``BROWSER_PATH`` first.
+    Streamlit's subprocess may inherit a stripped PATH that omits the system
+    Chrome; setting the var explicitly ensures kaleido finds it.
+    """
+    import os
+
+    if os.environ.get("BROWSER_PATH"):
+        return
+    for candidate in _CHROME_CANDIDATES:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            os.environ["BROWSER_PATH"] = candidate
+            log.info("Set BROWSER_PATH=%s for kaleido", candidate)
+            return
+
+
 def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
     """Render a light-themed Plotly figure to PNG bytes via kaleido.
 
@@ -241,6 +268,8 @@ def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
         Exception: If both kaleido invocations fail.
     """
     import plotly.io as pio
+
+    _ensure_browser_path()
 
     last_exc: Exception | None = None
 
@@ -270,6 +299,7 @@ def _test_kaleido() -> str | None:
     """
     import plotly.io as pio
 
+    _ensure_browser_path()
     fig = go.Figure(go.Bar(x=["a", "b"], y=[1, 2]))
     fig.update_layout(paper_bgcolor="white")
     try:
