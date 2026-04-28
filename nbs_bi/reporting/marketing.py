@@ -805,11 +805,23 @@ class MetaAdsSection:
         spend_dates = pd.to_datetime(spend_df["date"])
         min_date = spend_dates.min().date()
         max_date = spend_dates.max().date()
+
+        import datetime as _dt
+
+        _default_start = max(min_date, _dt.date(2026, 4, 25))
+
+        # Reset date inputs when the data range grows (e.g. new platform rows added).
+        _max_key = "ads_data_max_date"
+        if st.session_state.get(_max_key) != str(max_date):
+            st.session_state["ads_start_date"] = _default_start
+            st.session_state["ads_end_date"] = max_date
+            st.session_state[_max_key] = str(max_date)
+
         col_start, col_end = st.columns(2)
         with col_start:
             start_date = st.date_input(
                 "Analysis start",
-                value=min_date,
+                value=_default_start,
                 min_value=min_date,
                 max_value=max_date,
                 key="ads_start_date",
@@ -1155,28 +1167,32 @@ class MetaAdsSection:
             and not cum_profit_df.empty
             and "cum_contribution_margin_usd" in cum_profit_df.columns
         )
-        cols = st.columns(5 if has_profit else 4)
-        cols[0].metric("Total Spend", fmt_usd(total_spend))
-        if spend_breakdown:
-            parts = [
-                f"{plat.capitalize()} {fmt_usd(amt)}"
-                for plat, amt in sorted(spend_breakdown.items())
-            ]
-            cols[0].caption(" · ".join(parts))
-        cols[1].metric("Cohort Revenue", fmt_usd(total_rev))
-        cols[2].metric(
+        multi_platform = bool(spend_breakdown and len(spend_breakdown) > 1)
+        n_spend_cols = len(spend_breakdown) if multi_platform else 1
+        n_cols = n_spend_cols + 3 + (1 if has_profit else 0)
+        cols = st.columns(n_cols)
+
+        if multi_platform:
+            for i, (plat, amt) in enumerate(sorted(spend_breakdown.items())):  # type: ignore[union-attr]
+                cols[i].metric(f"{plat.capitalize()} Spend", fmt_usd(amt))
+        else:
+            cols[0].metric("Total Spend", fmt_usd(total_spend))
+
+        base = n_spend_cols
+        cols[base].metric("Cohort Revenue", fmt_usd(total_rev))
+        cols[base + 1].metric(
             "Overall ROAS",
             f"{overall_roas:.2f}×",
             delta=f"{'above' if overall_roas >= 1 else 'below'} break-even",
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
-        cols[3].metric(
+        cols[base + 2].metric(
             "CAC",
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
         )
         if has_profit:
             net_profit = float(cum_profit_df["cum_contribution_margin_usd"].iloc[-1])  # type: ignore[union-attr]
-            cols[4].metric(
+            cols[base + 3].metric(
                 "Net Profit (latest cohort)",
                 fmt_usd(net_profit),
                 delta="profitable" if net_profit >= 0 else "loss",
