@@ -292,15 +292,52 @@ def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
     return result.stdout
 
 
+def _ensure_chrome() -> None:
+    """Download a bundled Chrome via kaleido if no system Chrome is available.
+
+    Sets ``BROWSER_PATH`` in the current process environment so that both
+    in-process kaleido calls and subprocesses spawned by :func:`_render_light_fig`
+    can find Chrome.  No-ops if a usable Chrome is already on the system or if
+    ``BROWSER_PATH`` is already set.
+    """
+    import os
+
+    if os.environ.get("BROWSER_PATH"):
+        return
+    _system_candidates = [
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+    ]
+    for candidate in _system_candidates:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            os.environ["BROWSER_PATH"] = candidate
+            log.info("Using system Chrome at %s", candidate)
+            return
+
+    log.info("No system Chrome found — downloading bundled Chrome via kaleido")
+    try:
+        import kaleido
+
+        chrome_path = kaleido.get_chrome_sync()
+        os.environ["BROWSER_PATH"] = str(chrome_path)
+        log.info("Bundled Chrome available at %s", chrome_path)
+    except Exception as exc:
+        log.warning("Could not download bundled Chrome: %s", exc)
+
+
 def _test_kaleido() -> str | None:
     """Render a trivial Plotly figure to verify kaleido works in this context.
 
-    Uses the same subprocess path as production rendering so the test
-    faithfully reflects what will happen during PDF generation.
+    Downloads bundled Chrome first if no system Chrome is available, then uses
+    the same subprocess path as production rendering so the test faithfully
+    reflects what will happen during PDF generation.
 
     Returns:
         ``None`` on success, or a human-readable error string on failure.
     """
+    _ensure_chrome()
     fig = go.Figure(go.Bar(x=["a", "b"], y=[1, 2]))
     fig.update_layout(paper_bgcolor="white")
     try:
