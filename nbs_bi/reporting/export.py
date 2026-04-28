@@ -26,6 +26,7 @@ import copy
 import io
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -221,6 +222,11 @@ def _apply_light_theme(fig_dict: dict) -> None:
             ann["font"]["color"] = "#374151"
 
 
+# Writable directory for Chrome download — avoids read-only site-packages on
+# hosted environments (Streamlit Cloud venv is not writable after install).
+_CHROME_DOWNLOAD_DIR = Path.home() / ".kaleido" / "chrome"
+_CHROME_EXE_LINUX = _CHROME_DOWNLOAD_DIR / "chrome-linux64" / "chrome"
+
 # Script run in a fresh subprocess to render a single Plotly figure to PNG.
 # Receives figure JSON on stdin, writes PNG bytes to stdout.
 _RENDER_SCRIPT = """\
@@ -230,8 +236,15 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import kaleido
 
-# 1. Resolve Chrome path: env override → local choreographer download → network download
+_CHROME_DIR = Path.home() / ".kaleido" / "chrome"
+_CHROME_EXE = _CHROME_DIR / "chrome-linux64" / "chrome"
+
+# 1. Resolve Chrome path: env override → writable local dir → choreographer dir → download
 browser_path = os.environ.get("BROWSER_PATH", "")
+
+if not browser_path or not Path(browser_path).is_file():
+    if _CHROME_EXE.is_file():
+        browser_path = str(_CHROME_EXE)
 
 if not browser_path or not Path(browser_path).is_file():
     try:
@@ -243,8 +256,10 @@ if not browser_path or not Path(browser_path).is_file():
         pass
 
 if not browser_path or not Path(browser_path).is_file():
+    # Download to writable home directory (not read-only site-packages)
     try:
-        browser_path = str(kaleido.get_chrome_sync())
+        _CHROME_DIR.mkdir(parents=True, exist_ok=True)
+        browser_path = str(kaleido.get_chrome_sync(path=_CHROME_DIR))
     except Exception as exc:
         print(f"Chrome not found and download failed: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -332,13 +347,17 @@ def _ensure_chrome() -> None:
 
     Sets ``BROWSER_PATH`` in the current process environment so that both
     in-process kaleido calls and subprocesses spawned by :func:`_render_light_fig`
-    can find Chrome.  No-ops if a usable Chrome is already on the system or if
-    ``BROWSER_PATH`` is already set.
+    can find Chrome.  No-ops if ``BROWSER_PATH`` is already set.
+
+    Downloads to ``~/.kaleido/chrome`` (writable) rather than the default
+    site-packages directory which is read-only on hosted environments like
+    Streamlit Cloud.
     """
     import os
 
     if os.environ.get("BROWSER_PATH"):
         return
+
     _system_candidates = [
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
@@ -351,15 +370,22 @@ def _ensure_chrome() -> None:
             log.info("Using system Chrome at %s", candidate)
             return
 
-    log.info("No system Chrome found — downloading bundled Chrome via kaleido")
+    # Check writable local download directory first (avoids re-downloading)
+    if _CHROME_EXE_LINUX.is_file():
+        os.environ["BROWSER_PATH"] = str(_CHROME_EXE_LINUX)
+        log.info("Using cached Chrome at %s", _CHROME_EXE_LINUX)
+        return
+
+    log.info("No Chrome found — downloading to %s", _CHROME_DOWNLOAD_DIR)
     try:
         import kaleido
 
-        chrome_path = kaleido.get_chrome_sync()
+        _CHROME_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        chrome_path = kaleido.get_chrome_sync(path=_CHROME_DOWNLOAD_DIR)
         os.environ["BROWSER_PATH"] = str(chrome_path)
-        log.info("Bundled Chrome available at %s", chrome_path)
+        log.info("Chrome downloaded to %s", chrome_path)
     except Exception as exc:
-        log.warning("Could not download bundled Chrome: %s", exc)
+        log.warning("Could not download Chrome: %s", exc)
 
 
 def _test_kaleido() -> str | None:
