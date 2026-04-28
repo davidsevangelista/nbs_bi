@@ -7,6 +7,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-04-28
+
+Marketing-Ads PDF export: charts now render on Streamlit Cloud via subprocess + kaleido + auto-downloaded Chrome.
+
+### Added
+- `reporting/export.py` — `_ensure_chrome()`: downloads Chrome to `~/.kaleido/chrome` (writable) via `kaleido.get_chrome_sync(path=...)` when no system Chrome is found; sets `BROWSER_PATH` env var for subprocess inheritance
+- `reporting/export.py` — `_test_kaleido()`: renders a trivial test figure before PDF build; surfaces exact Chrome/kaleido error in the UI via `st.error` so failures are visible without server log access
+- `reporting/export.py` — `_render_light_fig()`: spawns a fresh Python subprocess to render each figure, bypassing Streamlit's stripped process environment that prevented Chrome from launching in-process
+- `reporting/export.py` — `_RENDER_SCRIPT`: self-contained render script that resolves Chrome path (env → `~/.kaleido/chrome` → choreographer local dir → download), calls `kaleido.start_sync_server(path=...)` with explicit Chrome path before `pio.to_image()`, bypassing choreographer's auto-discovery which fails in containers
+- `reporting/export.py` — `_strip_string_axis_shapes()`: removes per-day vline shapes that caused kaleido to silently fail on categorical x-axes
+- `reporting/export.py` — `_apply_light_theme()`: applies white/print-friendly background and axis colours to chart copies before rendering
+
+### Changed
+- `reporting/export.py` — `_fig_to_image()`: deep-copies figure via `copy.deepcopy(fig.to_dict())` (previous `go.Figure(fig)` produced empty copies); per-chart failures are non-fatal and appended to an `errors` list
+- `reporting/export.py` — `_add_charts()`: data-guard failures (empty DataFrames) appended to errors list alongside kaleido failures
+- `reporting/export.py` — `build_marketing_pdf()`: returns `tuple[bytes, list[str]]` (pdf bytes + chart error list)
+- `reporting/export.py` — subprocess timeout raised 60 → 600 seconds to allow Chrome ~130 MB first-time download on slow connections
+- `reporting/marketing.py` — `_render_export_button()`: "Prepare PDF" button with `st.session_state` caching (no eager rebuild on rerun); shows chart errors in expander; spinner message explains Chrome download on first run
+- `reporting/marketing.py` — `_build_pdf_bytes()`: unpacks `(bytes, errors)` tuple from `build_marketing_pdf()`
+
+### Removed
+- `packages.txt` — `chromium-browser` apt package caused Streamlit Cloud build failures (snap wrapper on Ubuntu 22.04 fails in containers); Chrome is now downloaded programmatically at runtime
+
 ## [1.8.0] — 2026-04-27
 
 Operational profit on Marketing - Ads tab: all costs now included.

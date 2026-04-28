@@ -118,7 +118,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-25 (v1.7.0)
+## Current State — 2026-04-28 (v1.9.0)
 
 ### What's been built
 
@@ -179,6 +179,26 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - `sklearn` absent locally → `CardCostSimulator` lazy-loaded so analytics imports always work
 - `streamlit` absent locally → `reporting/cards.py` has an import-time shim so figure-builder tests collect without the UI runtime
 - 7 pre-existing test failures: `test_simulator.py` (4, missing `sklearn`), `test_campaigns.py` (1, referral DB error mock), `test_marketing.py` (2, profit chart shape assertions) — non-blocking
+
+---
+
+## PDF Export — Marketing-Ads Tab (v1.9.0, 2026-04-28)
+
+- [x] `reporting/export.py` — `_fig_to_image()`: per-chart failures non-fatal; errors list returned alongside PDF bytes
+- [x] `reporting/export.py` — `_add_charts()`: data-guard failures (empty DataFrames) appended to errors list
+- [x] `reporting/export.py` — `build_marketing_pdf()`: returns `(bytes, list[str])` tuple
+- [x] `reporting/export.py` — `_fig_to_image()`: deep-copy via `copy.deepcopy(fig.to_dict())` (not `go.Figure(fig)` which silently produces empty figures)
+- [x] `reporting/export.py` — `_strip_string_axis_shapes()`: removes per-day vlines that break kaleido on categorical axes
+- [x] `reporting/export.py` — `_apply_light_theme()`: white/print-friendly background for all charts
+- [x] `reporting/export.py` — `_render_light_fig()`: render via fresh subprocess to bypass Streamlit's stripped process environment
+- [x] `reporting/export.py` — `_RENDER_SCRIPT`: subprocess resolves Chrome via `BROWSER_PATH` → `~/.kaleido/chrome` → choreographer local dir → `kaleido.get_chrome_sync(path=~/.kaleido/chrome)`; calls `kaleido.start_sync_server(path=...)` with explicit Chrome before `pio.to_image()` to bypass choreographer auto-discovery
+- [x] `reporting/export.py` — `_ensure_chrome()`: parent-side Chrome warmup; downloads to `~/.kaleido/chrome` (writable, not read-only site-packages)
+- [x] `reporting/export.py` — `_test_kaleido()`: validates kaleido+Chrome before PDF build; surfaces exact error in UI
+- [x] `reporting/marketing.py` — `_render_export_button()`: "Prepare PDF" button with session_state caching; shows kaleido error via `st.error`; shows chart errors via expander
+- [x] Subprocess timeout: 600s (was 60s) to allow Chrome ~130MB first-time download on slow connections
+- [x] Spinner message updated: informs user about Chrome download on first run
+- [x] `packages.txt` removed — `chromium-browser` via apt caused Streamlit Cloud build failures (snap wrapper)
+- [ ] Verify PDF renders charts end-to-end on Streamlit Cloud (Chrome download in progress on first click)
 
 ---
 
