@@ -328,7 +328,7 @@ def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
         [sys.executable, "-c", _RENDER_SCRIPT],
         input=payload,
         capture_output=True,
-        timeout=120,
+        timeout=600,
         env=env,
     )
 
