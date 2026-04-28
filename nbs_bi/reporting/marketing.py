@@ -899,8 +899,8 @@ class MetaAdsSection:
         campaigns: list[dict],
         funnel: dict,
         kyc_done: int,
-    ) -> bytes:
-        """Build the marketing PDF and return raw bytes.
+    ) -> tuple[bytes, list[str]]:
+        """Build the marketing PDF and return raw bytes plus chart error list.
 
         Separated from the Streamlit rendering layer so it can be called
         inside a ``st.download_button`` ``data=`` lambda without a nested
@@ -918,11 +918,11 @@ class MetaAdsSection:
             kyc_done: KYC-completed count for CAC calculation.
 
         Returns:
-            Raw PDF bytes.
+            Tuple of (pdf_bytes, chart_errors).
         """
         from nbs_bi.reporting.export import build_marketing_pdf
 
-        return build_marketing_pdf(
+        pdf_bytes, chart_errors = build_marketing_pdf(
             summary=summary,
             cum_profit_df=cum_profit_df,
             cum_rev_df=cum_rev_df,
@@ -932,6 +932,7 @@ class MetaAdsSection:
             funnel=funnel,
             kyc_done=kyc_done,
         )
+        return pdf_bytes, chart_errors
 
     def _render_export_button(  # pragma: no cover
         self,
@@ -969,24 +970,41 @@ class MetaAdsSection:
         with col_gen:
             if st.button("Prepare PDF", key="ads_prepare_pdf"):
                 with st.spinner("Rendering charts & building PDF…"):
-                    try:
-                        st.session_state[_skey] = self._build_pdf_bytes(
-                            summary=summary,
-                            cum_profit_df=cum_profit_df,
-                            cum_rev_df=cum_rev_df,
-                            daily=daily,
-                            spend_df=spend_df,
-                            campaigns=campaigns,
-                            funnel=funnel,
-                            kyc_done=kyc_done,
-                        )
-                    except Exception as exc:
-                        _log.exception("PDF export failed")
-                        st.error(f"PDF generation failed: {exc}")
-                        st.session_state.pop(_skey, None)
+                    from nbs_bi.reporting.export import _test_kaleido
 
-        pdf_bytes: bytes | None = st.session_state.get(_skey)
-        if pdf_bytes:
+                    kaleido_err = _test_kaleido()
+                    if kaleido_err:
+                        st.error(f"kaleido unavailable: {kaleido_err}")
+                        st.session_state.pop(_skey, None)
+                    else:
+                        _log.info(
+                            "PDF export: summary=%d rows, spend_df=%d rows, daily=%d rows, "
+                            "cum_profit_df=%s rows",
+                            len(summary),
+                            len(spend_df),
+                            len(daily),
+                            len(cum_profit_df) if cum_profit_df is not None else "None",
+                        )
+                        try:
+                            pdf_bytes, chart_errors = self._build_pdf_bytes(
+                                summary=summary,
+                                cum_profit_df=cum_profit_df,
+                                cum_rev_df=cum_rev_df,
+                                daily=daily,
+                                spend_df=spend_df,
+                                campaigns=campaigns,
+                                funnel=funnel,
+                                kyc_done=kyc_done,
+                            )
+                            st.session_state[_skey] = (pdf_bytes, chart_errors)
+                        except Exception as exc:
+                            _log.exception("PDF export failed")
+                            st.error(f"PDF generation failed: {exc}")
+                            st.session_state.pop(_skey, None)
+
+        cached = st.session_state.get(_skey)
+        if cached:
+            pdf_bytes, chart_errors = cached
             chart_count = pdf_bytes.count(b"\x89PNG")
             with col_dl:
                 st.download_button(
@@ -998,6 +1016,10 @@ class MetaAdsSection:
                 )
             with col_info:
                 st.caption(f"{len(pdf_bytes):,} bytes · {chart_count} chart(s)")
+            if chart_errors:
+                with st.expander(f"⚠ {len(chart_errors)} chart issue(s)"):
+                    for err in chart_errors:
+                        st.warning(err)
 
     def _try_upload(self) -> dict | None:  # pragma: no cover
         """Load campaign data: DB first, then local CSV, then file uploader.

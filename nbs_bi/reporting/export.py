@@ -262,26 +262,52 @@ def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
     raise RuntimeError("kaleido could not render figure") from last_exc
 
 
-def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | None:
+def _test_kaleido() -> str | None:
+    """Render a trivial Plotly figure to verify kaleido works in this context.
+
+    Returns:
+        ``None`` on success, or a human-readable error string on failure.
+    """
+    import plotly.io as pio
+
+    fig = go.Figure(go.Bar(x=["a", "b"], y=[1, 2]))
+    fig.update_layout(paper_bgcolor="white")
+    try:
+        png = pio.to_image(fig, format="png", width=200, height=150, engine="kaleido")
+        if not png:
+            return "pio.to_image returned empty bytes on test figure"
+    except Exception as exc:  # noqa: BLE001
+        return str(exc)
+    return None
+
+
+def _fig_to_image(
+    fig: go.Figure,
+    width_pt: float,
+    height_pt: float,
+    errors: list[str] | None = None,
+) -> Image | None:
     """Render a Plotly figure to a ReportLab Image at the given dimensions.
 
     Converts to a white-background, print-friendly variant by operating on
     the figure's dict representation (safe deep copy). Strips per-day vlines
     that break kaleido's static renderer on categorical x-axes.
 
-    Individual chart failures are logged and return None so that one bad chart
-    does not abort the entire PDF build.
+    Individual chart failures are logged and appended to ``errors`` so that
+    one bad chart does not abort the entire PDF build.
 
     Args:
         fig: Plotly figure to render.
         width_pt: Target width in PDF points.
         height_pt: Target height in PDF points.
+        errors: Optional list to collect failure reasons per chart.
 
     Returns:
         ReportLab ``Image`` flowable, or None if rendering fails.
     """
     px_w = int(width_pt * 2)  # 2× for crisp output
     px_h = int(height_pt * 2)
+    title = _fig_title(fig)
 
     try:
         fig_dict = copy.deepcopy(fig.to_dict())
@@ -290,11 +316,17 @@ def _fig_to_image(fig: go.Figure, width_pt: float, height_pt: float) -> Image | 
         light_fig = go.Figure(fig_dict)
         png_bytes = _render_light_fig(light_fig, px_w, px_h)
     except Exception as exc:
-        log.exception("kaleido failed for figure (title=%r): %s", _fig_title(fig), exc)
+        msg = f"{title or 'unnamed'}: {exc}"
+        log.exception("kaleido failed for figure %r: %s", title, exc)
+        if errors is not None:
+            errors.append(msg)
         return None
 
     if not png_bytes:
-        log.warning("kaleido returned empty bytes for figure %r", _fig_title(fig))
+        msg = f"{title or 'unnamed'}: kaleido returned empty bytes"
+        log.warning(msg)
+        if errors is not None:
+            errors.append(msg)
         return None
 
     buf = io.BytesIO(png_bytes)
@@ -473,7 +505,7 @@ def build_marketing_pdf(
     campaigns: list[dict],
     funnel: dict,
     kyc_done: int,
-) -> bytes:
+) -> tuple[bytes, list[str]]:
     """Generate an A4 PDF marketing briefing from live analysis data.
 
     Renders KPIs, cohort activation funnel, key Plotly charts (converted to
@@ -493,7 +525,8 @@ def build_marketing_pdf(
         kyc_done: Count of cohort users who completed KYC (kyc_level >= 1).
 
     Returns:
-        Raw PDF file as bytes, ready for ``st.download_button``.
+        Tuple of (pdf_bytes, chart_errors) where ``chart_errors`` is a list of
+        human-readable strings for every chart that failed to render.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -507,15 +540,18 @@ def build_marketing_pdf(
 
     s = _styles()
     story: list[Any] = []
+    chart_errors: list[str] = []
 
     _add_header(story, s)
     _add_kpi_strip(story, s, summary, cum_profit_df, kyc_done)
     _add_funnel(story, s, funnel)
-    _add_charts(story, s, summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns)
+    _add_charts(
+        story, s, summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns, chart_errors
+    )
     _add_summary_table(story, s, summary)
 
     doc.build(story)
-    return buf.getvalue()
+    return buf.getvalue(), chart_errors
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +647,7 @@ def _add_charts(
     daily: pd.DataFrame,
     spend_df: pd.DataFrame,
     campaigns: list[dict],
+    errors: list[str],
 ) -> None:
     """Render Plotly figures to PNG and append as images to story.
 
@@ -623,6 +660,7 @@ def _add_charts(
         daily: ``daily_context()`` DataFrame.
         spend_df: Date-filtered spend DataFrame.
         campaigns: List of campaign dicts.
+        errors: Mutable list; chart-level failure messages are appended here.
     """
     story.append(Paragraph("Campaign Charts", s["section"]))
 
@@ -638,22 +676,36 @@ def _add_charts(
         fig_spend = _fig_cumulative_spend(cum_df, campaigns, cum_rev_df, cum_profit_df)
         if fig_spend is not None:
             figs_full.append((fig_spend, chart_h_full))
+        else:
+            errors.append("Cumulative Spend chart: figure function returned None (data guard)")
+    else:
+        errors.append("Cumulative Spend chart: spend_df is empty")
 
     if cum_profit_df is not None and not cum_profit_df.empty:
         fig_profit = _fig_cumulative_profit(cum_profit_df)
         if fig_profit is not None:
             figs_full.append((fig_profit, chart_h_full))
+        else:
+            errors.append("Operational Profit chart: None returned (missing required columns)")
         fig_breakdown = _fig_revenue_breakdown(cum_profit_df)
         if fig_breakdown is not None:
             figs_full.append((fig_breakdown, chart_h_full))
+        else:
+            errors.append("Revenue Breakdown chart: None returned (missing required columns)")
+    else:
+        errors.append("Profit/Breakdown charts: cum_profit_df is None or empty")
 
     if not daily.empty:
         fig_daily = _fig_campaign_daily(daily)
         if fig_daily is not None:
             figs_full.append((fig_daily, chart_h_full))
+        else:
+            errors.append("Daily Signups chart: figure function returned None")
+    else:
+        errors.append("Daily Signups chart: daily DataFrame is empty")
 
     for fig, h in figs_full:
-        img = _fig_to_image(fig, full_w, h)
+        img = _fig_to_image(fig, full_w, h, errors)
         if img:
             story.append(img)
             story.append(Spacer(1, 4))
@@ -663,6 +715,7 @@ def _add_charts(
         [_fig_campaign_roi(summary, cum_profit_df), _fig_campaign_cac(summary)],
         half_w,
         chart_h_half,
+        errors,
     )
 
 
@@ -671,6 +724,7 @@ def _add_paired_charts(
     figs: list[go.Figure | None],
     half_w: float,
     h: float,
+    errors: list[str],
 ) -> None:
     """Render two Plotly figures side-by-side as a two-column ReportLab table.
 
@@ -679,13 +733,14 @@ def _add_paired_charts(
         figs: Exactly two figures (either may be None to leave a blank cell).
         half_w: Width per column in PDF points.
         h: Height per figure in PDF points.
+        errors: Mutable list; chart-level failure messages are appended here.
     """
     cells: list[Any] = []
     for fig in figs:
         if fig is None:
             cells.append("")
         else:
-            img = _fig_to_image(fig, half_w, h)
+            img = _fig_to_image(fig, half_w, h, errors)
             cells.append(img if img else "")
 
     if any(c != "" for c in cells):
