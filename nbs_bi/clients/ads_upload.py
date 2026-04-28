@@ -1,6 +1,7 @@
-"""CLI: filter Rain card CSV to FACEBK rows and upsert into meta_ads_spend.
+"""CLI: filter Rain card CSV to ad spend rows and upsert into meta_ads_spend.
 
-Extracts only id, date, and amount_usd — no PII stored.
+Extracts Meta (FACEBK) and Google Ads rows — only id, date, amount_usd, and
+platform are stored. No PII is persisted.
 Running the script multiple times is safe (ON CONFLICT DO NOTHING).
 
 Usage::
@@ -27,35 +28,56 @@ logger = logging.getLogger(__name__)
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS meta_ads_spend (
     id          TEXT PRIMARY KEY,
-    date        DATE         NOT NULL,
-    amount_usd  NUMERIC(10,4) NOT NULL
+    date        DATE          NOT NULL,
+    amount_usd  NUMERIC(10,4) NOT NULL,
+    platform    TEXT          NOT NULL DEFAULT 'meta'
 );
 CREATE INDEX IF NOT EXISTS meta_ads_spend_date_idx ON meta_ads_spend (date);
 """
 
+# Idempotent migration for existing tables that pre-date the platform column.
+_ALTER_TABLE_SQL = """
+ALTER TABLE meta_ads_spend
+    ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'meta';
+"""
+
 _INSERT_SQL = """
-INSERT INTO meta_ads_spend (id, date, amount_usd)
-VALUES (:id, :date, :amount_usd)
+INSERT INTO meta_ads_spend (id, date, amount_usd, platform)
+VALUES (:id, :date, :amount_usd, :platform)
 ON CONFLICT (id) DO NOTHING
 """
 
-_MERCHANT_PREFIX = "FACEBK"
+_META_PREFIX = "FACEBK"
+_GOOGLE_ADS_SUBSTR = "GOOGLE ADS"
 
 
 def _filter_spend(csv_path: Path) -> pd.DataFrame:
-    """Read CSV and return FACEBK rows with only id, date, amount_usd columns."""
+    """Read CSV and return Meta and Google Ads rows with id, date, amount_usd, platform."""
     df = pd.read_csv(csv_path, parse_dates=["date"])
-    mask = df["merchantName"].str.startswith(_MERCHANT_PREFIX, na=False)
-    fb = df[mask].copy()
-    if fb.empty:
-        return pd.DataFrame(columns=["id", "date", "amount_usd"])
-    fb["date"] = fb["date"].dt.date
-    fb["amount_usd"] = fb["amount"].abs()
-    return fb[["id", "date", "amount_usd"]].reset_index(drop=True)
+    meta_mask = df["merchantName"].str.startswith(_META_PREFIX, na=False)
+    google_mask = df["merchantName"].str.contains(_GOOGLE_ADS_SUBSTR, case=False, na=False)
+
+    parts: list[pd.DataFrame] = []
+    if meta_mask.any():
+        meta = df[meta_mask].copy()
+        meta["platform"] = "meta"
+        parts.append(meta)
+    if google_mask.any():
+        google = df[google_mask].copy()
+        google["platform"] = "google"
+        parts.append(google)
+
+    if not parts:
+        return pd.DataFrame(columns=["id", "date", "amount_usd", "platform"])
+
+    combined = pd.concat(parts, ignore_index=True)
+    combined["date"] = combined["date"].dt.date
+    combined["amount_usd"] = combined["amount"].abs()
+    return combined[["id", "date", "amount_usd", "platform"]].reset_index(drop=True)
 
 
 def upload(csv_path: Path, db_url: str) -> tuple[int, int]:
-    """Filter CSV and upsert FACEBK rows into meta_ads_spend.
+    """Filter CSV and upsert Meta and Google Ads rows into meta_ads_spend.
 
     Args:
         csv_path: Path to Rain card CSV export.
@@ -66,18 +88,24 @@ def upload(csv_path: Path, db_url: str) -> tuple[int, int]:
     """
     rows = _filter_spend(csv_path)
     if rows.empty:
-        logger.warning("No FACEBK rows found in %s", csv_path.name)
+        logger.warning("No ad spend rows found in %s", csv_path.name)
         return 0, 0
 
     engine = create_engine(db_url)
     with engine.begin() as conn:
         conn.execute(text(_CREATE_TABLE_SQL))
+        conn.execute(text(_ALTER_TABLE_SQL))
         inserted = 0
         skipped = 0
         for _, row in rows.iterrows():
             result = conn.execute(
                 text(_INSERT_SQL),
-                {"id": row["id"], "date": row["date"], "amount_usd": float(row["amount_usd"])},
+                {
+                    "id": row["id"],
+                    "date": row["date"],
+                    "amount_usd": float(row["amount_usd"]),
+                    "platform": row["platform"],
+                },
             )
             if result.rowcount > 0:
                 inserted += 1
@@ -88,12 +116,12 @@ def upload(csv_path: Path, db_url: str) -> tuple[int, int]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point for Meta Ads spend upload."""
+    """CLI entry point for ad spend upload."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     load_dotenv()
 
     parser = argparse.ArgumentParser(
-        description="Filter Rain card CSV to FACEBK rows and upsert into meta_ads_spend table."
+        description="Upload Meta + Google Ads spend from Rain card CSV into meta_ads_spend table."
     )
     parser.add_argument(
         "csv_path",

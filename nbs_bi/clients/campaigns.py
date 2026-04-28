@@ -337,27 +337,28 @@ ORDER BY 1
 # ------------------------------------------------------------------
 
 
-def load_ad_spend(csv_path: str | Path, merchant_prefix: str = "FACEBK") -> pd.DataFrame:
+def load_ad_spend(csv_path: str | Path) -> pd.DataFrame:
     """Load and aggregate daily ad spend from a Rain card expense CSV.
+
+    Includes Meta (FACEBK) and Google Ads rows.
 
     Args:
         csv_path: Path to the Rain CSV export
             (e.g. ``data/nbs_corp_card/rain-transactions-export-2026-04-20.csv``).
-        merchant_prefix: Merchant name prefix to filter on (case-sensitive).
-            Defaults to ``"FACEBK"`` (Meta / Facebook Ads).
 
     Returns:
         DataFrame with columns ``date`` (date) and ``daily_spend_usd`` (float),
         sorted by date.  Amount signs are normalised so spend is positive.
     """
     df = pd.read_csv(csv_path, parse_dates=["date"])
-    mask = df["merchantName"].str.startswith(merchant_prefix, na=False)
-    fb = df[mask].copy()
-    if fb.empty:
+    meta_mask = df["merchantName"].str.startswith("FACEBK", na=False)
+    google_mask = df["merchantName"].str.contains("GOOGLE ADS", case=False, na=False)
+    ads = df[meta_mask | google_mask].copy()
+    if ads.empty:
         return pd.DataFrame(columns=["date", "daily_spend_usd"])
-    fb["date"] = fb["date"].dt.date
-    fb["amount_abs"] = fb["amount"].abs()
-    daily = fb.groupby("date")["amount_abs"].sum().reset_index()
+    ads["date"] = ads["date"].dt.date
+    ads["amount_abs"] = ads["amount"].abs()
+    daily = ads.groupby("date")["amount_abs"].sum().reset_index()
     daily.columns = ["date", "daily_spend_usd"]
     return daily.sort_values("date").reset_index(drop=True)
 

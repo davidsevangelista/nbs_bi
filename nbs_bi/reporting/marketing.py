@@ -283,7 +283,7 @@ def _fig_cumulative_spend(
             xanchor="left",
             yanchor="top",
         )
-    layout = panel("Cumulative Meta Ads Spend vs Cohort Revenue (USD)")
+    layout = panel("Cumulative Ad Spend vs Cohort Revenue (USD)")
     layout["xaxis"]["title"] = "Date"
     layout["yaxis"]["title"] = "USD"
     fig.update_layout(**layout)
@@ -626,7 +626,7 @@ def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
             yaxis="y2",
         )
     )
-    layout = panel("Daily Signups vs Meta Ad Spend")
+    layout = panel("Daily Signups vs Ad Spend")
     layout["barmode"] = "stack"
     layout["yaxis"]["title"] = "New Signups"
     layout["xaxis"]["title"] = "Date"
@@ -782,7 +782,7 @@ class MetaAdsSection:
         invoice_history: list = campaign_data.get("invoice_history", [])
 
         if spend_df.empty:
-            st.warning("No FACEBK spend rows found in the uploaded CSV.")
+            st.warning("No ad spend rows found in the uploaded CSV.")
             return
 
         # --- Date range filter --------------------------------------------------

@@ -31,7 +31,9 @@ _CSV_CONTENT = "\n".join(
         "3,2026-02-20,2026-02-21,spend,-100.00,FACEBK ADS,approved,usd,david@test.com",
         "4,2026-04-14,2026-04-15,spend,-18.00,FACEBK ADS,approved,usd,david@test.com",
         "5,2026-04-15,2026-04-16,spend,-11.00,FACEBK ADS,approved,usd,david@test.com",
-        "6,2026-01-10,2026-01-11,spend,-50.00,STRIPE,approved,usd,david@test.com",
+        "6,2026-04-16,2026-04-17,spend,-83.17,DL *GOOGLE ADS68758342,approved,usd,ruggero@test.com",
+        "7,2026-04-16,2026-04-17,spend,-41.58,Google ADS6875834245,approved,usd,ruggero@test.com",
+        "8,2026-01-10,2026-01-11,spend,-50.00,STRIPE,approved,usd,david@test.com",
     ]
 )
 
@@ -143,11 +145,18 @@ def _make_analyzer(spend=None, revenue_row=None):
 # ---------------------------------------------------------------------------
 
 
-def test_load_ad_spend_filters_by_prefix():
+def test_load_ad_spend_includes_all_ad_platforms():
     spend = _make_spend()
     assert len(spend) > 0
-    # STRIPE row should be excluded
+    # STRIPE row must be excluded; Google Ads rows must be included
     assert spend["daily_spend_usd"].notna().all()
+    # Apr 15 has FACEBK ($11); Apr 16 has both Google Ads rows ($83.17 + $41.58)
+    apr15 = spend[pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-04-15").date()]
+    assert not apr15.empty
+    assert pytest.approx(apr15["daily_spend_usd"].iloc[0], rel=1e-4) == 11.00
+    apr16 = spend[pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-04-16").date()]
+    assert not apr16.empty
+    assert pytest.approx(apr16["daily_spend_usd"].iloc[0], rel=1e-4) == 83.17 + 41.58
 
 
 def test_load_ad_spend_spend_is_positive():
@@ -157,13 +166,21 @@ def test_load_ad_spend_spend_is_positive():
 
 def test_load_ad_spend_aggregates_daily():
     spend = _make_spend()
-    # Feb 15 and Feb 16 have 1 charge each; totals should match abs(amount)
+    # Feb 15 has 1 FACEBK charge; total should match abs(amount)
     feb15 = spend[pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-02-15").date()]
     assert pytest.approx(feb15["daily_spend_usd"].iloc[0], rel=1e-4) == 99.00
 
 
-def test_load_ad_spend_empty_when_no_match():
-    spend = load_ad_spend(io.StringIO(_CSV_CONTENT), merchant_prefix="NONEXISTENT")
+_NO_ADS_CSV = "\n".join(
+    [
+        "id,date,postedDate,type,amount,merchantName,authorizationStatus,currency,cardholderEmail",
+        "1,2026-01-10,2026-01-11,spend,-50.00,STRIPE,approved,usd,david@test.com",
+    ]
+)
+
+
+def test_load_ad_spend_empty_when_no_ad_rows():
+    spend = load_ad_spend(io.StringIO(_NO_ADS_CSV))
     assert spend.empty
 
 
