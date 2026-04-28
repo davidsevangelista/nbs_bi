@@ -969,7 +969,10 @@ class MetaAdsSection:
         col_gen, col_dl, col_info, _ = st.columns([1, 1, 2, 2])
         with col_gen:
             if st.button("Prepare PDF", key="ads_prepare_pdf"):
-                with st.spinner("Rendering charts & building PDF…"):
+                with st.spinner(
+                    "Setting up chart renderer… "
+                    "(first run downloads Chrome ~130 MB — may take a few minutes)"
+                ):
                     from nbs_bi.reporting.export import _test_kaleido
 
                     kaleido_err = _test_kaleido()
