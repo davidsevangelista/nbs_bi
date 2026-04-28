@@ -785,7 +785,23 @@ class MetaAdsSection:
             st.warning("No ad spend rows found in the uploaded CSV.")
             return
 
-        # --- Date range filter --------------------------------------------------
+        # --- Platform + date filters --------------------------------------------
+        from nbs_bi.clients.campaigns import CampaignAnalyzer, aggregate_spend
+
+        # Platform selector
+        has_platform = "platform" in spend_df.columns
+        available_platforms = sorted(spend_df["platform"].unique()) if has_platform else []
+        platform_options = ["All"] + [p.capitalize() for p in available_platforms]
+        selected_platform_label = st.radio(
+            "Platform",
+            platform_options,
+            horizontal=True,
+            key="ads_platform_filter",
+        )
+        selected_platform = (
+            None if selected_platform_label == "All" else selected_platform_label.lower()
+        )
+
         spend_dates = pd.to_datetime(spend_df["date"])
         min_date = spend_dates.min().date()
         max_date = spend_dates.max().date()
@@ -817,11 +833,21 @@ class MetaAdsSection:
             st.warning("No spend data in the selected date range.")
             return
 
-        # Rebuild analyzer scoped to the selected window so that campaign
-        # detection, roi_summary, and daily_context all reflect the filter.
-        from nbs_bi.clients.campaigns import CampaignAnalyzer
+        # Aggregate to date-level for CampaignAnalyzer (filter by platform if selected).
+        spend_agg = aggregate_spend(spend_df, platform=selected_platform)
+        if spend_agg.empty:
+            st.warning("No spend data for the selected platform in this date range.")
+            return
 
-        analyzer = CampaignAnalyzer(spend_df, db_url=self._analytics_db_url or self._db_url)
+        # Per-platform breakdown for KPI tile.
+        spend_breakdown: dict[str, float] = (
+            spend_df.groupby("platform")["daily_spend_usd"].sum().to_dict()
+            if "platform" in spend_df.columns
+            else {}
+        )
+
+        # Rebuild analyzer scoped to the selected window/platform.
+        analyzer = CampaignAnalyzer(spend_agg, db_url=self._analytics_db_url or self._db_url)
         campaigns: list[dict] = analyzer.campaigns
         summary: pd.DataFrame = analyzer.roi_summary()
         daily: pd.DataFrame = analyzer.daily_context()
@@ -874,16 +900,18 @@ class MetaAdsSection:
         activated = int(summary["transacting_users"].sum()) if not summary.empty else 0
         funnel = {"signups": signups, "kyc_done": kyc_done, "activated": activated}
         self._render_export_button(
-            summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns, funnel, kyc_done
+            summary, cum_profit_df, cum_rev_df, daily, spend_agg, campaigns, funnel, kyc_done
         )
 
-        self._render_kpis(summary, cum_profit_df, kyc_done=kyc_done)
+        self._render_kpis(
+            summary, cum_profit_df, kyc_done=kyc_done, spend_breakdown=spend_breakdown
+        )
         if not summary.empty:
             fig_funnel = _fig_campaign_funnel(funnel)
             if fig_funnel:
                 st.plotly_chart(fig_funnel, width="stretch")
         st.divider()
-        self._render_spend_charts(summary, daily, spend_df, campaigns, cum_rev_df, cum_profit_df)
+        self._render_spend_charts(summary, daily, spend_agg, campaigns, cum_rev_df, cum_profit_df)
         st.divider()
         self._render_channel(summary, cum_profit_df)
         st.divider()
@@ -1032,7 +1060,12 @@ class MetaAdsSection:
         2. Most-recent CSV in ``data/nbs_corp_card/`` (local dev).
         3. Streamlit file uploader (manual fallback).
         """
-        from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend, load_ad_spend_from_db
+        from nbs_bi.clients.campaigns import (
+            CampaignAnalyzer,
+            aggregate_spend,
+            load_ad_spend,
+            load_ad_spend_from_db,
+        )
         from nbs_bi.config import DATA_DIR
         from nbs_bi.reporting.cards import _load_all_invoice_models
 
@@ -1044,10 +1077,12 @@ class MetaAdsSection:
             if spend is not None:
                 st.caption("Spend data loaded from database.")
 
-        # 2. Try local CSV
+        # 2. Try local CSV (nbs_corp_card/ first, then data/ root for rain exports)
         if spend is None:
             corp_card_dir = DATA_DIR / "nbs_corp_card"
             local_csvs = sorted(corp_card_dir.glob("*.csv")) if corp_card_dir.exists() else []
+            if not local_csvs:
+                local_csvs = sorted(DATA_DIR.glob("rain-transactions-export-*.csv"))
             if local_csvs:
                 csv_path = local_csvs[-1]
                 st.caption(f"Loaded spend data from `{csv_path.name}`")
@@ -1062,7 +1097,9 @@ class MetaAdsSection:
 
         cutoff = pd.Timestamp(_TRACKING_START)
         spend = spend[pd.to_datetime(spend["date"]) >= cutoff].reset_index(drop=True)
-        analyzer = CampaignAnalyzer(spend, db_url=self._analytics_db_url or self._db_url)
+        analyzer = CampaignAnalyzer(
+            aggregate_spend(spend), db_url=self._analytics_db_url or self._db_url
+        )
 
         _, _, _, history = _load_all_invoice_models()
         invoice_history = [
@@ -1090,6 +1127,7 @@ class MetaAdsSection:
         summary: pd.DataFrame,
         cum_profit_df: pd.DataFrame | None = None,
         kyc_done: int = 0,
+        spend_breakdown: dict[str, float] | None = None,
     ) -> None:
         """Render KPI strip including net profit when profit data is available.
 
@@ -1099,6 +1137,8 @@ class MetaAdsSection:
                 — when provided, adds a Net Profit KPI tile.
             kyc_done: Count of cohort users who completed KYC (kyc_level >= 1),
                 used to compute KYC cost component of CAC.
+            spend_breakdown: Per-platform spend totals for the selected window,
+                e.g. ``{"meta": 450.0, "google": 310.0}``.
         """
         from nbs_bi.clients.models import _KYC_COST_USD
 
@@ -1116,7 +1156,13 @@ class MetaAdsSection:
             and "cum_contribution_margin_usd" in cum_profit_df.columns
         )
         cols = st.columns(5 if has_profit else 4)
-        cols[0].metric("Total Meta Spend", fmt_usd(total_spend))
+        cols[0].metric("Total Spend", fmt_usd(total_spend))
+        if spend_breakdown:
+            parts = [
+                f"{plat.capitalize()} {fmt_usd(amt)}"
+                for plat, amt in sorted(spend_breakdown.items())
+            ]
+            cols[0].caption(" · ".join(parts))
         cols[1].metric("Cohort Revenue", fmt_usd(total_rev))
         cols[2].metric(
             "Overall ROAS",
@@ -1125,7 +1171,7 @@ class MetaAdsSection:
             delta_color="normal" if overall_roas >= 1 else "inverse",
         )
         cols[3].metric(
-            "CAC (spend + KYC)",
+            "CAC",
             fmt_usd(cac_active) if not np.isnan(cac_active) else "n/a",
         )
         if has_profit:

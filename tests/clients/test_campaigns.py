@@ -16,6 +16,7 @@ from nbs_bi.clients.campaigns import (
     _cogs_for_cohort_txns,
     _cost_per_txn_from_invoices,
     _detect_campaigns,
+    aggregate_spend,
     load_ad_spend,
 )
 
@@ -38,8 +39,14 @@ _CSV_CONTENT = "\n".join(
 )
 
 
-def _make_spend() -> pd.DataFrame:
+def _make_spend_by_platform() -> pd.DataFrame:
+    """Per-platform daily spend (load_ad_spend native format)."""
     return load_ad_spend(io.StringIO(_CSV_CONTENT))
+
+
+def _make_spend() -> pd.DataFrame:
+    """Aggregated daily spend for CampaignAnalyzer / _detect_campaigns."""
+    return aggregate_spend(_make_spend_by_platform())
 
 
 def _make_analyzer(spend=None, revenue_row=None):
@@ -145,29 +152,44 @@ def _make_analyzer(spend=None, revenue_row=None):
 # ---------------------------------------------------------------------------
 
 
+def test_load_ad_spend_has_platform_column():
+    spend = _make_spend_by_platform()
+    assert "platform" in spend.columns
+    assert set(spend["platform"].unique()) == {"meta", "google"}
+
+
 def test_load_ad_spend_includes_all_ad_platforms():
-    spend = _make_spend()
+    spend = _make_spend_by_platform()
     assert len(spend) > 0
-    # STRIPE row must be excluded; Google Ads rows must be included
     assert spend["daily_spend_usd"].notna().all()
-    # Apr 15 has FACEBK ($11); Apr 16 has both Google Ads rows ($83.17 + $41.58)
-    apr15 = spend[pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-04-15").date()]
-    assert not apr15.empty
-    assert pytest.approx(apr15["daily_spend_usd"].iloc[0], rel=1e-4) == 11.00
-    apr16 = spend[pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-04-16").date()]
-    assert not apr16.empty
-    assert pytest.approx(apr16["daily_spend_usd"].iloc[0], rel=1e-4) == 83.17 + 41.58
+    # Apr 15: FACEBK row (meta, $11)
+    apr15_meta = spend[
+        (pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-04-15").date())
+        & (spend["platform"] == "meta")
+    ]
+    assert not apr15_meta.empty
+    assert pytest.approx(apr15_meta["daily_spend_usd"].iloc[0], rel=1e-4) == 11.00
+    # Apr 16: Google rows ($83.17 + $41.58 = $124.75)
+    apr16_google = spend[
+        (pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-04-16").date())
+        & (spend["platform"] == "google")
+    ]
+    assert not apr16_google.empty
+    assert pytest.approx(apr16_google["daily_spend_usd"].iloc[0], rel=1e-4) == 83.17 + 41.58
 
 
 def test_load_ad_spend_spend_is_positive():
-    spend = _make_spend()
+    spend = _make_spend_by_platform()
     assert (spend["daily_spend_usd"] > 0).all()
 
 
 def test_load_ad_spend_aggregates_daily():
-    spend = _make_spend()
-    # Feb 15 has 1 FACEBK charge; total should match abs(amount)
-    feb15 = spend[pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-02-15").date()]
+    spend = _make_spend_by_platform()
+    # Feb 15 has 1 FACEBK charge
+    feb15 = spend[
+        (pd.to_datetime(spend["date"]).dt.date == pd.Timestamp("2026-02-15").date())
+        & (spend["platform"] == "meta")
+    ]
     assert pytest.approx(feb15["daily_spend_usd"].iloc[0], rel=1e-4) == 99.00
 
 
@@ -182,6 +204,25 @@ _NO_ADS_CSV = "\n".join(
 def test_load_ad_spend_empty_when_no_ad_rows():
     spend = load_ad_spend(io.StringIO(_NO_ADS_CSV))
     assert spend.empty
+
+
+def test_aggregate_spend_sums_all_platforms():
+    spend = _make_spend_by_platform()
+    agg = aggregate_spend(spend)
+    assert list(agg.columns) == ["date", "daily_spend_usd"]
+    # Apr 16: meta $11 (actually apr15) + google $124.75 (apr16) → check apr16 = 124.75
+    apr16 = agg[pd.to_datetime(agg["date"]).dt.date == pd.Timestamp("2026-04-16").date()]
+    assert pytest.approx(apr16["daily_spend_usd"].iloc[0], rel=1e-4) == 83.17 + 41.58
+
+
+def test_aggregate_spend_filters_by_platform():
+    spend = _make_spend_by_platform()
+    meta_only = aggregate_spend(spend, platform="meta")
+    assert (meta_only["daily_spend_usd"] > 0).all()
+    google_only = aggregate_spend(spend, platform="google")
+    # Google rows are only on Apr 16
+    assert len(google_only) == 1
+    assert pytest.approx(google_only["daily_spend_usd"].iloc[0], rel=1e-4) == 83.17 + 41.58
 
 
 # ---------------------------------------------------------------------------

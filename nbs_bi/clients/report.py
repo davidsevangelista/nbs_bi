@@ -17,7 +17,7 @@ from typing import Any
 
 import pandas as pd
 
-from nbs_bi.clients.campaigns import CampaignAnalyzer, load_ad_spend_from_db
+from nbs_bi.clients.campaigns import CampaignAnalyzer, aggregate_spend, load_ad_spend_from_db
 from nbs_bi.clients.models import ClientModel
 from nbs_bi.clients.segments import ClientSegments
 from nbs_bi.config import ADS_DATABASE_URL
@@ -63,7 +63,8 @@ class ClientReport:
         if spend_df is None or spend_df.empty:
             return float("nan")
         try:
-            roi = CampaignAnalyzer(spend_df, db_url=self._model._q._db_url).roi_summary()
+            agg = aggregate_spend(spend_df)
+            roi = CampaignAnalyzer(agg, db_url=self._model._q._db_url).roi_summary()
             total_spend = float(roi["total_spend_usd"].sum())
             total_incr = float(roi["incremental_users_est"].sum())
             return total_spend / total_incr if total_incr > 0 else float("nan")

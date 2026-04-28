@@ -338,48 +338,57 @@ ORDER BY 1
 
 
 def load_ad_spend(csv_path: str | Path) -> pd.DataFrame:
-    """Load and aggregate daily ad spend from a Rain card expense CSV.
+    """Load per-platform daily ad spend from a Rain card expense CSV.
 
     Includes Meta (FACEBK) and Google Ads rows.
 
     Args:
-        csv_path: Path to the Rain CSV export
-            (e.g. ``data/nbs_corp_card/rain-transactions-export-2026-04-20.csv``).
+        csv_path: Path to the Rain CSV export.
 
     Returns:
-        DataFrame with columns ``date`` (date) and ``daily_spend_usd`` (float),
-        sorted by date.  Amount signs are normalised so spend is positive.
+        DataFrame with columns ``date`` (date), ``platform`` (str),
+        and ``daily_spend_usd`` (float), one row per (date, platform).
+        Use :func:`aggregate_spend` to collapse to a single daily total.
     """
     df = pd.read_csv(csv_path, parse_dates=["date"])
     meta_mask = df["merchantName"].str.startswith("FACEBK", na=False)
     google_mask = df["merchantName"].str.contains("GOOGLE ADS", case=False, na=False)
-    ads = df[meta_mask | google_mask].copy()
-    if ads.empty:
-        return pd.DataFrame(columns=["date", "daily_spend_usd"])
-    ads["date"] = ads["date"].dt.date
-    ads["amount_abs"] = ads["amount"].abs()
-    daily = ads.groupby("date")["amount_abs"].sum().reset_index()
-    daily.columns = ["date", "daily_spend_usd"]
-    return daily.sort_values("date").reset_index(drop=True)
+
+    parts: list[pd.DataFrame] = []
+    for mask, plat in [(meta_mask, "meta"), (google_mask, "google")]:
+        sub = df[mask].copy()
+        if not sub.empty:
+            sub["platform"] = plat
+            parts.append(sub)
+
+    if not parts:
+        return pd.DataFrame(columns=["date", "platform", "daily_spend_usd"])
+
+    combined = pd.concat(parts, ignore_index=True)
+    combined["date"] = combined["date"].dt.date
+    combined["amount_abs"] = combined["amount"].abs()
+    daily = combined.groupby(["date", "platform"])["amount_abs"].sum().reset_index()
+    daily.columns = ["date", "platform", "daily_spend_usd"]
+    return daily.sort_values(["date", "platform"]).reset_index(drop=True)
 
 
 def load_ad_spend_from_db(db_url: str) -> pd.DataFrame | None:
-    """Query meta_ads_spend table and return the same shape as load_ad_spend().
+    """Query meta_ads_spend and return per-platform daily spend.
 
     Args:
         db_url: PostgreSQL connection string (read-only is sufficient).
 
     Returns:
-        DataFrame with columns ``date`` (datetime64) and ``daily_spend_usd`` (float),
-        or ``None`` if the table is missing, empty, or the query fails.
+        DataFrame with columns ``date`` (datetime64), ``platform`` (str),
+        and ``daily_spend_usd`` (float), or ``None`` on failure/empty.
     """
     try:
         from sqlalchemy import create_engine, text
 
         engine = create_engine(db_url)
         sql = text(
-            "SELECT date, SUM(amount_usd) AS daily_spend_usd"
-            " FROM meta_ads_spend GROUP BY date ORDER BY date"
+            "SELECT date, platform, SUM(amount_usd) AS daily_spend_usd"
+            " FROM meta_ads_spend GROUP BY date, platform ORDER BY date, platform"
         )
         with engine.connect() as conn:
             df = pd.read_sql(sql, conn)
@@ -390,6 +399,26 @@ def load_ad_spend_from_db(db_url: str) -> pd.DataFrame | None:
         return df.reset_index(drop=True)
     except Exception:
         return None
+
+
+def aggregate_spend(spend_df: pd.DataFrame, platform: str | None = None) -> pd.DataFrame:
+    """Collapse per-platform spend to the ``date, daily_spend_usd`` shape CampaignAnalyzer expects.
+
+    Args:
+        spend_df: Output of :func:`load_ad_spend` or :func:`load_ad_spend_from_db`.
+        platform: If given, filter to that platform before summing.
+            Pass ``None`` to sum all platforms.
+
+    Returns:
+        DataFrame with columns ``date`` and ``daily_spend_usd``, sorted by date.
+    """
+    if spend_df.empty:
+        return pd.DataFrame(columns=["date", "daily_spend_usd"])
+    df = spend_df if platform is None else spend_df[spend_df["platform"] == platform]
+    if df.empty:
+        return pd.DataFrame(columns=["date", "daily_spend_usd"])
+    result = df.groupby("date")["daily_spend_usd"].sum().reset_index()
+    return result.sort_values("date").reset_index(drop=True)
 
 
 # ------------------------------------------------------------------
