@@ -221,43 +221,31 @@ def _apply_light_theme(fig_dict: dict) -> None:
             ann["font"]["color"] = "#374151"
 
 
-_CHROME_CANDIDATES = [
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/chromium",
-    "/snap/bin/chromium",
-]
+# Script run in a fresh subprocess to render a single Plotly figure to PNG.
+# Receives figure JSON on stdin, writes PNG bytes to stdout.
+_RENDER_SCRIPT = """\
+import sys, json, os
+import plotly.graph_objects as go
+import plotly.io as pio
 
-
-def _ensure_browser_path() -> None:
-    """Set ``BROWSER_PATH`` env var if not already set and Chrome is found.
-
-    choreographer (kaleido's renderer) checks ``BROWSER_PATH`` first.
-    Streamlit's subprocess may inherit a stripped PATH that omits the system
-    Chrome; setting the var explicitly ensures kaleido finds it.
-    """
-    import os
-
-    if os.environ.get("BROWSER_PATH"):
-        return
-    for candidate in _CHROME_CANDIDATES:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            os.environ["BROWSER_PATH"] = candidate
-            log.info("Set BROWSER_PATH=%s for kaleido", candidate)
-            return
+fig_json, w, h = json.loads(sys.stdin.buffer.read())
+fig = go.Figure(fig_json)
+png = pio.to_image(fig, format="png", width=w, height=h)
+sys.stdout.buffer.write(png)
+"""
 
 
 def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
-    """Render a light-themed Plotly figure to PNG bytes via kaleido.
+    """Render a Plotly figure to PNG bytes via a fresh subprocess.
 
-    Tries ``plotly.io.to_image`` first (more robust in multi-threaded
-    contexts such as Streamlit) and falls back to ``fig.to_image``.
-    Raises the last exception if both attempts fail so callers can surface
-    the error rather than silently producing a chart-free PDF.
+    Spawning a dedicated Python process avoids Streamlit's stripped
+    environment (missing PATH entries, process-group restrictions) that
+    prevent kaleido/choreographer from launching Chrome in-process.
+    The subprocess inherits a copy of the environment augmented with
+    explicit BROWSER_PATH and a full PATH so Chrome is always found.
 
     Args:
-        fig: Light-themed Plotly figure (already themed and shape-stripped).
+        fig: Plotly figure (will be deep-copied and themed by caller).
         px_w: Output width in pixels.
         px_h: Output height in pixels.
 
@@ -265,47 +253,60 @@ def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
         PNG bytes.
 
     Raises:
-        Exception: If both kaleido invocations fail.
+        RuntimeError: If the subprocess exits non-zero or returns empty bytes.
     """
-    import plotly.io as pio
+    import json
+    import os
+    import subprocess
+    import sys
 
-    _ensure_browser_path()
+    env = os.environ.copy()
+    env["PATH"] = "/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin:" + env.get("PATH", "")
+    if not env.get("BROWSER_PATH"):
+        for candidate in [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+        ]:
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                env["BROWSER_PATH"] = candidate
+                break
 
-    last_exc: Exception | None = None
+    payload = json.dumps([fig.to_dict(), px_w, px_h]).encode()
+    result = subprocess.run(
+        [sys.executable, "-c", _RENDER_SCRIPT],
+        input=payload,
+        capture_output=True,
+        timeout=60,
+        env=env,
+    )
 
-    try:
-        png = pio.to_image(fig, format="png", width=px_w, height=px_h, engine="kaleido")
-        if png:
-            return png
-    except Exception as exc:  # noqa: BLE001
-        log.warning("pio.to_image failed (%s), retrying via fig.to_image", exc)
-        last_exc = exc
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")[:600]
+        raise RuntimeError(f"render subprocess failed (rc={result.returncode}): {stderr}")
+    if not result.stdout:
+        raise RuntimeError("render subprocess returned empty bytes")
 
-    try:
-        png = fig.to_image(format="png", width=px_w, height=px_h, engine="kaleido")
-        if png:
-            return png
-    except Exception as exc:  # noqa: BLE001
-        last_exc = exc
-
-    raise RuntimeError("kaleido could not render figure") from last_exc
+    log.debug("Rendered %r (%dx%d px, %d bytes)", _fig_title(fig), px_w, px_h, len(result.stdout))
+    return result.stdout
 
 
 def _test_kaleido() -> str | None:
     """Render a trivial Plotly figure to verify kaleido works in this context.
 
+    Uses the same subprocess path as production rendering so the test
+    faithfully reflects what will happen during PDF generation.
+
     Returns:
         ``None`` on success, or a human-readable error string on failure.
     """
-    import plotly.io as pio
-
-    _ensure_browser_path()
     fig = go.Figure(go.Bar(x=["a", "b"], y=[1, 2]))
     fig.update_layout(paper_bgcolor="white")
     try:
-        png = pio.to_image(fig, format="png", width=200, height=150, engine="kaleido")
+        png = _render_light_fig(fig, 200, 150)
         if not png:
-            return "pio.to_image returned empty bytes on test figure"
+            return "render returned empty bytes on test figure"
     except Exception as exc:  # noqa: BLE001
         return str(exc)
     return None
