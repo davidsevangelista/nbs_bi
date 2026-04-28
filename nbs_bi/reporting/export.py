@@ -225,9 +225,44 @@ def _apply_light_theme(fig_dict: dict) -> None:
 # Receives figure JSON on stdin, writes PNG bytes to stdout.
 _RENDER_SCRIPT = """\
 import sys, json, os
+from pathlib import Path
 import plotly.graph_objects as go
 import plotly.io as pio
+import kaleido
 
+# 1. Resolve Chrome path: env override → local choreographer download → network download
+browser_path = os.environ.get("BROWSER_PATH", "")
+
+if not browser_path or not Path(browser_path).is_file():
+    try:
+        from choreographer.cli._cli_utils import get_chrome_download_path
+        local = get_chrome_download_path()
+        if local and local.is_file():
+            browser_path = str(local)
+    except Exception:
+        pass
+
+if not browser_path or not Path(browser_path).is_file():
+    try:
+        browser_path = str(kaleido.get_chrome_sync())
+    except Exception as exc:
+        print(f"Chrome not found and download failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+# 2. Ensure execute bit is set (zip extraction may drop it)
+try:
+    p = Path(browser_path)
+    if p.is_file() and not os.access(str(p), os.X_OK):
+        p.chmod(p.stat().st_mode | 0o111)
+except Exception:
+    pass
+
+# 3. Start kaleido global server with explicit Chrome path so pio.to_image()
+#    uses it directly instead of triggering auto-discovery (which fails in
+#    stripped container environments).
+kaleido.start_sync_server(path=browser_path, silence_warnings=True)
+
+# 4. Render
 fig_json, w, h = json.loads(sys.stdin.buffer.read())
 fig = go.Figure(fig_json)
 png = pio.to_image(fig, format="png", width=w, height=h)
@@ -278,7 +313,7 @@ def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
         [sys.executable, "-c", _RENDER_SCRIPT],
         input=payload,
         capture_output=True,
-        timeout=60,
+        timeout=120,
         env=env,
     )
 
