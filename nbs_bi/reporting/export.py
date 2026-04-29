@@ -337,8 +337,12 @@ def _mpl_roas_over_time(
     return fig
 
 
+_CHARCOAL = "#1C1C1C"
+_ORANGE = "#F97316"
+
+
 def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
-    """Stacked-area cumulative revenue breakdown by source.
+    """Stacked-area cumulative revenue breakdown with operational and overall profit lines.
 
     Args:
         cum_profit_df: Cumulative profit DataFrame with per-source columns.
@@ -362,8 +366,8 @@ def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
     df["date"] = pd.to_datetime(df["date"])
     x = df["date"]
 
-    fig, ax = plt.subplots(figsize=(7.5, 3.2))
-    _mpl_style(ax, "Cumulative Revenue Breakdown — Latest Cohort (USD)")
+    fig, ax = plt.subplots(figsize=(7.5, 3.6))
+    _mpl_style(ax, "Cumulative Revenue & Profit Breakdown — Latest Cohort (USD)")
 
     revenue_layers = [
         ("cum_rev_conversion_usd", _EMERALD, "Conversion Spread"),
@@ -374,14 +378,37 @@ def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
     baseline = np.zeros(len(df))
     for col, color, label in revenue_layers:
         y = df[col].fillna(0).values
-        ax.fill_between(x, baseline, baseline + y, alpha=0.75, color=color, label=label)
+        ax.fill_between(x, baseline, baseline + y, alpha=0.55, color=color, label=label)
         baseline = baseline + y
 
     for col, color, label in [
         ("cum_cost_cashback_usd", _ROSE, "Cashback"),
         ("cum_cost_rev_share_usd", _VIOLET, "Rev Share"),
     ]:
-        ax.plot(x, -df[col].fillna(0), color=color, lw=1.5, ls="--", label=label)
+        ax.plot(x, -df[col].fillna(0), color=color, lw=1.2, ls="--", label=label)
+
+    # Breakeven reference
+    ax.axhline(0, color="#6B7280", lw=0.8, ls=":", zorder=1)
+
+    # Profit lines
+    if "cum_profit_usd" in df.columns:
+        ax.plot(
+            x,
+            df["cum_profit_usd"].fillna(0),
+            color=_CHARCOAL,
+            lw=2.0,
+            label="Operational Profit",
+            zorder=5,
+        )
+    if "cum_contribution_margin_usd" in df.columns:
+        ax.plot(
+            x,
+            df["cum_contribution_margin_usd"].fillna(0),
+            color=_ORANGE,
+            lw=2.0,
+            label="Overall Profit (incl. Mkt)",
+            zorder=5,
+        )
 
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
     ax.legend(fontsize=6, ncol=3)
