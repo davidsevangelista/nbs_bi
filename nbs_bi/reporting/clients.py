@@ -105,7 +105,6 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
         ("total_conversion_revenue_usd", "Conversion (On/Off Ramp)", BLUE),
         ("total_card_fee_usd", "Card Fees", AMBER),
         ("total_billing_usd", "Billing", TEAL),
-        ("total_swap_fee_usd", "Swap", VIOLET),
     ]
     for col, label, color in components:
         if col not in summary.columns:

@@ -355,7 +355,6 @@ def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
         "cum_rev_conversion_usd",
         "cum_rev_card_fees_usd",
         "cum_rev_billing_usd",
-        "cum_rev_swap_usd",
         "cum_cost_cashback_usd",
         "cum_cost_rev_share_usd",
     }
@@ -373,7 +372,6 @@ def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
         ("cum_rev_conversion_usd", _EMERALD, "Conversion Spread"),
         ("cum_rev_card_fees_usd", _TEAL, "Card Fees"),
         ("cum_rev_billing_usd", _BLUE, "Billing"),
-        ("cum_rev_swap_usd", _AMBER, "Swap Fees"),
     ]
     baseline = np.zeros(len(df))
     for col, color, label in revenue_layers:

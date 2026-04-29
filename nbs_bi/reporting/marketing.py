@@ -491,8 +491,7 @@ def _fig_revenue_breakdown(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` —
             must contain ``date``, ``cum_rev_conversion_usd``,
             ``cum_rev_card_fees_usd``, ``cum_rev_billing_usd``,
-            ``cum_rev_swap_usd``, ``cum_cost_cashback_usd``,
-            ``cum_cost_rev_share_usd``.
+            ``cum_cost_cashback_usd``, ``cum_cost_rev_share_usd``.
 
     Returns:
         Plotly Figure or None if data is empty or missing required columns.
@@ -502,7 +501,6 @@ def _fig_revenue_breakdown(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         "cum_rev_conversion_usd",
         "cum_rev_card_fees_usd",
         "cum_rev_billing_usd",
-        "cum_rev_swap_usd",
         "cum_cost_cashback_usd",
         "cum_cost_rev_share_usd",
     }
@@ -516,7 +514,6 @@ def _fig_revenue_breakdown(cum_profit_df: pd.DataFrame) -> go.Figure | None:
         ("cum_rev_conversion_usd", EMERALD, "Conversion Spread"),
         ("cum_rev_card_fees_usd", TEAL, "Card Annual Fees"),
         ("cum_rev_billing_usd", BLUE, "Billing Charges"),
-        ("cum_rev_swap_usd", AMBER, "Swap Fees"),
     ]:
         fig.add_trace(
             go.Scatter(
