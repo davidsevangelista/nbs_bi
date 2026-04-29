@@ -921,6 +921,7 @@ class MetaAdsSection:
             funnel,
             kyc_done,
             spend_breakdown=spend_breakdown,
+            spend_df_raw=spend_df,
         )
 
         self._render_kpis(
@@ -948,6 +949,7 @@ class MetaAdsSection:
         funnel: dict,
         kyc_done: int,
         spend_breakdown: dict[str, float] | None = None,
+        spend_df_raw: pd.DataFrame | None = None,
     ) -> tuple[bytes, list[str]]:
         """Build the marketing PDF and return raw bytes plus chart error list.
 
@@ -956,11 +958,12 @@ class MetaAdsSection:
             cum_profit_df: ``cumulative_profit()`` DataFrame (may be None).
             cum_rev_df: ``cumulative_revenue()`` DataFrame (may be None).
             daily: ``daily_context()`` DataFrame.
-            spend_df: Date-filtered ad spend DataFrame.
+            spend_df: Aggregated ad spend DataFrame (date + daily_spend_usd).
             campaigns: List of campaign dicts.
             funnel: Dict with ``signups``, ``kyc_done``, ``activated`` counts.
             kyc_done: KYC-completed count for CAC calculation.
             spend_breakdown: Per-platform spend totals.
+            spend_df_raw: Raw spend DataFrame with platform column for per-platform chart lines.
 
         Returns:
             Tuple of (pdf_bytes, chart_errors).
@@ -977,6 +980,7 @@ class MetaAdsSection:
             funnel=funnel,
             kyc_done=kyc_done,
             spend_breakdown=spend_breakdown,
+            spend_df_raw=spend_df_raw,
         )
         return pdf_bytes, chart_errors
 
@@ -991,6 +995,7 @@ class MetaAdsSection:
         funnel: dict,
         kyc_done: int,
         spend_breakdown: dict[str, float] | None = None,
+        spend_df_raw: pd.DataFrame | None = None,
     ) -> None:
         """Render a PDF download button for the marketing briefing.
 
@@ -1002,11 +1007,12 @@ class MetaAdsSection:
             cum_profit_df: ``cumulative_profit()`` DataFrame (may be None).
             cum_rev_df: ``cumulative_revenue()`` DataFrame (may be None).
             daily: ``daily_context()`` DataFrame.
-            spend_df: Date-filtered ad spend DataFrame.
+            spend_df: Aggregated ad spend DataFrame.
             campaigns: List of campaign dicts.
             funnel: Dict with ``signups``, ``kyc_done``, ``activated`` counts.
             kyc_done: KYC-completed count for CAC calculation.
             spend_breakdown: Per-platform spend totals.
+            spend_df_raw: Raw spend DataFrame with platform column for per-platform chart lines.
         """
         _log = logging.getLogger(__name__)
 
@@ -1022,6 +1028,7 @@ class MetaAdsSection:
                     funnel=funnel,
                     kyc_done=kyc_done,
                     spend_breakdown=spend_breakdown,
+                    spend_df_raw=spend_df_raw,
                 )
         except Exception as exc:
             _log.exception("PDF export failed")

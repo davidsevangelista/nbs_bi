@@ -391,11 +391,21 @@ def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
     return fig
 
 
-def _mpl_campaign_daily(daily: pd.DataFrame) -> plt.Figure | None:
-    """Daily signups (stacked bars per campaign) with ad spend line overlay.
+_PLATFORM_COLORS: dict[str, str] = {"meta": _ROSE, "google": _BLUE}
+_FALLBACK_PLATFORM_COLORS = [_AMBER, _TEAL, _VIOLET]
+
+
+def _mpl_campaign_daily(
+    daily: pd.DataFrame,
+    spend_df_raw: pd.DataFrame | None = None,
+) -> plt.Figure | None:
+    """Daily signups (stacked bars per campaign) with per-platform spend lines.
 
     Args:
         daily: ``CampaignAnalyzer.daily_context()`` output.
+        spend_df_raw: Raw spend DataFrame with a ``platform`` column; used to
+            draw separate spend lines per platform on the secondary axis.
+            Falls back to the aggregated ``daily_spend_usd`` if not provided.
 
     Returns:
         matplotlib Figure or None if daily is empty.
@@ -434,22 +444,57 @@ def _mpl_campaign_daily(daily: pd.DataFrame) -> plt.Figure | None:
             label="Organic",
         )
 
-    spending = df["daily_spend_usd"] > 0
-    if spending.any():
+    # Build per-platform daily series from raw spend data if available
+    platform_spend: dict[str, pd.Series] = {}
+    if spend_df_raw is not None and not spend_df_raw.empty and "platform" in spend_df_raw.columns:
+        grp = spend_df_raw.copy()
+        grp["date"] = pd.to_datetime(grp["date"])
+        for plat, sub in grp.groupby("platform"):
+            series = sub.groupby("date")["daily_spend_usd"].sum()
+            platform_spend[str(plat)] = series
+
+    any_spend = False
+
+    # Total spend line (thin, muted) — always from daily aggregate
+    total_spending = df["daily_spend_usd"] > 0
+    if total_spending.any():
         ax2.plot(
-            df.loc[spending, "date"],
-            df.loc[spending, "daily_spend_usd"],
-            color=_ROSE,
-            lw=1.5,
+            df.loc[total_spending, "date"],
+            df.loc[total_spending, "daily_spend_usd"],
+            color=_MUTED,
+            lw=1.0,
+            ls="--",
+            label="Total Spend",
+            alpha=0.7,
+        )
+        any_spend = True
+
+    # Per-platform lines (thicker, colored)
+    for i, (plat, series) in enumerate(sorted(platform_spend.items())):
+        series = series[series > 0]
+        if series.empty:
+            continue
+        color = _PLATFORM_COLORS.get(
+            plat.lower(), _FALLBACK_PLATFORM_COLORS[i % len(_FALLBACK_PLATFORM_COLORS)]
+        )
+        ax2.plot(
+            series.index,
+            series.values,
+            color=color,
+            lw=1.8,
             ls="--",
             marker="o",
             markersize=3,
-            label="Ad Spend",
+            label=f"{plat.capitalize()} Spend",
         )
-        ax2.set_ylabel("Daily Spend (USD)", fontsize=7, color=_ROSE)
-        ax2.tick_params(colors=_ROSE, labelsize=6)
-        ax2.spines["right"].set_color(_ROSE)
+        any_spend = True
+
+    if any_spend:
+        ax2.set_ylabel("Daily Spend (USD)", fontsize=7, color="#6B7280")
+        ax2.tick_params(colors="#6B7280", labelsize=6)
+        ax2.spines["right"].set_color("#D1D5DB")
         ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+        ax2.legend(fontsize=6, loc="upper right")
 
     ax1.set_xlabel("Date", fontsize=7)
     ax1.set_ylabel("New Signups", fontsize=7)
@@ -721,6 +766,7 @@ def build_marketing_pdf(
     funnel: dict,
     kyc_done: int,
     spend_breakdown: dict[str, float] | None = None,
+    spend_df_raw: pd.DataFrame | None = None,
 ) -> tuple[bytes, list[str]]:
     """Generate an A4 PDF marketing briefing from live analysis data.
 
@@ -737,6 +783,8 @@ def build_marketing_pdf(
         kyc_done: Count of cohort users who completed KYC (kyc_level >= 1).
         spend_breakdown: Optional per-platform spend totals,
             e.g. ``{"meta": 1200.0, "google": 340.0}``.
+        spend_df_raw: Optional raw spend DataFrame with a ``platform`` column;
+            used to draw per-platform lines in the Daily Signups chart.
 
     Returns:
         Tuple of ``(pdf_bytes, chart_errors)`` where ``chart_errors`` lists
@@ -760,7 +808,16 @@ def build_marketing_pdf(
     _add_kpi_strip(story, s, summary, cum_profit_df, kyc_done, spend_breakdown)
     _add_funnel(story, s, funnel)
     _add_charts(
-        story, s, summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns, chart_errors
+        story,
+        s,
+        summary,
+        cum_profit_df,
+        cum_rev_df,
+        daily,
+        spend_df,
+        campaigns,
+        chart_errors,
+        spend_df_raw=spend_df_raw,
     )
     _add_summary_table(story, s, summary)
 
@@ -873,6 +930,7 @@ def _add_charts(
     spend_df: pd.DataFrame,
     campaigns: list[dict],
     errors: list[str],
+    spend_df_raw: pd.DataFrame | None = None,
 ) -> None:
     """Render all matplotlib charts and append as ReportLab Image flowables."""
     story.append(Paragraph("Campaign Charts", s["section"]))
@@ -890,7 +948,7 @@ def _add_charts(
             "ROAS Over Time",
         ),
         (_mpl_revenue_breakdown(cum_profit_df), "Revenue Breakdown"),
-        (_mpl_campaign_daily(daily), "Daily Signups"),
+        (_mpl_campaign_daily(daily, spend_df_raw=spend_df_raw), "Daily Signups"),
     ]
     for fig, title in full_charts:
         if fig is None:
