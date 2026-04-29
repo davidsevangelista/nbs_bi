@@ -1,14 +1,14 @@
 """PDF export for the Marketing - Ads tab.
 
-Generates a professional A4 marketing briefing document from the live
-analysis data using ReportLab for layout and Plotly/kaleido for chart
-image rendering.
+Generates an A4 marketing briefing using ReportLab for layout and
+matplotlib for chart rendering.  No external binaries (Chrome / kaleido)
+are required — matplotlib is pure Python and works on every platform.
 
 Usage::
 
     from nbs_bi.reporting.export import build_marketing_pdf
 
-    pdf_bytes = build_marketing_pdf(
+    pdf_bytes, errors = build_marketing_pdf(
         summary=summary,
         cum_profit_df=cum_profit_df,
         cum_rev_df=cum_rev_df,
@@ -17,21 +17,24 @@ Usage::
         campaigns=campaigns,
         funnel={"signups": 120, "kyc_done": 80, "activated": 40},
         kyc_done=80,
+        spend_breakdown={"meta": 1200.0, "google": 340.0},
     )
 """
 
 from __future__ import annotations
 
-import copy
 import io
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")  # non-interactive backend — safe for threads and servers
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -46,15 +49,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from nbs_bi.reporting.marketing import (
-    _build_cumulative_spend,
-    _fig_campaign_cac,
-    _fig_campaign_daily,
-    _fig_campaign_roi,
-    _fig_cumulative_profit,
-    _fig_cumulative_spend,
-    _fig_revenue_breakdown,
-)
 from nbs_bi.reporting.theme import fmt_usd
 
 log = logging.getLogger(__name__)
@@ -67,15 +61,27 @@ _PAGE_W, _PAGE_H = A4  # 595.27 x 841.89 pt
 _MARGIN = 18 * mm
 _CONTENT_W = _PAGE_W - 2 * _MARGIN
 
-# Light-theme colours for print
+# ReportLab colours
 _DARK_TEXT = colors.HexColor("#111827")
 _ACCENT = colors.HexColor("#1D4ED8")
-_MUTED = colors.HexColor("#6B7280")
+_MUTED_RL = colors.HexColor("#6B7280")
 _WHITE = colors.white
 _LIGHT_BG = colors.HexColor("#F3F4F6")
 _BORDER = colors.HexColor("#D1D5DB")
 _HEADER_BG = colors.HexColor("#1E3A5F")
 _ROW_ALT = colors.HexColor("#EFF6FF")
+
+# Matplotlib colours (match dashboard theme)
+_ROSE = "#f43f5e"
+_EMERALD = "#10b981"
+_VIOLET = "#8b5cf6"
+_TEAL = "#14b8a6"
+_AMBER = "#f59e0b"
+_BLUE = "#3b82f6"
+_MUTED = "#94a3b8"
+_CAMPAIGN_COLORS = [_ROSE, _VIOLET, _AMBER, _TEAL]
+
+_PDF_DPI = 150
 
 
 # ---------------------------------------------------------------------------
@@ -84,11 +90,7 @@ _ROW_ALT = colors.HexColor("#EFF6FF")
 
 
 def _styles() -> dict[str, ParagraphStyle]:
-    """Build and return named paragraph styles for the report.
-
-    Returns:
-        Dict mapping style name to ``ParagraphStyle`` instance.
-    """
+    """Build and return named paragraph styles for the report."""
     base = getSampleStyleSheet()
     return {
         "title": ParagraphStyle(
@@ -130,14 +132,14 @@ def _styles() -> dict[str, ParagraphStyle]:
             "nbs_kpi_label",
             parent=base["Normal"],
             fontSize=8,
-            textColor=_MUTED,
+            textColor=_MUTED_RL,
             fontName="Helvetica",
             alignment=1,
         ),
         "kpi_value": ParagraphStyle(
             "nbs_kpi_value",
             parent=base["Normal"],
-            fontSize=14,
+            fontSize=13,
             textColor=_ACCENT,
             fontName="Helvetica-Bold",
             alignment=1,
@@ -162,323 +164,385 @@ def _styles() -> dict[str, ParagraphStyle]:
 
 
 # ---------------------------------------------------------------------------
-# Figure → PNG bytes
+# Matplotlib chart helpers
 # ---------------------------------------------------------------------------
 
 
-def _strip_string_axis_shapes(fig_dict: dict) -> None:
-    """Remove per-data-point vline shapes that use string x-axis references.
-
-    ``add_vline`` on a string (categorical) x-axis produces shapes with
-    ``xref="x"`` and a string ``x0``/``x1``. These can cause kaleido's static
-    renderer to fail silently. Campaign-start marker shapes (also ``xref="x"``)
-    are kept if there are ≤ 5 of them (typically one per campaign).
+def _mpl_style(ax: plt.Axes, title: str) -> None:
+    """Apply a clean, print-friendly style to a matplotlib Axes.
 
     Args:
-        fig_dict: Mutable Plotly figure dict (modified in-place).
+        ax: Axes to style.
+        title: Chart title text.
     """
-    shapes = fig_dict.get("layout", {}).get("shapes", []) or []
-    x_shapes = [s for s in shapes if s.get("xref") == "x"]
-    non_x_shapes = [s for s in shapes if s.get("xref") != "x"]
-    # Keep campaign markers (few) but drop per-day spend markers (many)
-    keep_x = x_shapes if len(x_shapes) <= 6 else []
-    fig_dict["layout"]["shapes"] = non_x_shapes + keep_x
-
-    # Also trim annotations to avoid per-day label clutter
-    annotations = fig_dict.get("layout", {}).get("annotations", []) or []
-    x_annots = [a for a in annotations if a.get("xref") == "x"]
-    non_x_annots = [a for a in annotations if a.get("xref") != "x"]
-    keep_annots = x_annots if len(x_annots) <= 6 else []
-    fig_dict["layout"]["annotations"] = non_x_annots + keep_annots
+    ax.set_title(title, fontsize=9, fontweight="bold", color="#111827", pad=6)
+    ax.set_facecolor("#F8FAFC")
+    ax.figure.patch.set_facecolor("white")  # type: ignore[union-attr]
+    ax.grid(True, color="#E5E7EB", linewidth=0.5, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#D1D5DB")
+    ax.spines["bottom"].set_color("#D1D5DB")
+    ax.tick_params(colors="#6B7280", labelsize=7)
+    ax.xaxis.label.set_color("#374151")
+    ax.yaxis.label.set_color("#374151")
 
 
-def _apply_light_theme(fig_dict: dict) -> None:
-    """Apply a print-friendly white theme to a Plotly figure dict in-place.
-
-    Args:
-        fig_dict: Mutable Plotly figure dict (modified in-place).
-    """
-    layout = fig_dict.setdefault("layout", {})
-    layout.update(
-        paper_bgcolor="white",
-        plot_bgcolor="#F8FAFC",
-        font={"color": "#111827", "family": "Helvetica, Arial, sans-serif"},
-    )
-    for ax in ("xaxis", "yaxis", "yaxis2"):
-        axis = layout.setdefault(ax, {})
-        axis.update(
-            gridcolor="#E5E7EB",
-            linecolor="#9CA3AF",
-            tickfont={"color": "#111827"},
-            title_font={"color": "#374151"},
-            zerolinecolor="#D1D5DB",
-        )
-    legend = layout.setdefault("legend", {})
-    legend.update(font={"color": "#111827"}, bgcolor="white", bordercolor="#D1D5DB")
-
-    # Lighten annotation text so it reads on white
-    for ann in layout.get("annotations", []) or []:
-        if ann.get("font", {}).get("color") in ("#8B949E", "#6B7280", "rgba(139,148,158,1)"):
-            ann["font"]["color"] = "#374151"
-
-
-# Writable directory for Chrome download — avoids read-only site-packages on
-# hosted environments (Streamlit Cloud venv is not writable after install).
-_CHROME_DOWNLOAD_DIR = Path.home() / ".kaleido" / "chrome"
-_CHROME_EXE_LINUX = _CHROME_DOWNLOAD_DIR / "chrome-linux64" / "chrome"
-
-# Script run in a fresh subprocess to render a single Plotly figure to PNG.
-# Receives figure JSON on stdin, writes PNG bytes to stdout.
-_RENDER_SCRIPT = """\
-import sys, json, os
-from pathlib import Path
-import plotly.graph_objects as go
-import plotly.io as pio
-import kaleido
-
-_CHROME_DIR = Path.home() / ".kaleido" / "chrome"
-_CHROME_EXE = _CHROME_DIR / "chrome-linux64" / "chrome"
-
-# 1. Resolve Chrome path: env override → writable local dir → choreographer dir → download
-browser_path = os.environ.get("BROWSER_PATH", "")
-
-if not browser_path or not Path(browser_path).is_file():
-    if _CHROME_EXE.is_file():
-        browser_path = str(_CHROME_EXE)
-
-if not browser_path or not Path(browser_path).is_file():
-    try:
-        from choreographer.cli._cli_utils import get_chrome_download_path
-        local = get_chrome_download_path()
-        if local and local.is_file():
-            browser_path = str(local)
-    except Exception:
-        pass
-
-if not browser_path or not Path(browser_path).is_file():
-    # Download to writable home directory (not read-only site-packages)
-    try:
-        _CHROME_DIR.mkdir(parents=True, exist_ok=True)
-        browser_path = str(kaleido.get_chrome_sync(path=_CHROME_DIR))
-    except Exception as exc:
-        print(f"Chrome not found and download failed: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-# 2. Ensure execute bit is set (zip extraction may drop it)
-try:
-    p = Path(browser_path)
-    if p.is_file() and not os.access(str(p), os.X_OK):
-        p.chmod(p.stat().st_mode | 0o111)
-except Exception:
-    pass
-
-# 3. Start kaleido global server with explicit Chrome path so pio.to_image()
-#    uses it directly instead of triggering auto-discovery (which fails in
-#    stripped container environments).
-kaleido.start_sync_server(path=browser_path, silence_warnings=True)
-
-# 4. Render
-fig_json, w, h = json.loads(sys.stdin.buffer.read())
-fig = go.Figure(fig_json)
-png = pio.to_image(fig, format="png", width=w, height=h)
-sys.stdout.buffer.write(png)
-"""
-
-
-def _render_light_fig(fig: go.Figure, px_w: int, px_h: int) -> bytes:
-    """Render a Plotly figure to PNG bytes via a fresh subprocess.
-
-    Spawning a dedicated Python process avoids Streamlit's stripped
-    environment (missing PATH entries, process-group restrictions) that
-    prevent kaleido/choreographer from launching Chrome in-process.
-    The subprocess inherits a copy of the environment augmented with
-    explicit BROWSER_PATH and a full PATH so Chrome is always found.
-
-    Args:
-        fig: Plotly figure (will be deep-copied and themed by caller).
-        px_w: Output width in pixels.
-        px_h: Output height in pixels.
-
-    Returns:
-        PNG bytes.
-
-    Raises:
-        RuntimeError: If the subprocess exits non-zero or returns empty bytes.
-    """
-    import json
-    import os
-    import subprocess
-    import sys
-
-    env = os.environ.copy()
-    env["PATH"] = "/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin:" + env.get("PATH", "")
-    if not env.get("BROWSER_PATH"):
-        for candidate in [
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable",
-            "/usr/bin/chromium-browser",
-            "/usr/bin/chromium",
-        ]:
-            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                env["BROWSER_PATH"] = candidate
-                break
-
-    payload = json.dumps([fig.to_dict(), px_w, px_h]).encode()
-    result = subprocess.run(
-        [sys.executable, "-c", _RENDER_SCRIPT],
-        input=payload,
-        capture_output=True,
-        timeout=600,
-        env=env,
-    )
-
-    if result.returncode != 0:
-        stderr = result.stderr.decode(errors="replace")[:600]
-        raise RuntimeError(f"render subprocess failed (rc={result.returncode}): {stderr}")
-    if not result.stdout:
-        raise RuntimeError("render subprocess returned empty bytes")
-
-    log.debug("Rendered %r (%dx%d px, %d bytes)", _fig_title(fig), px_w, px_h, len(result.stdout))
-    return result.stdout
-
-
-def _ensure_chrome() -> None:
-    """Download a bundled Chrome via kaleido if no system Chrome is available.
-
-    Sets ``BROWSER_PATH`` in the current process environment so that both
-    in-process kaleido calls and subprocesses spawned by :func:`_render_light_fig`
-    can find Chrome.  No-ops if ``BROWSER_PATH`` is already set.
-
-    Downloads to ``~/.kaleido/chrome`` (writable) rather than the default
-    site-packages directory which is read-only on hosted environments like
-    Streamlit Cloud.
-    """
-    import os
-
-    if os.environ.get("BROWSER_PATH"):
-        return
-
-    _system_candidates = [
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/chromium",
-    ]
-    for candidate in _system_candidates:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            os.environ["BROWSER_PATH"] = candidate
-            log.info("Using system Chrome at %s", candidate)
-            return
-
-    # Check writable local download directory first (avoids re-downloading)
-    if _CHROME_EXE_LINUX.is_file():
-        os.environ["BROWSER_PATH"] = str(_CHROME_EXE_LINUX)
-        log.info("Using cached Chrome at %s", _CHROME_EXE_LINUX)
-        return
-
-    log.info("No Chrome found — downloading to %s", _CHROME_DOWNLOAD_DIR)
-    try:
-        import kaleido
-
-        _CHROME_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        chrome_path = kaleido.get_chrome_sync(path=_CHROME_DOWNLOAD_DIR)
-        os.environ["BROWSER_PATH"] = str(chrome_path)
-        log.info("Chrome downloaded to %s", chrome_path)
-    except Exception as exc:
-        log.warning("Could not download Chrome: %s", exc)
-
-
-def _test_kaleido() -> str | None:
-    """Render a trivial Plotly figure to verify kaleido works in this context.
-
-    Downloads bundled Chrome first if no system Chrome is available, then uses
-    the same subprocess path as production rendering so the test faithfully
-    reflects what will happen during PDF generation.
-
-    Returns:
-        ``None`` on success, or a human-readable error string on failure.
-    """
-    _ensure_chrome()
-    fig = go.Figure(go.Bar(x=["a", "b"], y=[1, 2]))
-    fig.update_layout(paper_bgcolor="white")
-    try:
-        png = _render_light_fig(fig, 200, 150)
-        if not png:
-            return "render returned empty bytes on test figure"
-    except Exception as exc:  # noqa: BLE001
-        return str(exc)
-    return None
-
-
-def _fig_to_image(
-    fig: go.Figure,
+def _fig_to_rl_image(
+    fig: plt.Figure,
     width_pt: float,
     height_pt: float,
-    errors: list[str] | None = None,
+    errors: list[str],
+    title: str = "chart",
 ) -> Image | None:
-    """Render a Plotly figure to a ReportLab Image at the given dimensions.
-
-    Converts to a white-background, print-friendly variant by operating on
-    the figure's dict representation (safe deep copy). Strips per-day vlines
-    that break kaleido's static renderer on categorical x-axes.
-
-    Individual chart failures are logged and appended to ``errors`` so that
-    one bad chart does not abort the entire PDF build.
+    """Save a matplotlib Figure to a ReportLab Image flowable.
 
     Args:
-        fig: Plotly figure to render.
+        fig: matplotlib Figure to render.
         width_pt: Target width in PDF points.
         height_pt: Target height in PDF points.
-        errors: Optional list to collect failure reasons per chart.
+        errors: Mutable list; failure messages are appended here.
+        title: Chart name for error messages.
 
     Returns:
-        ReportLab ``Image`` flowable, or None if rendering fails.
+        ReportLab ``Image`` flowable, or None on failure.
     """
-    px_w = int(width_pt * 2)  # 2× for crisp output
-    px_h = int(height_pt * 2)
-    title = _fig_title(fig)
-
     try:
-        fig_dict = copy.deepcopy(fig.to_dict())
-        _strip_string_axis_shapes(fig_dict)
-        _apply_light_theme(fig_dict)
-        light_fig = go.Figure(fig_dict)
-        png_bytes = _render_light_fig(light_fig, px_w, px_h)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=_PDF_DPI, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return Image(buf, width=width_pt, height=height_pt)
     except Exception as exc:
-        msg = f"{title or 'unnamed'}: {exc}"
-        log.exception("kaleido failed for figure %r: %s", title, exc)
-        if errors is not None:
-            errors.append(msg)
+        errors.append(f"{title}: {exc}")
+        plt.close(fig)
         return None
-
-    if not png_bytes:
-        msg = f"{title or 'unnamed'}: kaleido returned empty bytes"
-        log.warning(msg)
-        if errors is not None:
-            errors.append(msg)
-        return None
-
-    buf = io.BytesIO(png_bytes)
-    return Image(buf, width=width_pt, height=height_pt)
-
-
-def _fig_title(fig: go.Figure) -> str:
-    """Return the figure's layout title text, or an empty string.
-
-    Args:
-        fig: Plotly figure.
-
-    Returns:
-        Title string or empty string if not set.
-    """
-    try:
-        return str(fig.layout.title.text or "")
-    except Exception:
-        return ""
 
 
 # ---------------------------------------------------------------------------
-# KPI tile table
+# Matplotlib chart builders
+# ---------------------------------------------------------------------------
+
+
+def _mpl_cumulative_spend(
+    spend_df: pd.DataFrame,
+    campaigns: list[dict],
+    cum_rev_df: pd.DataFrame | None,
+) -> plt.Figure | None:
+    """Cumulative spend line with optional cumulative revenue overlay.
+
+    Args:
+        spend_df: Aggregated daily spend (columns: ``date``, ``daily_spend_usd``).
+        campaigns: Campaign dicts with ``start`` and ``campaign_id``.
+        cum_rev_df: Optional cumulative revenue DataFrame with ``cum_rev_usd``.
+
+    Returns:
+        matplotlib Figure or None if spend_df is empty.
+    """
+    if spend_df.empty:
+        return None
+    df = spend_df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date")
+    df["cum_spend"] = df["daily_spend_usd"].cumsum()
+
+    fig, ax = plt.subplots(figsize=(7.5, 3.2))
+    _mpl_style(ax, "Cumulative Ad Spend vs Cohort Revenue (USD)")
+    ax.plot(df["date"], df["cum_spend"], color=_ROSE, lw=2, label="Cumulative Spend")
+
+    if cum_rev_df is not None and not cum_rev_df.empty and "cum_rev_usd" in cum_rev_df.columns:
+        rev = cum_rev_df.copy()
+        rev["date"] = pd.to_datetime(rev["date"])
+        ax.plot(rev["date"], rev["cum_rev_usd"], color=_EMERALD, lw=2, label="Cohort Revenue")
+
+    ymax = ax.get_ylim()[1]
+    for c in campaigns:
+        x_ts = pd.Timestamp(c["start"])
+        ax.axvline(x_ts, color=_MUTED, lw=0.8, ls="--", alpha=0.7)
+        ax.text(
+            x_ts,
+            ymax * 0.95,
+            c["campaign_id"],
+            fontsize=6,
+            color=_MUTED,
+            rotation=90,
+            va="top",
+            ha="right",
+        )
+
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    ax.set_xlabel("Date", fontsize=7)
+    ax.set_ylabel("USD", fontsize=7)
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def _mpl_roas_over_time(
+    cum_profit_df: pd.DataFrame,
+    spend_df: pd.DataFrame,
+) -> plt.Figure | None:
+    """Running ROAS trajectory: cumulative revenue / cumulative spend.
+
+    Args:
+        cum_profit_df: Cumulative profit DataFrame with ``cum_rev_usd``.
+        spend_df: Aggregated daily spend with ``daily_spend_usd``.
+
+    Returns:
+        matplotlib Figure or None if data is insufficient.
+    """
+    if (
+        cum_profit_df is None
+        or cum_profit_df.empty
+        or spend_df.empty
+        or "cum_rev_usd" not in cum_profit_df.columns
+    ):
+        return None
+
+    spend = spend_df.copy()
+    spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
+    spend = spend.sort_values("date")
+    spend["cum_spend"] = spend["daily_spend_usd"].cumsum()
+
+    rev = cum_profit_df[["date", "cum_rev_usd"]].copy()
+    rev["date"] = pd.to_datetime(rev["date"]).dt.normalize()
+
+    merged = rev.merge(spend[["date", "cum_spend"]], on="date", how="left")
+    merged["cum_spend"] = merged["cum_spend"].ffill().fillna(0)
+    merged = merged[merged["cum_spend"] > 0].copy()
+    if merged.empty:
+        return None
+
+    merged["roas"] = merged["cum_rev_usd"] / merged["cum_spend"]
+
+    fig, ax = plt.subplots(figsize=(7.5, 2.8))
+    _mpl_style(ax, "Running ROAS — Latest Cohort")
+    ax.plot(pd.to_datetime(merged["date"]), merged["roas"], color=_VIOLET, lw=2)
+    ax.axhline(1.0, color=_MUTED, lw=1, ls="--", label="Break-even (1×)")
+
+    last_roas = float(merged["roas"].iloc[-1])
+    last_date = pd.to_datetime(merged["date"].iloc[-1])
+    ax.annotate(
+        f"  {last_roas:.2f}×",
+        xy=(last_date, last_roas),
+        fontsize=8,
+        color=_VIOLET,
+        fontweight="bold",
+    )
+
+    ax.legend(fontsize=7)
+    ax.set_xlabel("Date", fontsize=7)
+    ax.set_ylabel("ROAS", fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def _mpl_revenue_breakdown(cum_profit_df: pd.DataFrame) -> plt.Figure | None:
+    """Stacked-area cumulative revenue breakdown by source.
+
+    Args:
+        cum_profit_df: Cumulative profit DataFrame with per-source columns.
+
+    Returns:
+        matplotlib Figure or None if required columns are missing.
+    """
+    required = {
+        "date",
+        "cum_rev_conversion_usd",
+        "cum_rev_card_fees_usd",
+        "cum_rev_billing_usd",
+        "cum_rev_swap_usd",
+        "cum_cost_cashback_usd",
+        "cum_cost_rev_share_usd",
+    }
+    if cum_profit_df is None or cum_profit_df.empty or not required.issubset(cum_profit_df.columns):
+        return None
+
+    df = cum_profit_df.copy()
+    df["date"] = pd.to_datetime(df["date"])
+    x = df["date"]
+
+    fig, ax = plt.subplots(figsize=(7.5, 3.2))
+    _mpl_style(ax, "Cumulative Revenue Breakdown — Latest Cohort (USD)")
+
+    revenue_layers = [
+        ("cum_rev_conversion_usd", _EMERALD, "Conversion Spread"),
+        ("cum_rev_card_fees_usd", _TEAL, "Card Fees"),
+        ("cum_rev_billing_usd", _BLUE, "Billing"),
+        ("cum_rev_swap_usd", _AMBER, "Swap Fees"),
+    ]
+    baseline = np.zeros(len(df))
+    for col, color, label in revenue_layers:
+        y = df[col].fillna(0).values
+        ax.fill_between(x, baseline, baseline + y, alpha=0.75, color=color, label=label)
+        baseline = baseline + y
+
+    for col, color, label in [
+        ("cum_cost_cashback_usd", _ROSE, "Cashback"),
+        ("cum_cost_rev_share_usd", _VIOLET, "Rev Share"),
+    ]:
+        ax.plot(x, -df[col].fillna(0), color=color, lw=1.5, ls="--", label=label)
+
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    ax.legend(fontsize=6, ncol=3)
+    ax.set_xlabel("Date", fontsize=7)
+    ax.set_ylabel("USD", fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def _mpl_campaign_daily(daily: pd.DataFrame) -> plt.Figure | None:
+    """Daily signups (stacked bars per campaign) with ad spend line overlay.
+
+    Args:
+        daily: ``CampaignAnalyzer.daily_context()`` output.
+
+    Returns:
+        matplotlib Figure or None if daily is empty.
+    """
+    if daily is None or daily.empty:
+        return None
+
+    df = daily.copy()
+    df["date"] = pd.to_datetime(df["date"])
+
+    fig, ax1 = plt.subplots(figsize=(7.5, 3.2))
+    ax2 = ax1.twinx()
+    _mpl_style(ax1, "Daily Signups vs Ad Spend")
+
+    bar_w = np.timedelta64(16, "h")
+    campaign_ids = [c for c in df["campaign_id"].unique() if c]
+    for i, cid in enumerate(campaign_ids):
+        mask = df["campaign_id"] == cid
+        ax1.bar(
+            df.loc[mask, "date"],
+            df.loc[mask, "new_signups"],
+            width=bar_w,
+            color=_CAMPAIGN_COLORS[i % len(_CAMPAIGN_COLORS)],
+            alpha=0.7,
+            label=cid,
+        )
+
+    organic = df["campaign_id"] == ""
+    if organic.any():
+        ax1.bar(
+            df.loc[organic, "date"],
+            df.loc[organic, "new_signups"],
+            width=bar_w,
+            color=_BLUE,
+            alpha=0.4,
+            label="Organic",
+        )
+
+    spending = df["daily_spend_usd"] > 0
+    if spending.any():
+        ax2.plot(
+            df.loc[spending, "date"],
+            df.loc[spending, "daily_spend_usd"],
+            color=_ROSE,
+            lw=1.5,
+            ls="--",
+            marker="o",
+            markersize=3,
+            label="Ad Spend",
+        )
+        ax2.set_ylabel("Daily Spend (USD)", fontsize=7, color=_ROSE)
+        ax2.tick_params(colors=_ROSE, labelsize=6)
+        ax2.spines["right"].set_color(_ROSE)
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+
+    ax1.set_xlabel("Date", fontsize=7)
+    ax1.set_ylabel("New Signups", fontsize=7)
+    ax1.legend(fontsize=6, loc="upper left")
+    fig.tight_layout()
+    return fig
+
+
+def _mpl_campaign_roi(summary: pd.DataFrame) -> plt.Figure | None:
+    """Grouped bar: ad spend vs cohort revenue per campaign.
+
+    Args:
+        summary: ``CampaignAnalyzer.roi_summary()`` output.
+
+    Returns:
+        matplotlib Figure or None if summary is empty.
+    """
+    if summary is None or summary.empty:
+        return None
+
+    campaign_ids = summary["campaign_id"].tolist()
+    x = np.arange(len(campaign_ids))
+    w = 0.35
+
+    fig, ax = plt.subplots(figsize=(4.0, 3.2))
+    _mpl_style(ax, "Spend vs Revenue by Campaign")
+    ax.bar(x - w / 2, summary["total_spend_usd"], w, label="Ad Spend", color=_ROSE, alpha=0.85)
+    ax.bar(
+        x + w / 2,
+        summary["total_revenue_usd"],
+        w,
+        label="Cohort Revenue",
+        color=_EMERALD,
+        alpha=0.85,
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels(campaign_ids, fontsize=7)
+    ax.legend(fontsize=7)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    ax.set_ylabel("USD", fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def _mpl_campaign_cac(summary: pd.DataFrame) -> plt.Figure | None:
+    """Grouped bar: CAC (active users) vs CAC (incremental) per campaign.
+
+    Args:
+        summary: ``CampaignAnalyzer.roi_summary()`` output.
+
+    Returns:
+        matplotlib Figure or None if summary is empty or CAC column missing.
+    """
+    if summary is None or summary.empty or "cac_full" not in summary.columns:
+        return None
+
+    campaign_ids = summary["campaign_id"].tolist()
+    x = np.arange(len(campaign_ids))
+    has_incr = summary["cac_incremental"].notna().any()
+    w = 0.35 if has_incr else 0.5
+
+    fig, ax = plt.subplots(figsize=(4.0, 3.2))
+    _mpl_style(ax, "Customer Acquisition Cost (USD)")
+    offset = -w / 2 if has_incr else 0
+    ax.bar(
+        x + offset,
+        summary["cac_full"].fillna(0),
+        w,
+        label="CAC (active users)",
+        color=_AMBER,
+        alpha=0.85,
+    )
+    if has_incr:
+        valid = summary["cac_incremental"].notna()
+        ax.bar(
+            x[valid.values] + w / 2,
+            summary.loc[valid, "cac_incremental"],
+            w,
+            label="CAC (incremental)",
+            color=_VIOLET,
+            alpha=0.85,
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(campaign_ids, fontsize=7)
+    ax.legend(fontsize=7)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.2f}"))
+    ax.set_ylabel("USD / User", fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# KPI table
 # ---------------------------------------------------------------------------
 
 
@@ -487,26 +551,21 @@ def _build_kpi_table(
     styles: dict[str, ParagraphStyle],
     content_w: float,
 ) -> Table:
-    """Build a horizontal KPI strip table.
+    """Horizontal KPI strip table.
 
     Args:
-        kpis: List of (label, value) tuples.
+        kpis: List of ``(label, value)`` tuples.
         styles: Style dict from :func:`_styles`.
         content_w: Available width in PDF points.
 
     Returns:
-        ReportLab ``Table`` flowable styled as light KPI tiles.
+        ReportLab ``Table`` flowable.
     """
     n = len(kpis)
     col_w = content_w / n
     header_row = [Paragraph(label, styles["kpi_label"]) for label, _ in kpis]
     value_row = [Paragraph(value, styles["kpi_value"]) for _, value in kpis]
-
-    tbl = Table(
-        [header_row, value_row],
-        colWidths=[col_w] * n,
-        rowHeights=[14, 22],
-    )
+    tbl = Table([header_row, value_row], colWidths=[col_w] * n, rowHeights=[14, 22])
     tbl.setStyle(
         TableStyle(
             [
@@ -534,10 +593,10 @@ def _build_summary_table(
     styles: dict[str, ParagraphStyle],
     content_w: float,
 ) -> Table | None:
-    """Build a formatted campaign summary table flowable.
+    """Formatted campaign summary table.
 
     Args:
-        summary: Output of ``CampaignAnalyzer.roi_summary()``.
+        summary: ``CampaignAnalyzer.roi_summary()`` output.
         styles: Style dict from :func:`_styles`.
         content_w: Available width in PDF points.
 
@@ -568,7 +627,7 @@ def _build_summary_table(
             return f"{float(val):.2f}×"
         return str(val)
 
-    rows = [headers]
+    rows: list[list] = [headers]
     for _, row in summary[present].iterrows():
         rows.append([Paragraph(_fmt_cell(c, row[c]), styles["table_cell"]) for c in present])
 
@@ -597,10 +656,10 @@ def _build_summary_table(
 
 
 def _funnel_paragraph(funnel: dict, styles: dict[str, ParagraphStyle]) -> Paragraph:
-    """Render funnel numbers as a compact text paragraph.
+    """Render funnel counts and conversion rates as a text paragraph.
 
     Args:
-        funnel: Dict with ``signups``, ``kyc_done``, ``activated`` keys.
+        funnel: Dict with ``signups``, ``kyc_done``, ``activated``.
         styles: Style dict from :func:`_styles`.
 
     Returns:
@@ -609,15 +668,42 @@ def _funnel_paragraph(funnel: dict, styles: dict[str, ParagraphStyle]) -> Paragr
     signups = funnel.get("signups", 0)
     kyc = funnel.get("kyc_done", 0)
     activated = funnel.get("activated", 0)
-    total = signups or 1
-    kyc_pct = 100 * kyc / total
-    act_pct = 100 * activated / total
+    kyc_pct = 100 * kyc / max(signups, 1)
+    act_pct = 100 * activated / max(kyc, 1)
     text = (
-        f"Sign-ups: <b>{signups:,}</b> "
-        f"&rarr; KYC Done: <b>{kyc:,}</b> ({kyc_pct:.1f}%) "
-        f"&rarr; Activated: <b>{activated:,}</b> ({act_pct:.1f}%)"
+        f"Sign-ups: <b>{signups:,}</b>"
+        f" &rarr; KYC Done: <b>{kyc:,}</b> ({kyc_pct:.1f}% of sign-ups)"
+        f" &rarr; Activated: <b>{activated:,}</b> ({act_pct:.1f}% of KYC done)"
     )
     return Paragraph(text, styles["body"])
+
+
+# ---------------------------------------------------------------------------
+# Payback period helper
+# ---------------------------------------------------------------------------
+
+
+def _payback_days(cum_profit_df: pd.DataFrame | None) -> int | None:
+    """Return days from cohort start until cumulative operational profit turns positive.
+
+    Args:
+        cum_profit_df: ``CampaignAnalyzer.cumulative_profit()`` output.
+
+    Returns:
+        Number of days to payback, or None if still negative / data unavailable.
+    """
+    if (
+        cum_profit_df is None
+        or cum_profit_df.empty
+        or "cum_profit_usd" not in cum_profit_df.columns
+    ):
+        return None
+    positive = cum_profit_df[cum_profit_df["cum_profit_usd"] > 0]
+    if positive.empty:
+        return None
+    first = pd.to_datetime(cum_profit_df["date"].iloc[0])
+    breakeven = pd.to_datetime(positive["date"].iloc[0])
+    return int((breakeven - first).days)
 
 
 # ---------------------------------------------------------------------------
@@ -634,28 +720,27 @@ def build_marketing_pdf(
     campaigns: list[dict],
     funnel: dict,
     kyc_done: int,
+    spend_breakdown: dict[str, float] | None = None,
 ) -> tuple[bytes, list[str]]:
     """Generate an A4 PDF marketing briefing from live analysis data.
 
-    Renders KPIs, cohort activation funnel, key Plotly charts (converted to
-    PNG via kaleido), and the campaign summary table into a single A4 document
-    using ReportLab's Platypus layout engine.
+    Uses matplotlib for chart rendering — no external binaries required.
 
     Args:
-        summary: Output of ``CampaignAnalyzer.roi_summary()`` (latest campaign
-            rows only — same slice used in the dashboard).
-        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()``.
-        cum_rev_df: Output of ``CampaignAnalyzer.cumulative_revenue()``.
-        daily: Output of ``CampaignAnalyzer.daily_context()``.
-        spend_df: Date-filtered ad spend DataFrame (columns: ``date``,
-            ``daily_spend_usd``).
+        summary: ``CampaignAnalyzer.roi_summary()`` (latest campaign rows).
+        cum_profit_df: ``CampaignAnalyzer.cumulative_profit()`` output.
+        cum_rev_df: ``CampaignAnalyzer.cumulative_revenue()`` output.
+        daily: ``CampaignAnalyzer.daily_context()`` output.
+        spend_df: Date-aggregated spend DataFrame (``date``, ``daily_spend_usd``).
         campaigns: List of campaign dicts from ``CampaignAnalyzer.campaigns``.
         funnel: Dict with ``signups``, ``kyc_done``, ``activated`` counts.
         kyc_done: Count of cohort users who completed KYC (kyc_level >= 1).
+        spend_breakdown: Optional per-platform spend totals,
+            e.g. ``{"meta": 1200.0, "google": 340.0}``.
 
     Returns:
-        Tuple of (pdf_bytes, chart_errors) where ``chart_errors`` is a list of
-        human-readable strings for every chart that failed to render.
+        Tuple of ``(pdf_bytes, chart_errors)`` where ``chart_errors`` lists
+        human-readable strings for any charts that failed to render.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -672,7 +757,7 @@ def build_marketing_pdf(
     chart_errors: list[str] = []
 
     _add_header(story, s)
-    _add_kpi_strip(story, s, summary, cum_profit_df, kyc_done)
+    _add_kpi_strip(story, s, summary, cum_profit_df, kyc_done, spend_breakdown)
     _add_funnel(story, s, funnel)
     _add_charts(
         story, s, summary, cum_profit_df, cum_rev_df, daily, spend_df, campaigns, chart_errors
@@ -684,21 +769,20 @@ def build_marketing_pdf(
 
 
 # ---------------------------------------------------------------------------
-# Story section builders (each ≤ 50 lines)
+# Story section builders
 # ---------------------------------------------------------------------------
 
 
 def _add_header(story: list[Any], s: dict[str, ParagraphStyle]) -> None:
-    """Append report title and generation timestamp to story.
-
-    Args:
-        story: ReportLab story list to append flowables to.
-        s: Style dict from :func:`_styles`.
-    """
+    """Append report title and generation timestamp."""
     now = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
     story.append(Paragraph("NBS SPSAV LTDA — Marketing Analysis", s["title"]))
-    subtitle = f"Meta Ads · Cohort ROI Briefing &nbsp;&nbsp;|&nbsp;&nbsp; Generated {now}"
-    story.append(Paragraph(subtitle, s["subtitle"]))
+    story.append(
+        Paragraph(
+            f"Meta Ads · Google Ads · Cohort ROI Briefing &nbsp;|&nbsp; Generated {now}",
+            s["subtitle"],
+        )
+    )
     story.append(HRFlowable(width=_CONTENT_W, thickness=1.5, color=_ACCENT, spaceAfter=8))
 
 
@@ -708,21 +792,15 @@ def _add_kpi_strip(
     summary: pd.DataFrame,
     cum_profit_df: pd.DataFrame | None,
     kyc_done: int,
+    spend_breakdown: dict[str, float] | None = None,
 ) -> None:
-    """Append the KPI strip (spend, revenue, ROAS, CAC, net profit) to story.
-
-    Args:
-        story: ReportLab story list.
-        s: Style dict.
-        summary: ``roi_summary()`` DataFrame.
-        cum_profit_df: ``cumulative_profit()`` DataFrame (may be None).
-        kyc_done: KYC-completed count for CAC calculation.
-    """
+    """Append KPI strip (spend, revenue, ROAS, CAC, net profit + secondary metrics)."""
     from nbs_bi.clients.models import _KYC_COST_USD
 
     total_spend = float(summary["total_spend_usd"].sum())
     total_rev = float(summary["total_revenue_usd"].sum())
     transacting = int(summary["transacting_users"].sum())
+    cohort_users = int(summary["cohort_users"].sum()) if "cohort_users" in summary.columns else 0
     overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
     kyc_cost = kyc_done * _KYC_COST_USD
     cac = (total_spend + kyc_cost) / transacting if transacting > 0 else float("nan")
@@ -733,33 +811,51 @@ def _add_kpi_strip(
         and "cum_contribution_margin_usd" in cum_profit_df.columns
     )
 
-    kpis: list[tuple[str, str]] = [
-        ("Total Meta Spend", fmt_usd(total_spend)),
+    story.append(Paragraph("Key Performance Indicators", s["section"]))
+
+    # --- Primary KPI row: per-platform spend tiles OR total spend ---
+    multi = bool(spend_breakdown and len(spend_breakdown) > 1)
+    if multi:
+        primary: list[tuple[str, str]] = [
+            (f"{plat.capitalize()} Spend", fmt_usd(amt))
+            for plat, amt in sorted(spend_breakdown.items())  # type: ignore[union-attr]
+        ]
+    else:
+        primary = [("Total Spend", fmt_usd(total_spend))]
+
+    primary += [
         ("Cohort Revenue", fmt_usd(total_rev)),
         ("Overall ROAS", f"{overall_roas:.2f}×"),
         ("CAC (spend + KYC)", fmt_usd(cac) if not np.isnan(cac) else "n/a"),
     ]
     if has_profit:
         net = float(cum_profit_df["cum_contribution_margin_usd"].iloc[-1])  # type: ignore[index]
-        kpis.append(("Net Profit", fmt_usd(net)))
+        primary.append(("Net Profit", fmt_usd(net)))
 
-    story.append(Paragraph("Key Performance Indicators", s["section"]))
-    story.append(_build_kpi_table(kpis, s, _CONTENT_W))
-    story.append(Spacer(1, 6))
+    story.append(_build_kpi_table(primary, s, _CONTENT_W))
+    story.append(Spacer(1, 4))
+
+    # --- Secondary KPI row: operational metrics ---
+    secondary: list[tuple[str, str]] = []
+
+    if cohort_users > 0 and transacting > 0:
+        tx_rate = 100.0 * transacting / cohort_users
+        secondary.append(("Transacting Rate", f"{tx_rate:.1f}%"))
+
+    if kyc_done > 0 and total_spend > 0:
+        cost_per_kyc = total_spend / kyc_done
+        secondary.append(("Cost per KYC", fmt_usd(cost_per_kyc)))
+
+    payback = _payback_days(cum_profit_df)
+    secondary.append(("Payback Period", f"{payback}d" if payback is not None else "not yet"))
+
+    if secondary:
+        story.append(_build_kpi_table(secondary, s, _CONTENT_W))
+        story.append(Spacer(1, 4))
 
 
-def _add_funnel(
-    story: list[Any],
-    s: dict[str, ParagraphStyle],
-    funnel: dict,
-) -> None:
-    """Append cohort activation funnel numbers to story.
-
-    Args:
-        story: ReportLab story list.
-        s: Style dict.
-        funnel: Dict with ``signups``, ``kyc_done``, ``activated``.
-    """
+def _add_funnel(story: list[Any], s: dict[str, ParagraphStyle], funnel: dict) -> None:
+    """Append cohort activation funnel with conversion rates."""
     if not funnel or funnel.get("signups", 0) == 0:
         return
     story.append(Paragraph("Cohort Activation Funnel", s["section"]))
@@ -778,98 +874,45 @@ def _add_charts(
     campaigns: list[dict],
     errors: list[str],
 ) -> None:
-    """Render Plotly figures to PNG and append as images to story.
-
-    Args:
-        story: ReportLab story list.
-        s: Style dict.
-        summary: ``roi_summary()`` DataFrame.
-        cum_profit_df: ``cumulative_profit()`` DataFrame.
-        cum_rev_df: ``cumulative_revenue()`` DataFrame.
-        daily: ``daily_context()`` DataFrame.
-        spend_df: Date-filtered spend DataFrame.
-        campaigns: List of campaign dicts.
-        errors: Mutable list; chart-level failure messages are appended here.
-    """
+    """Render all matplotlib charts and append as ReportLab Image flowables."""
     story.append(Paragraph("Campaign Charts", s["section"]))
 
     full_w = _CONTENT_W
     half_w = _CONTENT_W / 2 - 3
-    chart_h_full = 160.0
-    chart_h_half = 140.0
+    h_full = 155.0
+    h_half = 140.0
 
-    figs_full: list[tuple[go.Figure, float]] = []
-
-    if not spend_df.empty:
-        cum_df = _build_cumulative_spend(spend_df, campaigns)
-        fig_spend = _fig_cumulative_spend(cum_df, campaigns, cum_rev_df, cum_profit_df)
-        if fig_spend is not None:
-            figs_full.append((fig_spend, chart_h_full))
-        else:
-            errors.append("Cumulative Spend chart: figure function returned None (data guard)")
-    else:
-        errors.append("Cumulative Spend chart: spend_df is empty")
-
-    if cum_profit_df is not None and not cum_profit_df.empty:
-        fig_profit = _fig_cumulative_profit(cum_profit_df)
-        if fig_profit is not None:
-            figs_full.append((fig_profit, chart_h_full))
-        else:
-            errors.append("Operational Profit chart: None returned (missing required columns)")
-        fig_breakdown = _fig_revenue_breakdown(cum_profit_df)
-        if fig_breakdown is not None:
-            figs_full.append((fig_breakdown, chart_h_full))
-        else:
-            errors.append("Revenue Breakdown chart: None returned (missing required columns)")
-    else:
-        errors.append("Profit/Breakdown charts: cum_profit_df is None or empty")
-
-    if not daily.empty:
-        fig_daily = _fig_campaign_daily(daily)
-        if fig_daily is not None:
-            figs_full.append((fig_daily, chart_h_full))
-        else:
-            errors.append("Daily Signups chart: figure function returned None")
-    else:
-        errors.append("Daily Signups chart: daily DataFrame is empty")
-
-    for fig, h in figs_full:
-        img = _fig_to_image(fig, full_w, h, errors)
+    # Full-width charts
+    full_charts: list[tuple[plt.Figure | None, str]] = [
+        (_mpl_cumulative_spend(spend_df, campaigns, cum_rev_df), "Cumulative Spend"),
+        (
+            _mpl_roas_over_time(cum_profit_df, spend_df) if cum_profit_df is not None else None,
+            "ROAS Over Time",
+        ),
+        (_mpl_revenue_breakdown(cum_profit_df), "Revenue Breakdown"),
+        (_mpl_campaign_daily(daily), "Daily Signups"),
+    ]
+    for fig, title in full_charts:
+        if fig is None:
+            errors.append(f"{title}: no data")
+            continue
+        img = _fig_to_rl_image(fig, full_w, h_full, errors, title)
         if img:
             story.append(img)
             story.append(Spacer(1, 4))
 
-    _add_paired_charts(
-        story,
-        [_fig_campaign_roi(summary, cum_profit_df), _fig_campaign_cac(summary)],
-        half_w,
-        chart_h_half,
-        errors,
-    )
-
-
-def _add_paired_charts(
-    story: list[Any],
-    figs: list[go.Figure | None],
-    half_w: float,
-    h: float,
-    errors: list[str],
-) -> None:
-    """Render two Plotly figures side-by-side as a two-column ReportLab table.
-
-    Args:
-        story: ReportLab story list.
-        figs: Exactly two figures (either may be None to leave a blank cell).
-        half_w: Width per column in PDF points.
-        h: Height per figure in PDF points.
-        errors: Mutable list; chart-level failure messages are appended here.
-    """
+    # Side-by-side: ROI bar + CAC bar
+    pairs = [
+        (_mpl_campaign_roi(summary), "Spend vs Revenue"),
+        (_mpl_campaign_cac(summary), "CAC"),
+    ]
     cells: list[Any] = []
-    for fig in figs:
+    for fig, title in pairs:
         if fig is None:
             cells.append("")
+            errors.append(f"{title}: no data")
         else:
-            img = _fig_to_image(fig, half_w, h, errors)
+            img = _fig_to_rl_image(fig, half_w, h_half, errors, title)
             cells.append(img if img else "")
 
     if any(c != "" for c in cells):
@@ -884,13 +927,7 @@ def _add_summary_table(
     s: dict[str, ParagraphStyle],
     summary: pd.DataFrame,
 ) -> None:
-    """Append the campaign summary table to story.
-
-    Args:
-        story: ReportLab story list.
-        s: Style dict.
-        summary: ``roi_summary()`` DataFrame.
-    """
+    """Append the campaign summary table."""
     tbl = _build_summary_table(summary, s, _CONTENT_W)
     if tbl is None:
         return
