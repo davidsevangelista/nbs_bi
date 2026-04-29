@@ -34,6 +34,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Temporary spend adjustment
+# Set to 0.0 to revert.  Subtracts from the most-recent Meta row to exclude
+# an upfront payment that distorts campaign ROI analysis (added 2026-04-29).
+# ---------------------------------------------------------------------------
+_META_UPFRONT_ADJUSTMENT_USD: float = 153.0
+
 _DB_CACHE_DIR = Path(os.environ.get("DB_CACHE_DIR", "data/processed/db_cache"))
 
 # Solana USDC mint address — same constant as in clients/queries.py.
@@ -396,6 +403,19 @@ def load_ad_spend_from_db(db_url: str) -> pd.DataFrame | None:
             return None
         df["date"] = pd.to_datetime(df["date"])
         df["daily_spend_usd"] = df["daily_spend_usd"].astype(float)
+        if _META_UPFRONT_ADJUSTMENT_USD != 0.0 and "platform" in df.columns:
+            meta_mask = df["platform"].str.lower() == "meta"
+            if meta_mask.any():
+                latest_date = df.loc[meta_mask, "date"].max()
+                row_mask = meta_mask & (df["date"] == latest_date)
+                df.loc[row_mask, "daily_spend_usd"] = (
+                    df.loc[row_mask, "daily_spend_usd"] - _META_UPFRONT_ADJUSTMENT_USD
+                ).clip(lower=0.0)
+                logger.info(
+                    "Applied Meta upfront adjustment of $%.2f on %s",
+                    _META_UPFRONT_ADJUSTMENT_USD,
+                    latest_date.date(),
+                )
         return df.reset_index(drop=True)
     except Exception:
         return None
