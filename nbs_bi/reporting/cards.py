@@ -90,6 +90,7 @@ _LABELS: dict[str, str] = {
 _INVOICES_DIR = Path(__file__).resolve().parents[2] / "data" / "invoices"
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def _load_all_invoice_models() -> tuple[CardCostModel, str, str, list[tuple[str, CardCostModel]]]:
     """Load CardCostModels for every actuals JSON in data/invoices/.
 

@@ -32,6 +32,7 @@ from nbs_bi.reporting.ramp import RampSection
 load_dotenv()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def _latest_rain_invoice_total() -> tuple[float, str, str]:
     """Return (invoice_total_usd, invoice_id, period) from the latest parsed invoice JSON.
 
@@ -188,25 +189,12 @@ def _tab_clients(start_date: str, end_date: str, invoice_total: float) -> None:
 
 
 def _tab_marketing(start_date: str, end_date: str, invoice_total: float) -> None:
-    campaign_data = None
-    acquisition = None
-    profit_by_source_daily = None
-
-    if READONLY_DATABASE_URL:
-        try:
-            report = _load_client_report(start_date, end_date, READONLY_DATABASE_URL, invoice_total)
-            campaign_data = report.get("campaign_roi")
-            acquisition = report.get("acquisition")
-            profit_by_source_daily = report.get("profit_by_source_daily")
-        except Exception as exc:
-            st.warning(f"Could not pre-load client data: {exc}", icon="⚠️")
-
     MetaAdsSection(
-        campaign_data=campaign_data,
-        acquisition=acquisition,
+        campaign_data=None,
+        acquisition=None,
         db_url=ADS_DATABASE_URL or None,
         analytics_db_url=READONLY_DATABASE_URL or None,
-        profit_by_source_daily=profit_by_source_daily,
+        profit_by_source_daily=None,
     ).render()
 
 
