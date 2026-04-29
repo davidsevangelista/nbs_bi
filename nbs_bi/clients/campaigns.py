@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # Set to 0.0 to revert.  Subtracts from the most-recent Meta row to exclude
 # an upfront payment that distorts campaign ROI analysis (added 2026-04-29).
 # ---------------------------------------------------------------------------
-_META_UPFRONT_ADJUSTMENT_USD: float = 153.0
+_META_UPFRONT_ADJUSTMENT_USD: float = 0.0
 
 _DB_CACHE_DIR = Path(os.environ.get("DB_CACHE_DIR", "data/processed/db_cache"))
 
