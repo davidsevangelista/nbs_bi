@@ -7,6 +7,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-04-29
+
+PDF export rewritten to matplotlib (no Chrome/kaleido); Google Ads added; per-platform spend breakdown; multi-chart improvements.
+
+### Added
+- `clients/campaigns.py` — `_META_UPFRONT_ADJUSTMENT_USD = 153.0`: constant at module top subtracts upfront Meta payment from latest day's spend after DB load; set to `0.0` to revert
+- `reporting/export.py` — `_mpl_cumulative_spend()`: matplotlib line chart — cumulative spend (rose) + cumulative revenue (emerald) + campaign-start vlines
+- `reporting/export.py` — `_mpl_roas_over_time()`: running ROAS line (violet) + breakeven dashed line at y=1 + annotation at last point
+- `reporting/export.py` — `_mpl_revenue_breakdown()`: stacked-area revenue by source (conversion, card fees, billing) + cashback/rev-share dashed cost lines + **Operational Profit** (charcoal solid) + **Overall Profit incl. Mkt** (orange solid) + dotted y=0 breakeven; title updated to "Cumulative Revenue & Profit Breakdown"
+- `reporting/export.py` — `_mpl_campaign_daily()`: per-platform spend lines on right y-axis — Total (grey, thin), Meta (rose), Google (blue) — sourced from raw `spend_df_raw` with platform column; single-platform degrades gracefully
+- `reporting/export.py` — `_mpl_campaign_roi()`: grouped bars — ad spend vs cohort revenue per campaign
+- `reporting/export.py` — `_mpl_campaign_cac()`: grouped bars — CAC active vs CAC incremental per campaign
+- `reporting/export.py` — `_add_kpi_strip()`: secondary KPI row with transacting rate, cost per KYC, payback period; per-platform spend tiles when `spend_breakdown` has multiple platforms
+- `reporting/export.py` — `_funnel_paragraph()`: shows activated as % of KYC done
+- `reporting/export.py` — `_payback_days()`: returns days until `cum_profit_usd > 0`, or None if still negative
+- `clients/campaigns.py` — `load_ad_spend_from_db()` now queries both Meta and Google from `meta_ads_spend` table; returns `platform` column
+- `reporting/marketing.py` — per-platform spend breakdown computed from raw `spend_df`; passed as `spend_breakdown` dict to KPI strip and PDF builder
+- `reporting/marketing.py` — per-platform KPI tiles (Meta Spend + Google Spend) shown as separate `st.metric` columns when both platforms present
+- `requirements.txt` — `reportlab>=4.2` added (was in `pyproject.toml` only; Streamlit Cloud installs from `requirements.txt`)
+
+### Changed
+- `reporting/export.py` — complete rewrite: kaleido/Chrome pipeline replaced with matplotlib `Agg` backend (pure Python, no external binaries); `build_marketing_pdf()` now takes `spend_df_raw` and `spend_breakdown` parameters
+- `reporting/marketing.py` — `_render_export_button()`: removed two-step "Prepare PDF" + session-state caching; replaced with single spinner + immediate download button (~0.5 s render)
+- `reporting/marketing.py` — `_build_pdf_bytes()` + `_render_export_button()`: both accept `spend_df_raw` and `spend_breakdown` keyword args; threaded through from `render()`
+- `reporting/marketing.py` — session state reset when `max_date` increases (prevents stale `ads_end_date` from hiding new platform data); default start date set to 2026-04-25
+- `reporting/export.py` — PDF header renamed from "NBS SPSAV LTDA" to "NBS"
+- `reporting/export.py` — `_mpl_revenue_breakdown()`: removed Swap Fees stacked-area layer (`cum_rev_swap_usd`)
+- `reporting/marketing.py` — `_fig_revenue_breakdown()`: removed Swap Fees Plotly trace (`cum_rev_swap_usd`)
+- `reporting/clients.py` — `_fig_cohort_totals()`: removed Swap bar component (`total_swap_fee_usd`)
+- `clients/campaigns.py` — `cohort_kyc_count()`: reverted to `_COHORT_KYC_LEVEL_SQL` (`users.kyc_level >= 1`) after `_COHORT_KYC_SQL` (`kyc_verifications` GREEN) returned 0 rows for NBS cohort users — `kyc_verifications` is not populated for this cohort
+
+### Fixed
+- `nbs_bi/clients/__init__.py` — removed eager imports of `ClientModel`/`ClientReport` that caused circular import crash on Streamlit Cloud when `campaigns` was first loaded mid-init
+- `reporting/marketing.py` — Google Ads spend no longer hidden by stale `ads_end_date` session state value carried over from before Google data was added to the DB
+
+### Removed
+- `reporting/export.py` — all kaleido/Chrome functions: `_ensure_chrome`, `_test_kaleido`, `_render_light_fig`, `_apply_light_theme`, `_strip_string_axis_shapes`, `_fig_to_image`, `_fig_title`
+- `pyproject.toml` — `kaleido>=0.2` dependency removed
+
 ## [1.9.0] — 2026-04-28
 
 Marketing-Ads PDF export: charts now render on Streamlit Cloud via subprocess + kaleido + auto-downloaded Chrome.

@@ -118,7 +118,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-28 (v1.9.0)
+## Current State — 2026-04-29 (v2.0.0)
 
 ### What's been built
 
@@ -171,7 +171,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - **Card spend**: ~22,728 card spend rows in DB history
 - **Invoices on file**: NKEMEJLO-0008 (Feb 2026, $6,693.58) · NKEMEJLO-0009 (Mar 2026, $7,857.40)
 - **March modelled gap**: $7,857.40 billed vs $6,357.39 modelled → $1,500.01 in unmodelled fees
-- **Meta Ads**: campaign_3 (Apr 14–20, $715 spend); ROAS still maturing — revisit at 30-day cohort mark (~May 14)
+- **Meta Ads + Google Ads**: campaign_3 active; both platforms tracked; $153 upfront Meta payment excluded via `_META_UPFRONT_ADJUSTMENT_USD`; ROAS still maturing — revisit at ~May 14
 - **Cost per transaction**: Feb $0.972/txn · Mar $1.124/txn (6,885 and 6,990 transactions respectively)
 
 ### Known environment notes
@@ -182,23 +182,22 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## PDF Export — Marketing-Ads Tab (v1.9.0, 2026-04-28)
+## PDF Export — Marketing-Ads Tab (v2.0.0, 2026-04-29)
 
-- [x] `reporting/export.py` — `_fig_to_image()`: per-chart failures non-fatal; errors list returned alongside PDF bytes
-- [x] `reporting/export.py` — `_add_charts()`: data-guard failures (empty DataFrames) appended to errors list
-- [x] `reporting/export.py` — `build_marketing_pdf()`: returns `(bytes, list[str])` tuple
-- [x] `reporting/export.py` — `_fig_to_image()`: deep-copy via `copy.deepcopy(fig.to_dict())` (not `go.Figure(fig)` which silently produces empty figures)
-- [x] `reporting/export.py` — `_strip_string_axis_shapes()`: removes per-day vlines that break kaleido on categorical axes
-- [x] `reporting/export.py` — `_apply_light_theme()`: white/print-friendly background for all charts
-- [x] `reporting/export.py` — `_render_light_fig()`: render via fresh subprocess to bypass Streamlit's stripped process environment
-- [x] `reporting/export.py` — `_RENDER_SCRIPT`: subprocess resolves Chrome via `BROWSER_PATH` → `~/.kaleido/chrome` → choreographer local dir → `kaleido.get_chrome_sync(path=~/.kaleido/chrome)`; calls `kaleido.start_sync_server(path=...)` with explicit Chrome before `pio.to_image()` to bypass choreographer auto-discovery
-- [x] `reporting/export.py` — `_ensure_chrome()`: parent-side Chrome warmup; downloads to `~/.kaleido/chrome` (writable, not read-only site-packages)
-- [x] `reporting/export.py` — `_test_kaleido()`: validates kaleido+Chrome before PDF build; surfaces exact error in UI
-- [x] `reporting/marketing.py` — `_render_export_button()`: "Prepare PDF" button with session_state caching; shows kaleido error via `st.error`; shows chart errors via expander
-- [x] Subprocess timeout: 600s (was 60s) to allow Chrome ~130MB first-time download on slow connections
-- [x] Spinner message updated: informs user about Chrome download on first run
-- [x] `packages.txt` removed — `chromium-browser` via apt caused Streamlit Cloud build failures (snap wrapper)
-- [ ] Verify PDF renders charts end-to-end on Streamlit Cloud (Chrome download in progress on first click)
+- [x] `reporting/export.py` — complete rewrite: kaleido/Chrome replaced with matplotlib `Agg` backend (pure Python, no binaries, ~0.5 s render)
+- [x] 6 chart functions: cumulative spend, ROAS over time, revenue & profit breakdown, daily signups per-platform, campaign ROI bars, campaign CAC bars
+- [x] `_mpl_revenue_breakdown()`: stacked areas (conversion, card fees, billing) + dashed costs (cashback, rev share) + Operational Profit line (charcoal) + Overall Profit incl. Mkt line (orange) + dotted y=0 breakeven
+- [x] `_mpl_campaign_daily()`: per-platform spend lines on right y-axis — Total (grey), Meta (rose), Google (blue) — from raw spend with platform column
+- [x] KPI strip: per-platform spend tiles, transacting rate, cost per KYC, payback period, net profit
+- [x] `_render_export_button()`: single spinner + immediate download (removed two-step "Prepare PDF" flow)
+- [x] `requirements.txt` — `reportlab>=4.2` added for Streamlit Cloud
+- [x] `pyproject.toml` — `kaleido>=0.2` removed
+- [x] PDF header: "NBS SPSAV LTDA" → "NBS"
+- [x] Swap Fees removed from all chart layers (`export.py`, `marketing.py`, `clients.py`) — `INCLUDE_SWAP_FEES=False` already zeros data
+- [x] `_META_UPFRONT_ADJUSTMENT_USD = 153.0` in `campaigns.py` — subtracts upfront Meta payment from latest day; set to `0.0` to revert
+- [x] Circular import in `nbs_bi/clients/__init__.py` fixed — removed eager imports that crashed Streamlit Cloud
+- [x] Google Ads spend loaded from DB and shown as separate KPI tile; stale `ads_end_date` session state bug fixed
+- [x] `cohort_kyc_count()` uses `users.kyc_level >= 1` (reliable); `kyc_verifications` GREEN query returns 0 rows for NBS cohort
 
 ---
 
