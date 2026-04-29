@@ -833,7 +833,7 @@ def build_marketing_pdf(
 def _add_header(story: list[Any], s: dict[str, ParagraphStyle]) -> None:
     """Append report title and generation timestamp."""
     now = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
-    story.append(Paragraph("NBS SPSAV LTDA — Marketing Analysis", s["title"]))
+    story.append(Paragraph("NBS — Marketing Analysis", s["title"]))
     story.append(
         Paragraph(
             f"Meta Ads · Google Ads · Cohort ROI Briefing &nbsp;|&nbsp; Generated {now}",

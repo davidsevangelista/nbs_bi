@@ -741,7 +741,11 @@ class CampaignAnalyzer:
         return pd.DataFrame(rows)
 
     def cohort_kyc_count(self, campaign_id: str, referral_code: str = "") -> int:
-        """Return count of cohort users who have completed KYC (kyc_level >= 1).
+        """Return count of cohort users who completed KYC (GREEN in kyc_verifications).
+
+        Uses ``kyc_verifications`` with ``review_answer='GREEN'`` as the
+        authoritative source — ``users.kyc_level`` is updated asynchronously
+        and can lag behind actual verifications.
 
         Args:
             campaign_id: Campaign identifier from :attr:`campaigns`.
@@ -757,14 +761,14 @@ class CampaignAnalyzer:
         end_str = str((pd.Timestamp(campaign["end"]) + pd.Timedelta(days=1)).date())
         try:
             df = self._run(
-                _COHORT_KYC_LEVEL_SQL,
+                _COHORT_KYC_SQL,
                 {
                     "cohort_start": start_str,
                     "cohort_end": end_str,
                     "referral_code": referral_code,
                 },
             )
-            return int(df["kyc_count"].iloc[0]) if not df.empty else 0
+            return int(df["kyc_count"].sum()) if not df.empty else 0
         except Exception:
             logger.warning("Could not fetch KYC count for cohort funnel", exc_info=True)
             return 0
