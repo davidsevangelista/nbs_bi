@@ -528,6 +528,73 @@ def _mpl_campaign_daily(
     return fig
 
 
+def _mpl_daily_revenue_vs_spend(
+    cum_rev_df: pd.DataFrame,
+    spend_agg: pd.DataFrame,
+) -> plt.Figure | None:
+    """Stacked bars: daily revenue by product line + total ad spend on right axis.
+
+    Args:
+        cum_rev_df: ``CampaignAnalyzer.cumulative_revenue()`` output with daily_rev_* columns.
+        spend_agg: Aggregated spend DataFrame with columns ``date``, ``daily_spend_usd``.
+
+    Returns:
+        matplotlib Figure or None if revenue columns are missing.
+    """
+    rev_cols = [
+        ("daily_rev_conversion_usd", _EMERALD, "Conversion"),
+        ("daily_rev_card_fees_usd", _TEAL, "Card Fees"),
+        ("daily_rev_billing_usd", _BLUE, "Billing"),
+        ("daily_rev_swap_usd", _AMBER, "Swap Fees"),
+    ]
+    available = [(c, color, lbl) for c, color, lbl in rev_cols if c in cum_rev_df.columns]
+    if not available:
+        return None
+
+    rev = cum_rev_df[["date"] + [c for c, _, _ in available]].copy()
+    rev["date"] = pd.to_datetime(rev["date"]).dt.normalize()
+    spend = spend_agg[["date", "daily_spend_usd"]].copy()
+    spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
+    merged = rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
+
+    fig, ax1 = plt.subplots(figsize=(7.5, 3.6))
+    _mpl_style(ax1, "Daily Revenue vs Ad Spend (USD)")
+
+    dates = merged["date"].values
+    baseline = np.zeros(len(merged))
+    for col, color, lbl in available:
+        y = merged[col].values
+        ax1.bar(dates, y, bottom=baseline, color=color, alpha=0.75, label=lbl, width=0.8)
+        baseline = baseline + y
+
+    ax1.set_ylabel("Revenue (USD)", fontsize=7)
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    ax1.legend(fontsize=6, loc="upper left")
+
+    has_spend = merged["daily_spend_usd"].gt(0).any()
+    if has_spend:
+        ax2 = ax1.twinx()
+        ax2.plot(
+            dates,
+            merged["daily_spend_usd"].values,
+            color=_ROSE,
+            lw=2,
+            ls="--",
+            marker="o",
+            markersize=3,
+            label="Total Ad Spend",
+        )
+        ax2.set_ylabel("Ad Spend (USD)", fontsize=7)
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+        ax2.tick_params(axis="y", labelsize=6)
+        ax2.legend(fontsize=6, loc="upper right")
+        ax2.grid(False)
+
+    ax1.set_xlabel("Date", fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
 def _mpl_campaign_roi(summary: pd.DataFrame) -> plt.Figure | None:
     """Grouped bar: ad spend vs cohort revenue per campaign.
 
@@ -917,7 +984,6 @@ def _add_kpi_strip(
     story.append(Spacer(1, 4))
 
 
-
 def _add_funnel(story: list[Any], s: dict[str, ParagraphStyle], funnel: dict) -> None:
     """Append cohort activation funnel with conversion rates."""
     if not funnel or funnel.get("signups", 0) == 0:
@@ -956,6 +1022,12 @@ def _add_charts(
         ),
         (_mpl_revenue_breakdown(cum_profit_df), "Revenue Breakdown"),
         (_mpl_campaign_daily(daily, spend_df_raw=spend_df_raw), "Daily Signups"),
+        (
+            _mpl_daily_revenue_vs_spend(cum_rev_df, spend_df)
+            if cum_rev_df is not None and not cum_rev_df.empty
+            else None,
+            "Daily Revenue vs Ad Spend",
+        ),
     ]
     for fig, title in full_charts:
         if fig is None:
