@@ -1306,9 +1306,11 @@ class MetaAdsSection:
             return None
 
         cutoff = pd.Timestamp(_TRACKING_START)
-        spend = spend[pd.to_datetime(spend["date"]) >= cutoff].reset_index(drop=True)
+        spend_for_analysis = spend[
+            pd.to_datetime(spend["date"]) >= cutoff
+        ].reset_index(drop=True)
         analyzer = CampaignAnalyzer(
-            aggregate_spend(spend), db_url=self._analytics_db_url or self._db_url
+            aggregate_spend(spend_for_analysis), db_url=self._analytics_db_url or self._db_url
         )
 
         _, _, _, history = _load_all_invoice_models()
