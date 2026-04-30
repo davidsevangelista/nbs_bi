@@ -595,6 +595,87 @@ def _mpl_daily_revenue_vs_spend(
     return fig
 
 
+def _mpl_daily_rev_all_vs_cohort(
+    all_users_df: pd.DataFrame,
+    cohort_df: pd.DataFrame | None,
+    spend_agg: pd.DataFrame,
+) -> plt.Figure | None:
+    """Platform-wide daily revenue (muted bars) with cohort stackplot overlay + spend line.
+
+    Args:
+        all_users_df: ``CampaignAnalyzer.all_users_daily_revenue()`` output.
+        cohort_df: ``CampaignAnalyzer.cumulative_revenue()`` output — cohort only.
+        spend_agg: Aggregated spend DataFrame with columns ``date``, ``daily_spend_usd``.
+
+    Returns:
+        matplotlib Figure or None if all_users_df is empty.
+    """
+    rev_cols = [
+        ("daily_rev_conversion_usd", _EMERALD, "Conversion"),
+        ("daily_rev_card_fees_usd", _TEAL, "Card Fees"),
+        ("daily_rev_billing_usd", _BLUE, "Billing"),
+        ("daily_rev_swap_usd", _AMBER, "Swap Fees"),
+    ]
+    available = [(c, color, lbl) for c, color, lbl in rev_cols if c in all_users_df.columns]
+    if not available or all_users_df.empty:
+        return None
+
+    all_rev = all_users_df[["date"] + [c for c, _, _ in available]].copy()
+    all_rev["date"] = pd.to_datetime(all_rev["date"]).dt.normalize()
+    spend = spend_agg[["date", "daily_spend_usd"]].copy()
+    spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
+    merged = all_rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
+    dates = merged["date"].values
+
+    fig, ax1 = plt.subplots(figsize=(7.5, 3.6))
+    _mpl_style(ax1, "Platform Revenue vs Cohort Contribution + Ad Spend (USD)")
+
+    # All-users stacked bars (muted)
+    baseline = np.zeros(len(merged))
+    for col, color, lbl in available:
+        y = merged[col].values
+        ax1.bar(dates, y, bottom=baseline, color=color, alpha=0.2, width=0.8, label=f"{lbl} — All")
+        baseline = baseline + y
+
+    # Cohort stackplot overlay (emphasis)
+    if cohort_df is not None and not cohort_df.empty:
+        coh = cohort_df[["date"] + [c for c, _, _ in available if c in cohort_df.columns]].copy()
+        coh["date"] = pd.to_datetime(coh["date"]).dt.normalize()
+        coh = merged[["date"]].merge(coh, on="date", how="left").fillna(0.0)
+        layers = [coh[col].values for col, _, _ in available if col in coh.columns]
+        colors = [color for col, color, _ in available if col in coh.columns]
+        labels = [f"{lbl} — Cohort" for col, _, lbl in available if col in coh.columns]
+        if layers:
+            ax1.stackplot(dates, *layers, colors=colors, alpha=0.7, labels=labels)
+
+    ax1.set_ylabel("Revenue (USD)", fontsize=7)
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    ax1.legend(fontsize=5, loc="upper left", ncol=2)
+
+    has_spend = merged["daily_spend_usd"].gt(0).any()
+    if has_spend:
+        ax2 = ax1.twinx()
+        ax2.plot(
+            dates,
+            merged["daily_spend_usd"].values,
+            color=_ROSE,
+            lw=2,
+            ls="--",
+            marker="o",
+            markersize=3,
+            label="Total Ad Spend",
+        )
+        ax2.set_ylabel("Ad Spend (USD)", fontsize=7)
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+        ax2.tick_params(axis="y", labelsize=6)
+        ax2.legend(fontsize=6, loc="upper right")
+        ax2.grid(False)
+
+    ax1.set_xlabel("Date", fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
 def _mpl_campaign_roi(summary: pd.DataFrame) -> plt.Figure | None:
     """Grouped bar: ad spend vs cohort revenue per campaign.
 
@@ -859,6 +940,7 @@ def build_marketing_pdf(
     kyc_done: int,
     spend_breakdown: dict[str, float] | None = None,
     spend_df_raw: pd.DataFrame | None = None,
+    all_users_rev_df: pd.DataFrame | None = None,
 ) -> tuple[bytes, list[str]]:
     """Generate an A4 PDF marketing briefing from live analysis data.
 
@@ -877,6 +959,9 @@ def build_marketing_pdf(
             e.g. ``{"meta": 1200.0, "google": 340.0}``.
         spend_df_raw: Optional raw spend DataFrame with a ``platform`` column;
             used to draw per-platform lines in the Daily Signups chart.
+        all_users_rev_df: Optional all-users daily revenue from
+            ``CampaignAnalyzer.all_users_daily_revenue()``; adds the platform
+            revenue vs cohort contribution chart to the PDF.
 
     Returns:
         Tuple of ``(pdf_bytes, chart_errors)`` where ``chart_errors`` lists
@@ -910,6 +995,7 @@ def build_marketing_pdf(
         campaigns,
         chart_errors,
         spend_df_raw=spend_df_raw,
+        all_users_rev_df=all_users_rev_df,
     )
     _add_summary_table(story, s, summary)
 
@@ -1004,6 +1090,7 @@ def _add_charts(
     campaigns: list[dict],
     errors: list[str],
     spend_df_raw: pd.DataFrame | None = None,
+    all_users_rev_df: pd.DataFrame | None = None,
 ) -> None:
     """Render all matplotlib charts and append as ReportLab Image flowables."""
     story.append(Paragraph("Campaign Charts", s["section"]))
@@ -1027,6 +1114,12 @@ def _add_charts(
             if cum_rev_df is not None and not cum_rev_df.empty
             else None,
             "Daily Revenue vs Ad Spend",
+        ),
+        (
+            _mpl_daily_rev_all_vs_cohort(all_users_rev_df, cum_rev_df, spend_df)
+            if all_users_rev_df is not None and not all_users_rev_df.empty
+            else None,
+            "Platform Revenue vs Cohort",
         ),
     ]
     for fig, title in full_charts:

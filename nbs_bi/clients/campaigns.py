@@ -295,6 +295,72 @@ ORDER BY rev_date
 """
 
 
+_DAILY_ALL_USERS_REVENUE_SQL = """
+WITH fx AS (
+    SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY effective_rate) AS rate
+    FROM conversion_quotes
+    WHERE used = TRUE AND direction = 'brl_to_usdc'
+),
+conversion_rev AS (
+    SELECT DATE(cq.created_at AT TIME ZONE 'UTC') AS rev_date,
+           (cq.fee_amount_brl + cq.spread_revenue_brl)::FLOAT / 100.0
+               / NULLIF(fx.rate, 0)
+           + (cq.fee_amount_usdc + cq.spread_revenue_usdc)::FLOAT / 1000000.0 AS rev_usd
+    FROM conversion_quotes cq, fx
+    WHERE cq.used = TRUE
+      AND cq.created_at >= :start_date
+      AND cq.created_at <  :end_date
+),
+card_fee_rev AS (
+    SELECT DATE(cf.created_at AT TIME ZONE 'UTC') AS rev_date,
+           cf.amount_usdc::FLOAT AS rev_usd
+    FROM card_annual_fees cf
+    WHERE cf.status = 'paid'
+      AND cf.created_at >= :start_date
+      AND cf.created_at <  :end_date
+)
+SELECT
+    rev_date,
+    ROUND(SUM(CASE WHEN src = 'conversion' THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_conversion_usd,
+    ROUND(SUM(CASE WHEN src = 'card_fee'   THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_card_fees_usd,
+    ROUND(SUM(CASE WHEN src = 'billing'    THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_billing_usd,
+    ROUND(SUM(CASE WHEN src = 'swap'       THEN rev_usd ELSE 0 END)::NUMERIC, 4)
+        AS daily_rev_swap_usd,
+    ROUND(SUM(rev_usd)::NUMERIC, 4) AS daily_rev_usd
+FROM (
+    SELECT rev_date, rev_usd, 'conversion' AS src FROM conversion_rev
+    UNION ALL
+    SELECT rev_date, rev_usd, 'card_fee' AS src FROM card_fee_rev
+    UNION ALL
+    SELECT DATE(bc.created_at AT TIME ZONE 'UTC') AS rev_date,
+           bc.amount::FLOAT / 1000000.0            AS rev_usd,
+           'billing'                               AS src
+    FROM billing_charges bc
+    WHERE bc.status = 'settled'
+      AND bc.created_at >= :start_date
+      AND bc.created_at <  :end_date
+    UNION ALL
+    SELECT DATE(st."timestamp" AT TIME ZONE 'UTC')                     AS rev_date,
+           CASE
+               WHEN st.input_mint  = :usdc_mint
+               THEN st.input_amount::FLOAT  / 1000000.0
+               WHEN st.output_mint = :usdc_mint
+               THEN st.output_amount::FLOAT / 1000000.0
+               ELSE 0
+           END * st.platform_fee_bps::FLOAT / 10000.0                  AS rev_usd,
+           'swap'                                                        AS src
+    FROM swap_transactions st
+    WHERE st."timestamp" >= :start_date
+      AND st."timestamp" <  :end_date
+) all_rev
+GROUP BY rev_date
+ORDER BY rev_date
+"""
+
+
 _COHORT_CARD_TXNS_SQL = """
 SELECT
     DATE(ct.authorized_at AT TIME ZONE 'UTC') AS txn_date,
@@ -933,6 +999,57 @@ class CampaignAnalyzer:
             result["daily_rev_swap_usd"] = 0.0
         result["cum_rev_usd"] = result["daily_rev_usd"].cumsum()
         return result
+
+    def all_users_daily_revenue(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """Daily gross revenue across all users for a given date window.
+
+        Covers the same product lines as :meth:`cumulative_revenue` (conversion
+        spread/fees, card fees, billing, swap fees) but with no cohort filter —
+        useful as a platform-wide backdrop against which cohort revenue is compared.
+        Cashback and rev-share costs are intentionally excluded (gross revenue only).
+
+        Args:
+            start_date: Inclusive start (ISO date string, e.g. ``"2026-04-12"``).
+            end_date: Exclusive end (ISO date string, e.g. ``"2026-05-01"``).
+
+        Returns:
+            DataFrame with columns ``date``, ``daily_rev_conversion_usd``,
+            ``daily_rev_card_fees_usd``, ``daily_rev_billing_usd``,
+            ``daily_rev_swap_usd``, ``daily_rev_usd``.
+            Days with no revenue are filled with 0.  Sorted by date.
+        """
+        _cols = [
+            "date",
+            "daily_rev_conversion_usd",
+            "daily_rev_card_fees_usd",
+            "daily_rev_billing_usd",
+            "daily_rev_swap_usd",
+            "daily_rev_usd",
+        ]
+        df = self._run(
+            _DAILY_ALL_USERS_REVENUE_SQL,
+            {"start_date": start_date, "end_date": end_date, "usdc_mint": _USDC_MINT},
+        )
+        if df.empty:
+            return pd.DataFrame(columns=_cols)
+        all_dates = pd.DataFrame(
+            {
+                "date": pd.date_range(
+                    start=start_date,
+                    end=pd.Timestamp(end_date) - pd.Timedelta(days=1),
+                    freq="D",
+                )
+            }
+        )
+        df["date"] = pd.to_datetime(df["rev_date"])
+        df = df.drop(columns=["rev_date"])
+        result = all_dates.merge(df, on="date", how="left")
+        for col in _cols[1:]:
+            result[col] = result[col].fillna(0.0).astype("float64")
+        if not INCLUDE_SWAP_FEES:
+            result["daily_rev_usd"] -= result["daily_rev_swap_usd"]
+            result["daily_rev_swap_usd"] = 0.0
+        return result.reset_index(drop=True)
 
     def _cohort_card_txns(
         self, cohort_start: str, cohort_end: str, referral_code: str = ""

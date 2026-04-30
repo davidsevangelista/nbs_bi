@@ -699,6 +699,114 @@ def _fig_daily_revenue_vs_spend(
     return fig
 
 
+def _fig_daily_rev_all_vs_cohort(
+    all_users_df: pd.DataFrame,
+    cohort_df: pd.DataFrame,
+    spend_agg: pd.DataFrame,
+) -> go.Figure | None:
+    """Platform-wide daily revenue (muted bars) with cohort area overlay + ad spend.
+
+    Args:
+        all_users_df: Output of ``CampaignAnalyzer.all_users_daily_revenue()``.
+        cohort_df: Output of ``CampaignAnalyzer.cumulative_revenue()`` — cohort only.
+        spend_agg: Aggregated spend DataFrame with columns ``date``, ``daily_spend_usd``.
+
+    Returns:
+        Plotly Figure or None if all_users_df is empty.
+    """
+    rev_cols = [
+        ("daily_rev_conversion_usd", TEAL, "Conversion"),
+        ("daily_rev_card_fees_usd", AMBER, "Card Fees"),
+        ("daily_rev_billing_usd", VIOLET, "Billing"),
+        ("daily_rev_swap_usd", BLUE, "Swap Fees"),
+    ]
+    available = [(c, color, lbl) for c, color, lbl in rev_cols if c in all_users_df.columns]
+    if not available or all_users_df.empty:
+        return None
+
+    all_rev = all_users_df[["date"] + [c for c, _, _ in available]].copy()
+    all_rev["date"] = pd.to_datetime(all_rev["date"]).dt.normalize()
+
+    spend = spend_agg[["date", "daily_spend_usd"]].copy()
+    spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
+
+    merged = all_rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
+    dates_str = merged["date"].astype(str)
+
+    # Cohort alignment
+    cohort_aligned: dict[str, list[float]] = {}
+    if not cohort_df.empty:
+        coh = cohort_df[["date"] + [c for c, _, _ in available if c in cohort_df.columns]].copy()
+        coh["date"] = pd.to_datetime(coh["date"]).dt.normalize()
+        coh = merged[["date"]].merge(coh, on="date", how="left").fillna(0.0)
+        for col, _, _ in available:
+            if col in coh.columns:
+                cohort_aligned[col] = coh[col].tolist()
+
+    fig = go.Figure()
+
+    # Layer 1: all-users bars (muted background)
+    for col, color, lbl in available:
+        fig.add_trace(
+            go.Bar(
+                x=dates_str,
+                y=merged[col],
+                name=f"{lbl} — All",
+                marker_color=color,
+                opacity=0.2,
+                marker_line_width=0,
+                legendgroup="all",
+                legendgrouptitle_text="All Users",
+            )
+        )
+
+    # Layer 2: cohort stacked area (emphasis overlay)
+    for col, color, lbl in available:
+        if col in cohort_aligned:
+            fig.add_trace(
+                go.Scatter(
+                    x=dates_str,
+                    y=cohort_aligned[col],
+                    name=f"{lbl} — Cohort",
+                    stackgroup="cohort",
+                    fill="tonexty",
+                    fillcolor=color,
+                    opacity=0.75,
+                    line=dict(width=0, color=color),
+                    legendgroup="cohort",
+                    legendgrouptitle_text="Cohort",
+                )
+            )
+
+    # Layer 3: ad spend on right axis
+    has_spend = merged["daily_spend_usd"].gt(0).any()
+    if has_spend:
+        fig.add_trace(
+            go.Scatter(
+                x=dates_str,
+                y=merged["daily_spend_usd"],
+                name="Total Ad Spend (USD)",
+                mode="lines+markers",
+                line=dict(color=ROSE, width=2, dash="dot"),
+                yaxis="y2",
+            )
+        )
+
+    layout = panel("Platform Revenue vs Cohort Contribution + Ad Spend")
+    layout["barmode"] = "stack"
+    layout["yaxis"]["title"] = "Revenue (USD)"
+    layout["xaxis"]["title"] = "Date"
+    if has_spend:
+        layout["yaxis2"] = dict(
+            title="Ad Spend (USD)",
+            overlaying="y",
+            side="right",
+            gridcolor="rgba(0,0,0,0)",
+        )
+    fig.update_layout(**layout)
+    return fig
+
+
 def _fig_channel_comparison(comparison: pd.DataFrame) -> go.Figure | None:
     """Horizontal bar: avg operational profit per acquisition channel."""
     if comparison.empty:
@@ -960,6 +1068,15 @@ class MetaAdsSection:
             else pd.DataFrame()
         )
 
+        all_users_rev_df = pd.DataFrame()
+        if analyzer is not None and cum_rev_df is not None and not cum_rev_df.empty:
+            _au_start = str(cum_rev_df["date"].min().date())
+            _au_end = str((pd.Timestamp.today().normalize() + pd.Timedelta(days=1)).date())
+            try:
+                all_users_rev_df = analyzer.all_users_daily_revenue(_au_start, _au_end)
+            except Exception:
+                logging.getLogger(__name__).warning("all_users_daily_revenue failed", exc_info=True)
+
         kyc_done = (
             analyzer.cohort_kyc_count(latest_id, referral_code=referral_code)
             if analyzer is not None
@@ -981,6 +1098,7 @@ class MetaAdsSection:
             kyc_done,
             spend_breakdown=spend_breakdown,
             spend_df_raw=spend_df,
+            all_users_rev_df=all_users_rev_df,
         )
 
         self._render_kpis(
@@ -991,7 +1109,15 @@ class MetaAdsSection:
             if fig_funnel:
                 st.plotly_chart(fig_funnel, width="stretch")
         st.divider()
-        self._render_spend_charts(summary, daily, spend_agg, campaigns, cum_rev_df, cum_profit_df)
+        self._render_spend_charts(
+            summary,
+            daily,
+            spend_agg,
+            campaigns,
+            cum_rev_df,
+            cum_profit_df,
+            all_users_rev_df=all_users_rev_df,
+        )
         st.divider()
         self._render_channel(summary, cum_profit_df)
         st.divider()
@@ -1009,6 +1135,7 @@ class MetaAdsSection:
         kyc_done: int,
         spend_breakdown: dict[str, float] | None = None,
         spend_df_raw: pd.DataFrame | None = None,
+        all_users_rev_df: pd.DataFrame | None = None,
     ) -> tuple[bytes, list[str]]:
         """Build the marketing PDF and return raw bytes plus chart error list.
 
@@ -1023,6 +1150,8 @@ class MetaAdsSection:
             kyc_done: KYC-completed count for CAC calculation.
             spend_breakdown: Per-platform spend totals.
             spend_df_raw: Raw spend DataFrame with platform column for per-platform chart lines.
+            all_users_rev_df: All-users daily revenue DataFrame from
+                ``CampaignAnalyzer.all_users_daily_revenue()`` (may be None).
 
         Returns:
             Tuple of (pdf_bytes, chart_errors).
@@ -1040,6 +1169,7 @@ class MetaAdsSection:
             kyc_done=kyc_done,
             spend_breakdown=spend_breakdown,
             spend_df_raw=spend_df_raw,
+            all_users_rev_df=all_users_rev_df,
         )
         return pdf_bytes, chart_errors
 
@@ -1055,6 +1185,7 @@ class MetaAdsSection:
         kyc_done: int,
         spend_breakdown: dict[str, float] | None = None,
         spend_df_raw: pd.DataFrame | None = None,
+        all_users_rev_df: pd.DataFrame | None = None,
     ) -> None:
         """Render a PDF download button for the marketing briefing.
 
@@ -1072,6 +1203,8 @@ class MetaAdsSection:
             kyc_done: KYC-completed count for CAC calculation.
             spend_breakdown: Per-platform spend totals.
             spend_df_raw: Raw spend DataFrame with platform column for per-platform chart lines.
+            all_users_rev_df: All-users daily revenue from
+                ``CampaignAnalyzer.all_users_daily_revenue()`` (may be None).
         """
         _log = logging.getLogger(__name__)
 
@@ -1088,6 +1221,7 @@ class MetaAdsSection:
                     kyc_done=kyc_done,
                     spend_breakdown=spend_breakdown,
                     spend_df_raw=spend_df_raw,
+                    all_users_rev_df=all_users_rev_df,
                 )
         except Exception as exc:
             _log.exception("PDF export failed")
@@ -1254,6 +1388,7 @@ class MetaAdsSection:
         campaigns: list[dict],
         cum_rev_df: pd.DataFrame | None = None,
         cum_profit_df: pd.DataFrame | None = None,
+        all_users_rev_df: pd.DataFrame | None = None,
     ) -> None:
         """Render cumulative spend, ROI, CAC, and daily signups charts."""
         if not spend_df.empty:
@@ -1279,6 +1414,13 @@ class MetaAdsSection:
             fig_rev_spend = _fig_daily_revenue_vs_spend(cum_rev_df, spend_df)
             if fig_rev_spend:
                 st.plotly_chart(fig_rev_spend, width="stretch")
+
+        if all_users_rev_df is not None and not all_users_rev_df.empty and not spend_df.empty:
+            fig_all = _fig_daily_rev_all_vs_cohort(
+                all_users_rev_df, cum_rev_df if cum_rev_df is not None else pd.DataFrame(), spend_df
+            )
+            if fig_all:
+                st.plotly_chart(fig_all, width="stretch")
 
         col1, col2 = st.columns(2)
         with col1:
