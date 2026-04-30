@@ -158,30 +158,37 @@
 
 ## KYC & Compliance
 
+> **KYB note:** There is no separate KYB (Know Your Business) table. Business verification reuses `kyc_verifications` with `applicant_type = 'company'`. Filter on this field to isolate business applicant flows.
+
 ### `kyc_verifications`
-*~7,701 rows* — SumSub KYC check results per user attempt.
+*~8,958 rows* — SumSub KYC/KYB check results. Covers both individual (KYC) and business (KYB) applicants — `applicant_type` distinguishes them.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid | PK |
 | `user_id` | uuid | FK → `users.id` |
-| `sumsub_applicant_id` | varchar | |
+| `sumsub_applicant_id` | varchar | SumSub applicant reference |
+| `external_user_id` | varchar | SumSub external user reference |
 | `status` | varchar | `pending`, `completed`, `failed` |
 | `review_answer` | varchar | `GREEN` (pass) / `RED` (fail) |
 | `reject_type` | varchar | Rejection category |
 | `reject_labels` | array | Specific rejection reasons |
+| `applicant_type` | varchar | `individual` (KYC) / `company` (KYB) |
+| `account_id` | uuid | FK → `accounts_v2.id` (nullable) |
+| `created_at` | timestamptz | |
+| `updated_at` | timestamptz | |
 | `completed_at` | timestamptz | |
-| `applicant_type` | varchar | `individual`, `company` |
 
 ---
 
 ### `kyc_levels`
-*~0 rows (config table)* — KYC tier definitions and limits.
+*~4 rows (config table)* — KYC tier definitions and limits.
 
 | Column | Type | Notes |
 |---|---|---|
 | `level` | integer | PK (0, 1, 2, 3…) |
 | `name` | varchar | Tier label |
+| `description` | text | Human-readable tier description |
 | `daily_limit_brl` | bigint | centavos ÷ 100 = BRL |
 | `daily_limit_usdc` | bigint | micros ÷ 1,000,000 = USDC |
 | `per_operation_limit_brl` | bigint | centavos |
@@ -206,16 +213,14 @@
 ---
 
 ### `sumsub_webhook_logs`
-*~19,534 rows* — Raw SumSub webhook events (audit trail, not for analytics).
+*~22,607 rows* — Raw SumSub webhook events (audit trail, not for analytics).
 
 ---
 
 ## CPF Enrichment
 
 ### `cpf_validation_data`
-*~0 rows live (data loaded separately)* — Receita Federal CPF enrichment. One row per user.
-
-> **Note**: Row count is 0 in `pg_stat_user_tables` — data may be in a separate schema or populated on demand. Verify coverage before using.
+*~2,731 rows* — Receita Federal CPF enrichment. One row per user.
 
 | Column | Type | Notes |
 |---|---|---|
