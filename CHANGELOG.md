@@ -7,6 +7,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-04-29
+
+Daily revenue charts added to Marketing - Ads tab and PDF; conversion revenue NULL bug fixed; all-users revenue centralized in `OnrampQueries`.
+
+### Added
+- `reporting/marketing.py` — `_fig_daily_revenue_vs_spend()`: stacked bar chart of cohort daily revenue by product line (Conversion, Card Fees, Billing) with total Meta+Google ad spend on right y-axis; rendered below "Daily Signups vs Ad Spend"
+- `reporting/marketing.py` — `_fig_daily_rev_all_vs_cohort()`: full-platform stacked bars (all users, all products) with white dot+line overlay at the cohort revenue boundary per bar, showing how much of each day's revenue came from the cohort; spend on right y-axis; Swap Fees excluded from legend
+- `reporting/export.py` — `_mpl_daily_revenue_vs_spend()`: matplotlib version of the cohort daily revenue vs spend chart for PDF
+- `reporting/export.py` — `_mpl_daily_rev_all_vs_cohort()`: matplotlib version of the platform revenue vs cohort boundary chart for PDF; white dot+line threshold drawn via `ax1.plot(..., marker="o")`
+- `nbs_bi/onramp/queries.py` — `OnrampQueries.daily_revenue_by_product()`: centralized daily gross revenue by product line (conversion, card fees, billing, swaps) using per-transaction exchange rate + `fillna(0)` NULL-safe BRL/USDC split — same pattern as `OnrampReport._build_revenue_monthly()`
+- `nbs_bi/onramp/queries.py` — `_CARD_FEES_DAILY_SQL`, `_BILLING_DAILY_SQL`, `_SWAPS_DAILY_SQL`: new SQL constants for daily revenue aggregation per product
+- `nbs_bi/onramp/queries.py` — `_USDC_MINT` constant for swap fee calculation
+
+### Changed
+- `reporting/marketing.py` — all-users daily revenue now fetched via `OnrampQueries(...).daily_revenue_by_product()` instead of `CampaignAnalyzer.all_users_daily_revenue()`; `INCLUDE_SWAP_FEES` logic applied at call site
+- `docs/specs/database.md` — updated row counts and columns: `kyc_verifications` (7,701 → 8,958 rows; added `external_user_id`, `account_id`, `created_at`, `updated_at`), `kyc_levels` (0 → 4 rows; added `description`), `sumsub_webhook_logs` (19,534 → 22,607 rows), `cpf_validation_data` (0 → 2,731 rows); added KYB callout (no separate table — uses `kyc_verifications.applicant_type = 'company'`)
+
+### Fixed
+- `clients/campaigns.py` — `_DAILY_COHORT_REVENUE_SQL` `conversion_rev` CTE: wrapped each BRL and USDC branch in `COALESCE(..., 0)` to handle `conversion_quotes` NULL pattern where BRL columns are NULL on `usdc_to_brl` rows and USDC columns are NULL on `brl_to_usdc` rows — conversion revenue was returning $0 for all days
+- `nbs_bi/onramp/queries.py` — `daily_revenue_by_product()` uses the NULL-safe `fillna(0)` approach rather than SQL addition that would propagate NULLs
+
+### Removed
+- `clients/campaigns.py` — `_DAILY_ALL_USERS_REVENUE_SQL` constant and `all_users_daily_revenue()` method: replaced by `OnrampQueries.daily_revenue_by_product()` which reuses the centralized, NULL-safe revenue infrastructure
+
 ## [2.0.0] — 2026-04-29
 
 PDF export rewritten to matplotlib (no Chrome/kaleido); Google Ads added; per-platform spend breakdown; multi-chart improvements.

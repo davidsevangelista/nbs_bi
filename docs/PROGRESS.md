@@ -118,7 +118,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-29 (v2.0.0)
+## Current State — 2026-04-29 (v2.1.0)
 
 ### What's been built
 
@@ -198,6 +198,20 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] Circular import in `nbs_bi/clients/__init__.py` fixed — removed eager imports that crashed Streamlit Cloud
 - [x] Google Ads spend loaded from DB and shown as separate KPI tile; stale `ads_end_date` session state bug fixed
 - [x] `cohort_kyc_count()` uses `users.kyc_level >= 1` (reliable); `kyc_verifications` GREEN query returns 0 rows for NBS cohort
+
+---
+
+## Daily Revenue Charts — Marketing-Ads Tab (v2.1.0, 2026-04-29)
+
+- [x] `reporting/marketing.py` — `_fig_daily_revenue_vs_spend()`: Plotly stacked bar chart — cohort daily revenue by product (Conversion, Card Fees, Billing) + total ad spend on right y-axis; rendered below "Daily Signups vs Ad Spend"
+- [x] `reporting/marketing.py` — `_fig_daily_rev_all_vs_cohort()`: Plotly chart — full-platform stacked bars (all users, 3 product lines) + white dot+line overlay at cohort revenue boundary per bar (showing cohort fraction of each day's revenue) + spend on right y-axis; Swap Fees excluded from legend
+- [x] `reporting/export.py` — `_mpl_daily_revenue_vs_spend()`: matplotlib version for PDF
+- [x] `reporting/export.py` — `_mpl_daily_rev_all_vs_cohort()`: matplotlib version for PDF — white dot+line drawn via `ax1.plot(..., marker="o")`
+- [x] `clients/campaigns.py` — `_DAILY_COHORT_REVENUE_SQL` conversion_rev CTE fixed: wrapped each BRL/USDC branch in `COALESCE(..., 0)` — was returning $0 conversion revenue due to NULL propagation when adding BRL+USDC columns that are NULL on opposite-direction rows
+- [x] `nbs_bi/onramp/queries.py` — `OnrampQueries.daily_revenue_by_product()`: centralized all-users daily revenue using `conversions()` with per-tx exchange rate + `fillna(0)` NULL-safe split (same pattern as `OnrampReport._build_revenue_monthly()`); new SQL constants `_CARD_FEES_DAILY_SQL`, `_BILLING_DAILY_SQL`, `_SWAPS_DAILY_SQL`
+- [x] `clients/campaigns.py` — removed `_DAILY_ALL_USERS_REVENUE_SQL` and `all_users_daily_revenue()` — superseded by `OnrampQueries.daily_revenue_by_product()`
+- [x] `reporting/marketing.py` — call site updated to use `OnrampQueries(...).daily_revenue_by_product()` with `INCLUDE_SWAP_FEES` applied at call site
+- [x] `docs/specs/database.md` — KYB documented (no separate table; uses `kyc_verifications.applicant_type = 'company'`); row counts updated for `kyc_verifications`, `kyc_levels`, `sumsub_webhook_logs`, `cpf_validation_data`
 
 ---
 
