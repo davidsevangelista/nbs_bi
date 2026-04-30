@@ -50,9 +50,8 @@ def _fmt_usd_safe(v: object) -> str:
     return fmt_usd(f) if pd.notna(f) else "—"
 
 
-# Earliest date for which ad spend tracking is considered reliable.
-# Spend before this date is excluded from campaign detection and ROI analysis.
-_TRACKING_START = "2026-04-12"
+# Company launch date — ad spend data before this is ignored.
+_TRACKING_START = "2025-08-15"
 
 # Meta Ads row colour in channel comparison chart.
 _META_COLOR = ROSE
@@ -978,7 +977,7 @@ class MetaAdsSection:
 
         import datetime as _dt
 
-        _default_start = max(min_date, _dt.date(2026, 4, 25))
+        _default_start = min_date
 
         # Reset date inputs when the data range grows (e.g. new platform rows added).
         _max_key = "ads_data_max_date"
