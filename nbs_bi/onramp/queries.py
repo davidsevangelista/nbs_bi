@@ -182,6 +182,50 @@ WHERE status = 'completed'
   AND created_at <  :end_date
 """
 
+# USDC SPL token mint address — used for swap fee calculation.
+_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+_CARD_FEES_DAILY_SQL = """
+SELECT
+    DATE(paid_at AT TIME ZONE 'UTC') AS rev_date,
+    COALESCE(SUM(amount_usdc::FLOAT), 0.0) AS card_fee_usd
+FROM card_annual_fees
+WHERE status = 'paid'
+  AND paid_at >= :start_date
+  AND paid_at <  :end_date
+GROUP BY 1
+ORDER BY 1
+"""
+
+_BILLING_DAILY_SQL = """
+SELECT
+    DATE(created_at AT TIME ZONE 'UTC') AS rev_date,
+    COALESCE(SUM(amount::FLOAT / 1000000.0), 0.0) AS billing_usd
+FROM billing_charges
+WHERE status = 'settled'
+  AND created_at >= :start_date
+  AND created_at <  :end_date
+GROUP BY 1
+ORDER BY 1
+"""
+
+_SWAPS_DAILY_SQL = """
+SELECT
+    DATE("timestamp" AT TIME ZONE 'UTC') AS rev_date,
+    COALESCE(SUM(
+        CASE
+            WHEN input_mint  = :usdc_mint THEN input_amount::FLOAT  / 1000000.0
+            WHEN output_mint = :usdc_mint THEN output_amount::FLOAT / 1000000.0
+            ELSE 0
+        END * platform_fee_bps::FLOAT / 10000.0
+    ), 0.0) AS swap_usd
+FROM swap_transactions
+WHERE "timestamp" >= :start_date
+  AND "timestamp" <  :end_date
+GROUP BY 1
+ORDER BY 1
+"""
+
 
 # user attribution: acquisition source, referral code, founder status — no date filter.
 # Joined Python-side to top_users via user_id.
@@ -651,3 +695,99 @@ class OnrampQueries:
 
         merged = fees.merge(billing, on="month", how="outer").fillna(0.0)
         return merged.sort_values("month").reset_index(drop=True)
+
+    def daily_revenue_by_product(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Daily gross revenue by product line across all users.
+
+        Reuses the same per-transaction exchange rate and NULL-safe BRL/USDC
+        split that ``OnrampReport`` uses for monthly revenue — avoids the
+        conversion_quotes NULL pattern where BRL columns are NULL on
+        usdc_to_brl rows and USDC columns are NULL on brl_to_usdc rows.
+
+        Args:
+            start_date: Override instance start_date (ISO date, inclusive).
+            end_date: Override instance end_date (ISO date, inclusive).
+
+        Returns:
+            DataFrame with columns ``date``, ``daily_rev_conversion_usd``,
+            ``daily_rev_card_fees_usd``, ``daily_rev_billing_usd``,
+            ``daily_rev_swap_usd``, ``daily_rev_usd``.
+            Days without revenue are filled with 0. Sorted by date.
+        """
+        params = self._date_params(start_date, end_date)
+
+        conv_df = self.conversions(start_date=start_date, end_date=end_date)
+        if not conv_df.empty:
+            conv_df["_date"] = (
+                pd.to_datetime(conv_df["created_at"], utc=True).dt.tz_convert(None).dt.date
+            )
+            rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(0, float("nan"))
+            conv_df["_conv_usd"] = (
+                conv_df["fee_amount_brl"].fillna(0.0) / rate
+                + conv_df["fee_amount_usdc"].fillna(0.0)
+                + conv_df["spread_revenue_brl"].fillna(0.0) / rate
+                + conv_df["spread_revenue_usdc"].fillna(0.0)
+            )
+            conv_daily = (
+                conv_df.groupby("_date")["_conv_usd"]
+                .sum()
+                .reset_index()
+                .rename(columns={"_date": "rev_date", "_conv_usd": "daily_rev_conversion_usd"})
+            )
+        else:
+            conv_daily = pd.DataFrame(columns=["rev_date", "daily_rev_conversion_usd"])
+
+        card_df = self._run("card_fees_daily", _CARD_FEES_DAILY_SQL, params)
+        card_df = card_df.rename(
+            columns={"rev_date": "rev_date", "card_fee_usd": "daily_rev_card_fees_usd"}
+        )
+
+        billing_df = self._run("billing_daily", _BILLING_DAILY_SQL, params)
+        billing_df = billing_df.rename(columns={"billing_usd": "daily_rev_billing_usd"})
+
+        swap_df = self._run("swaps_daily", _SWAPS_DAILY_SQL, {**params, "usdc_mint": _USDC_MINT})
+        swap_df = swap_df.rename(columns={"swap_usd": "daily_rev_swap_usd"})
+
+        _s, _e_excl = params["start_date"], params["end_date"]
+        all_dates = pd.DataFrame(
+            {
+                "rev_date": pd.date_range(
+                    start=_s,
+                    end=pd.Timestamp(_e_excl) - pd.Timedelta(days=1),
+                    freq="D",
+                ).date
+            }
+        )
+
+        result = all_dates
+        for frame, col in [
+            (conv_daily, "daily_rev_conversion_usd"),
+            (card_df, "daily_rev_card_fees_usd"),
+            (billing_df, "daily_rev_billing_usd"),
+            (swap_df, "daily_rev_swap_usd"),
+        ]:
+            if not frame.empty:
+                frame = frame.copy()
+                frame["rev_date"] = pd.to_datetime(frame["rev_date"]).dt.date
+                result = result.merge(frame[["rev_date", col]], on="rev_date", how="left")
+            else:
+                result[col] = 0.0
+
+        rev_cols = [
+            "daily_rev_conversion_usd",
+            "daily_rev_card_fees_usd",
+            "daily_rev_billing_usd",
+            "daily_rev_swap_usd",
+        ]
+        for col in rev_cols:
+            result[col] = result[col].fillna(0.0).astype("float64")
+
+        result["daily_rev_usd"] = result[rev_cols].sum(axis=1)
+        result = result.rename(columns={"rev_date": "date"})
+        result["date"] = pd.to_datetime(result["date"])
+        return result.reset_index(drop=True)

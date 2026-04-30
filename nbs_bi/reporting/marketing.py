@@ -1076,9 +1076,19 @@ class MetaAdsSection:
             _au_start = str(cum_rev_df["date"].min().date())
             _au_end = str((pd.Timestamp.today().normalize() + pd.Timedelta(days=1)).date())
             try:
-                all_users_rev_df = analyzer.all_users_daily_revenue(_au_start, _au_end)
+                from nbs_bi.config import INCLUDE_SWAP_FEES
+                from nbs_bi.onramp import OnrampQueries
+
+                all_users_rev_df = OnrampQueries(
+                    start_date=_au_start, end_date=_au_end
+                ).daily_revenue_by_product()
+                if not INCLUDE_SWAP_FEES and not all_users_rev_df.empty:
+                    all_users_rev_df["daily_rev_usd"] -= all_users_rev_df["daily_rev_swap_usd"]
+                    all_users_rev_df["daily_rev_swap_usd"] = 0.0
             except Exception:
-                logging.getLogger(__name__).warning("all_users_daily_revenue failed", exc_info=True)
+                logging.getLogger(__name__).warning(
+                    "daily_revenue_by_product failed", exc_info=True
+                )
 
         kyc_done = (
             analyzer.cohort_kyc_count(latest_id, referral_code=referral_code)
