@@ -31,7 +31,7 @@ READONLY_DATABASE_URL = os.environ.get("READONLY_DATABASE_URL", "")
 ADS_DATABASE_URL = os.environ.get("ADS_DATABASE_URL", "")
 
 # Parquet cache directory for DB query results (set DB_CACHE_DIR= to disable)
-DB_CACHE_DIR = os.getenv("DB_CACHE_DIR", "")
+DB_CACHE_DIR = os.getenv("DB_CACHE_DIR", str(PROCESSED_DIR / "db_cache"))
 
 # ---------------------------------------------------------------------------
 # Revenue feature flags

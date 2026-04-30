@@ -104,6 +104,8 @@ FROM card_transactions
 WHERE status = 'completed'
   AND transaction_type = 'spend'
   AND posted_at IS NOT NULL
+  AND (:date_from IS NULL OR posted_at::date >= :date_from)
+  AND (:date_to   IS NULL OR posted_at::date <= :date_to)
 ORDER BY posted_at
 """
 
@@ -178,17 +180,16 @@ def load_card_transactions(
         raise RuntimeError("No database URL configured. Set READONLY_DATABASE_URL in .env.")
     engine = sa.create_engine(url)
     with engine.connect() as conn:
-        raw = pd.read_sql(sa.text(_SQL), conn)
+        raw = pd.read_sql(
+            sa.text(_SQL),
+            conn,
+            params={"date_from": date_from, "date_to": date_to},
+        )
     logger.info("Loaded %d card spend rows from DB", len(raw))
     raw["amount_usd"] = raw["amount"].astype("float64") / 100
     raw["posted_at"] = pd.to_datetime(raw["posted_at"], utc=True)
     raw = raw[raw["amount_usd"] > 0].copy()
-    raw = raw[["posted_at", "amount_usd"]]
-    if date_from:
-        raw = raw[raw["posted_at"].dt.date >= date_from]
-    if date_to:
-        raw = raw[raw["posted_at"].dt.date <= date_to]
-    return raw
+    return raw[["posted_at", "amount_usd"]]
 
 
 _SQL_ACTIVE_CARDS = """\

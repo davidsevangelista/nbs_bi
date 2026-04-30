@@ -1168,7 +1168,7 @@ class CardAnalyticsSection:
         )
 
     @staticmethod
-    @st.cache_data(show_spinner="Loading card revenue…")
+    @st.cache_data(ttl=3600, show_spinner="Loading card revenue…")
     def _load_card_revenue(db_url: str, start: str, end: str) -> dict:
         """Query annual fee + billing charge revenue totals for the date range.
 
@@ -1202,7 +1202,7 @@ class CardAnalyticsSection:
         return {"annual_fees_usd": float(fees or 0), "billing_usd": float(billing or 0)}
 
     @staticmethod
-    @st.cache_data(show_spinner="Loading card transactions…")
+    @st.cache_data(ttl=3600, show_spinner="Loading card transactions…")
     def _load(
         db_url: str,
         date_from: date | None,
@@ -1223,7 +1223,7 @@ class CardAnalyticsSection:
         return load_card_transactions(date_from=date_from, date_to=date_to, db_url=db_url)
 
     @staticmethod
-    @st.cache_data(show_spinner="Loading top card spenders…")
+    @st.cache_data(ttl=3600, show_spinner="Loading top card spenders…")
     def _load_top_spenders(
         db_url: str,
         date_from: date | None,
