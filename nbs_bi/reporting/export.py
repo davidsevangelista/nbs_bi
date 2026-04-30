@@ -924,10 +924,6 @@ def _add_kpi_strip(
         tx_rate = 100.0 * transacting / cohort_users
         secondary.append(("Transacting Rate", f"{tx_rate:.1f}%"))
 
-    if kyc_done > 0 and total_spend > 0:
-        cost_per_kyc = total_spend / kyc_done
-        secondary.append(("Cost per KYC", fmt_usd(cost_per_kyc)))
-
     payback = _payback_days(cum_profit_df)
     secondary.append(("Payback Period", f"{payback}d" if payback is not None else "not yet"))
 
