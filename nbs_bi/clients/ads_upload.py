@@ -82,9 +82,7 @@ def _filter_bank_statement(xlsx_path: Path) -> pd.DataFrame:
     """
     df = pd.read_excel(xlsx_path, header=None, skiprows=2)
     df.columns = _BANK_STMT_COLS
-    mask = df["Descricao"].str.contains("FACEBOOK", case=False, na=False) | (
-        df["Subcategoria"].str.strip().str.lower() == "marketing - meta ads"
-    )
+    mask = df["Descricao"].str.contains("FACEBOOK", case=False, na=False)
     fb = df[mask].copy()
     fb["id"] = fb["ID"].astype(str)
     fb["date"] = pd.to_datetime(fb["Data"]).dt.date
