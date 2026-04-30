@@ -882,7 +882,6 @@ def _add_kpi_strip(
     total_spend = float(summary["total_spend_usd"].sum())
     total_rev = float(summary["total_revenue_usd"].sum())
     transacting = int(summary["transacting_users"].sum())
-    cohort_users = int(summary["cohort_users"].sum()) if "cohort_users" in summary.columns else 0
     overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
     kyc_cost = kyc_done * _KYC_COST_USD
     cac = (total_spend + kyc_cost) / transacting if transacting > 0 else float("nan")
@@ -917,19 +916,6 @@ def _add_kpi_strip(
     story.append(_build_kpi_table(primary, s, _CONTENT_W))
     story.append(Spacer(1, 4))
 
-    # --- Secondary KPI row: operational metrics ---
-    secondary: list[tuple[str, str]] = []
-
-    if cohort_users > 0 and transacting > 0:
-        tx_rate = 100.0 * transacting / cohort_users
-        secondary.append(("Transacting Rate", f"{tx_rate:.1f}%"))
-
-    payback = _payback_days(cum_profit_df)
-    secondary.append(("Payback Period", f"{payback}d" if payback is not None else "not yet"))
-
-    if secondary:
-        story.append(_build_kpi_table(secondary, s, _CONTENT_W))
-        story.append(Spacer(1, 4))
 
 
 def _add_funnel(story: list[Any], s: dict[str, ParagraphStyle], funnel: dict) -> None:
