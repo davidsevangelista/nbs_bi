@@ -600,7 +600,7 @@ def _mpl_daily_rev_all_vs_cohort(
     cohort_df: pd.DataFrame | None,
     spend_agg: pd.DataFrame,
 ) -> plt.Figure | None:
-    """Stacked bars: non-cohort platform revenue (muted) + cohort revenue piled on top.
+    """Full stacked bars (total revenue) with a dot+line marking the cohort boundary.
 
     Args:
         all_users_df: ``CampaignAnalyzer.all_users_daily_revenue()`` output.
@@ -614,7 +614,6 @@ def _mpl_daily_rev_all_vs_cohort(
         ("daily_rev_conversion_usd", _EMERALD, "Conversion"),
         ("daily_rev_card_fees_usd", _TEAL, "Card Fees"),
         ("daily_rev_billing_usd", _BLUE, "Billing"),
-        ("daily_rev_swap_usd", _AMBER, "Swap Fees"),
     ]
     available = [(c, color, lbl) for c, color, lbl in rev_cols if c in all_users_df.columns]
     if not available or all_users_df.empty:
@@ -638,35 +637,41 @@ def _mpl_daily_rev_all_vs_cohort(
         if col not in coh.columns:
             coh[col] = 0.0
 
+    # Boundary: non-cohort total per day
+    all_total = sum(merged[col].values for col, _, _ in available)
+    coh_total = sum(coh[col].values for col, _, _ in available)
+    boundary = np.clip(all_total - coh_total, 0, None)
+
     dates = merged["date"].values
 
     fig, ax1 = plt.subplots(figsize=(7.5, 3.6))
-    _mpl_style(ax1, "Daily Platform Revenue: Other Users + Cohort Contribution (USD)")
+    _mpl_style(ax1, "Daily Platform Revenue — Cohort Boundary (USD)")
 
-    # Layer 1: non-cohort (all_users minus cohort), muted
+    # Total all-users stacked bars
     baseline = np.zeros(len(merged))
     for col, color, lbl in available:
-        rest = np.clip(merged[col].values - coh[col].values, 0, None)
-        ax1.bar(dates, rest, bottom=baseline, color=color, alpha=0.3, width=0.8, label=lbl)
-        baseline = baseline + rest
-
-    # Layer 2: cohort revenue piled on top, full opacity
-    for col, color, lbl in available:
-        y = coh[col].values
-        ax1.bar(
-            dates,
-            y,
-            bottom=baseline,
-            color=color,
-            alpha=0.9,
-            width=0.8,
-            label=f"{lbl} — Cohort",
-        )
+        y = merged[col].values
+        ax1.bar(dates, y, bottom=baseline, color=color, alpha=0.85, width=0.8, label=lbl)
         baseline = baseline + y
+
+    # Dot+line at the cohort boundary
+    ax1.plot(
+        dates,
+        boundary,
+        color="#ffffff",
+        lw=1.5,
+        marker="o",
+        markersize=5,
+        markerfacecolor="#ffffff",
+        markeredgecolor="#374151",
+        markeredgewidth=0.8,
+        label="Cohort starts here",
+        zorder=5,
+    )
 
     ax1.set_ylabel("Revenue (USD)", fontsize=7)
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
-    ax1.legend(fontsize=5, loc="upper left", ncol=2)
+    ax1.legend(fontsize=6, loc="upper left", ncol=2)
 
     has_spend = merged["daily_spend_usd"].gt(0).any()
     if has_spend:
