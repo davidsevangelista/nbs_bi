@@ -658,6 +658,8 @@ def _fig_daily_revenue_vs_spend(
     spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
 
     merged = rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
+    merged["total_rev_usd"] = sum(merged[c] for c, _, _ in available)
+    merged["rev_rolling_7d"] = merged["total_rev_usd"].rolling(7, min_periods=1).mean()
 
     fig = go.Figure()
     for col, lbl, color in available:
@@ -669,6 +671,16 @@ def _fig_daily_revenue_vs_spend(
                 marker_color=color,
             )
         )
+
+    fig.add_trace(
+        go.Scatter(
+            x=merged["date"].astype(str),
+            y=merged["rev_rolling_7d"],
+            name="7-Day Avg Revenue",
+            mode="lines",
+            line=dict(color="#ffffff", width=2),
+        )
+    )
 
     has_spend = merged["daily_spend_usd"].gt(0).any()
     if has_spend:
@@ -793,6 +805,20 @@ def _fig_daily_rev_all_vs_cohort(
                 yaxis="y2",
             )
         )
+
+    # 7-day rolling average of total platform revenue (left axis)
+    total_rev = sum(merged[col] for col, _, _ in available)
+    rolling_avg = total_rev.rolling(7, min_periods=1).mean()
+    fig.add_trace(
+        go.Scatter(
+            x=dates_str,
+            y=rolling_avg,
+            name="7-Day Avg Revenue",
+            mode="lines",
+            line=dict(color="#FBBF24", width=2.5),
+            yaxis="y",
+        )
+    )
 
     layout = panel("Daily Platform Revenue — Cohort Boundary")
     layout["barmode"] = "stack"
@@ -1077,7 +1103,7 @@ class MetaAdsSection:
 
         all_users_rev_df = pd.DataFrame()
         if analyzer is not None and cum_rev_df is not None and not cum_rev_df.empty:
-            _au_start = str(cum_rev_df["date"].min().date())
+            _au_start = _TRACKING_START  # always show from company launch (Aug 2025)
             _au_end = str((pd.Timestamp.today().normalize() + pd.Timedelta(days=1)).date())
             try:
                 from nbs_bi.config import INCLUDE_SWAP_FEES
