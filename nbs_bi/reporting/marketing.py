@@ -979,12 +979,17 @@ class MetaAdsSection:
 
         _default_start = min_date
 
-        # Reset date inputs when the data range grows (e.g. new platform rows added).
+        # Reset date inputs when the data range changes (earlier or later data added).
         _max_key = "ads_data_max_date"
-        if st.session_state.get(_max_key) != str(max_date):
+        _min_key = "ads_data_min_date"
+        if (
+            st.session_state.get(_max_key) != str(max_date)
+            or st.session_state.get(_min_key) != str(min_date)
+        ):
             st.session_state["ads_start_date"] = _default_start
             st.session_state["ads_end_date"] = max_date
             st.session_state[_max_key] = str(max_date)
+            st.session_state[_min_key] = str(min_date)
 
         col_start, col_end = st.columns(2)
         with col_start:
