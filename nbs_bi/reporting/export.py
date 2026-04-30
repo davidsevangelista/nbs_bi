@@ -600,7 +600,7 @@ def _mpl_daily_rev_all_vs_cohort(
     cohort_df: pd.DataFrame | None,
     spend_agg: pd.DataFrame,
 ) -> plt.Figure | None:
-    """Platform-wide daily revenue (muted bars) with cohort stackplot overlay + spend line.
+    """Stacked bars: non-cohort platform revenue (muted) + cohort revenue piled on top.
 
     Args:
         all_users_df: ``CampaignAnalyzer.all_users_daily_revenue()`` output.
@@ -625,28 +625,44 @@ def _mpl_daily_rev_all_vs_cohort(
     spend = spend_agg[["date", "daily_spend_usd"]].copy()
     spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
     merged = all_rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
+
+    # Align cohort to merged date index
+    coh = pd.DataFrame({"date": merged["date"]})
+    if cohort_df is not None and not cohort_df.empty:
+        c = cohort_df[
+            ["date"] + [col for col, _, _ in available if col in cohort_df.columns]
+        ].copy()
+        c["date"] = pd.to_datetime(c["date"]).dt.normalize()
+        coh = coh.merge(c, on="date", how="left").fillna(0.0)
+    for col, _, _ in available:
+        if col not in coh.columns:
+            coh[col] = 0.0
+
     dates = merged["date"].values
 
     fig, ax1 = plt.subplots(figsize=(7.5, 3.6))
-    _mpl_style(ax1, "Platform Revenue vs Cohort Contribution + Ad Spend (USD)")
+    _mpl_style(ax1, "Daily Platform Revenue: Other Users + Cohort Contribution (USD)")
 
-    # All-users stacked bars (muted)
+    # Layer 1: non-cohort (all_users minus cohort), muted
     baseline = np.zeros(len(merged))
     for col, color, lbl in available:
-        y = merged[col].values
-        ax1.bar(dates, y, bottom=baseline, color=color, alpha=0.2, width=0.8, label=f"{lbl} — All")
-        baseline = baseline + y
+        rest = np.clip(merged[col].values - coh[col].values, 0, None)
+        ax1.bar(dates, rest, bottom=baseline, color=color, alpha=0.3, width=0.8, label=lbl)
+        baseline = baseline + rest
 
-    # Cohort stackplot overlay (emphasis)
-    if cohort_df is not None and not cohort_df.empty:
-        coh = cohort_df[["date"] + [c for c, _, _ in available if c in cohort_df.columns]].copy()
-        coh["date"] = pd.to_datetime(coh["date"]).dt.normalize()
-        coh = merged[["date"]].merge(coh, on="date", how="left").fillna(0.0)
-        layers = [coh[col].values for col, _, _ in available if col in coh.columns]
-        colors = [color for col, color, _ in available if col in coh.columns]
-        labels = [f"{lbl} — Cohort" for col, _, lbl in available if col in coh.columns]
-        if layers:
-            ax1.stackplot(dates, *layers, colors=colors, alpha=0.7, labels=labels)
+    # Layer 2: cohort revenue piled on top, full opacity
+    for col, color, lbl in available:
+        y = coh[col].values
+        ax1.bar(
+            dates,
+            y,
+            bottom=baseline,
+            color=color,
+            alpha=0.9,
+            width=0.8,
+            label=f"{lbl} — Cohort",
+        )
+        baseline = baseline + y
 
     ax1.set_ylabel("Revenue (USD)", fontsize=7)
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))

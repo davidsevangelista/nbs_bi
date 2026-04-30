@@ -704,7 +704,7 @@ def _fig_daily_rev_all_vs_cohort(
     cohort_df: pd.DataFrame,
     spend_agg: pd.DataFrame,
 ) -> go.Figure | None:
-    """Platform-wide daily revenue (muted bars) with cohort area overlay + ad spend.
+    """Stacked bars: non-cohort platform revenue (muted) + cohort revenue piled on top.
 
     Args:
         all_users_df: Output of ``CampaignAnalyzer.all_users_daily_revenue()``.
@@ -731,52 +731,51 @@ def _fig_daily_rev_all_vs_cohort(
     spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
 
     merged = all_rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
-    dates_str = merged["date"].astype(str)
 
-    # Cohort alignment
-    cohort_aligned: dict[str, list[float]] = {}
+    # Align cohort to merged date index
+    coh = pd.DataFrame({"date": merged["date"]})
     if not cohort_df.empty:
-        coh = cohort_df[["date"] + [c for c, _, _ in available if c in cohort_df.columns]].copy()
-        coh["date"] = pd.to_datetime(coh["date"]).dt.normalize()
-        coh = merged[["date"]].merge(coh, on="date", how="left").fillna(0.0)
-        for col, _, _ in available:
-            if col in coh.columns:
-                cohort_aligned[col] = coh[col].tolist()
+        _coh_cols = ["date"] + [col for col, _, _ in available if col in cohort_df.columns]
+        c = cohort_df[_coh_cols].copy()
+        c["date"] = pd.to_datetime(c["date"]).dt.normalize()
+        coh = coh.merge(c, on="date", how="left").fillna(0.0)
+    for col, _, _ in available:
+        if col not in coh.columns:
+            coh[col] = 0.0
 
+    dates_str = merged["date"].astype(str)
     fig = go.Figure()
 
-    # Layer 1: all-users bars (muted background)
+    # Layer 1: non-cohort portion (all_users minus cohort), muted
+    for col, color, lbl in available:
+        rest = (merged[col] - coh[col]).clip(lower=0)
+        fig.add_trace(
+            go.Bar(
+                x=dates_str,
+                y=rest,
+                name=f"{lbl}",
+                marker_color=color,
+                opacity=0.35,
+                marker_line_width=0,
+                legendgroup="other",
+                legendgrouptitle_text="Other Users",
+            )
+        )
+
+    # Layer 2: cohort revenue piled on top, full opacity
     for col, color, lbl in available:
         fig.add_trace(
             go.Bar(
                 x=dates_str,
-                y=merged[col],
-                name=f"{lbl} — All",
+                y=coh[col],
+                name=f"{lbl}",
                 marker_color=color,
-                opacity=0.2,
+                opacity=0.9,
                 marker_line_width=0,
-                legendgroup="all",
-                legendgrouptitle_text="All Users",
+                legendgroup="cohort",
+                legendgrouptitle_text="Cohort",
             )
         )
-
-    # Layer 2: cohort stacked area (emphasis overlay)
-    for col, color, lbl in available:
-        if col in cohort_aligned:
-            fig.add_trace(
-                go.Scatter(
-                    x=dates_str,
-                    y=cohort_aligned[col],
-                    name=f"{lbl} — Cohort",
-                    stackgroup="cohort",
-                    fill="tonexty",
-                    fillcolor=color,
-                    opacity=0.75,
-                    line=dict(width=0, color=color),
-                    legendgroup="cohort",
-                    legendgrouptitle_text="Cohort",
-                )
-            )
 
     # Layer 3: ad spend on right axis
     has_spend = merged["daily_spend_usd"].gt(0).any()
@@ -792,7 +791,7 @@ def _fig_daily_rev_all_vs_cohort(
             )
         )
 
-    layout = panel("Platform Revenue vs Cohort Contribution + Ad Spend")
+    layout = panel("Daily Platform Revenue: Other Users + Cohort Contribution")
     layout["barmode"] = "stack"
     layout["yaxis"]["title"] = "Revenue (USD)"
     layout["xaxis"]["title"] = "Date"
