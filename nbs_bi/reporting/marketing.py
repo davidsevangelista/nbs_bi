@@ -637,6 +637,68 @@ def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _fig_daily_revenue_vs_spend(
+    cum_rev_df: pd.DataFrame,
+    spend_agg: pd.DataFrame,
+) -> go.Figure | None:
+    """Stacked bars: daily revenue by product line + total ad spend on right axis."""
+    rev_cols = [
+        ("daily_rev_conversion_usd", "Conversion", TEAL),
+        ("daily_rev_card_fees_usd", "Card Fees", AMBER),
+        ("daily_rev_billing_usd", "Billing", VIOLET),
+        ("daily_rev_swap_usd", "Swap Fees", BLUE),
+    ]
+    available = [(c, label, color) for c, label, color in rev_cols if c in cum_rev_df.columns]
+    if not available:
+        return None
+
+    rev = cum_rev_df[["date"] + [c for c, _, _ in available]].copy()
+    rev["date"] = pd.to_datetime(rev["date"]).dt.normalize()
+
+    spend = spend_agg[["date", "daily_spend_usd"]].copy()
+    spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
+
+    merged = rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
+
+    fig = go.Figure()
+    for col, lbl, color in available:
+        fig.add_trace(
+            go.Bar(
+                x=merged["date"].astype(str),
+                y=merged[col],
+                name=lbl,
+                marker_color=color,
+            )
+        )
+
+    has_spend = merged["daily_spend_usd"].gt(0).any()
+    if has_spend:
+        fig.add_trace(
+            go.Scatter(
+                x=merged["date"].astype(str),
+                y=merged["daily_spend_usd"],
+                name="Total Ad Spend (USD)",
+                mode="lines+markers",
+                line=dict(color=ROSE, width=2, dash="dot"),
+                yaxis="y2",
+            )
+        )
+
+    layout = panel("Daily Revenue vs Ad Spend")
+    layout["barmode"] = "stack"
+    layout["yaxis"]["title"] = "Revenue (USD)"
+    layout["xaxis"]["title"] = "Date"
+    if has_spend:
+        layout["yaxis2"] = dict(
+            title="Ad Spend (USD)",
+            overlaying="y",
+            side="right",
+            gridcolor="rgba(0,0,0,0)",
+        )
+    fig.update_layout(**layout)
+    return fig
+
+
 def _fig_channel_comparison(comparison: pd.DataFrame) -> go.Figure | None:
     """Horizontal bar: avg operational profit per acquisition channel."""
     if comparison.empty:
@@ -1212,6 +1274,11 @@ class MetaAdsSection:
             fig4 = _fig_campaign_daily(daily)
             if fig4:
                 st.plotly_chart(fig4, width="stretch")
+
+        if cum_rev_df is not None and not cum_rev_df.empty and not spend_df.empty:
+            fig_rev_spend = _fig_daily_revenue_vs_spend(cum_rev_df, spend_df)
+            if fig_rev_spend:
+                st.plotly_chart(fig_rev_spend, width="stretch")
 
         col1, col2 = st.columns(2)
         with col1:
