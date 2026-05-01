@@ -98,6 +98,8 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] Dark NBS green theme: Plotly charts, `theme.py` constants, and `overview.py` CSS all aligned to dark shell (`#0D1117` bg / `#161B22` plot bg / `#00E676` accent)
 - [x] Full English translation: Cards tab and Conversions (Ramp) tab; activation funnels use `go.Funnel` (correct top-to-bottom direction)
 - [x] Deployed to **Streamlit Community Cloud** (personal GitHub mirror); viewer auth via email whitelist; `READONLY_DATABASE_URL` injected as secret
+- [x] `notebooks/marketing_ads_analysis.ipynb` — revenue heatmap: day-of-week × hour (BRT), all 3 sources (conversion spread+fee, card annual fees, billing charges); two independent Plotly dropdowns below chart (Month + Source, `direction='up'` so list opens toward chart); `restyle` swaps `z` on single trace; per-day average revenue annotations above each column (`$X`, updates with each dropdown selection via `args[1]` annotation injection); revenue formula matches `daily_revenue_by_product()`; reuses `oq._engine_lazy` and `_to_exclusive_end`
+- [x] `notebooks/marketing_ads_analysis.ipynb` — PDF/HTML export fix: added `pio.renderers.default = 'notebook'` to imports cell so Plotly outputs `text/html` (embeddable by nbconvert) instead of `application/vnd.plotly.v1+json` (unrenderable); notebook must be re-run then exported via `jupyter nbconvert --to html`
 
 ---
 
@@ -118,7 +120,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-04-29 (v2.1.0)
+## Current State — 2026-05-01 (v2.3.1)
 
 ### What's been built
 

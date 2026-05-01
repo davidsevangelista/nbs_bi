@@ -7,6 +7,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-05-01
+
+Notebook HTML/PDF export fix: Plotly charts now appear in exported output.
+
+### Fixed
+- `notebooks/marketing_ads_analysis.ipynb` — added `import plotly.io as pio; pio.renderers.default = 'notebook'` to the imports cell; Plotly was storing figures as `application/vnd.plotly.v1+json` which nbconvert cannot embed; the `'notebook'` renderer outputs `text/html` instead, making charts visible after `jupyter nbconvert --to html`
+
+## [2.3.0] — 2026-05-01
+
+Revenue heatmap: average daily revenue labels per day-of-week column; dropdown direction fix.
+
+### Added
+- `notebooks/marketing_ads_analysis.ipynb` — per-day average revenue annotations above each heatmap column: `_day_avgs()` computes `total_rev / n_distinct_dates` for each day-of-week; `_top_annotations()` renders them as bold grey `$X` labels at `y=1.0, yref='paper'` (just above the plot); `_all_annotations()` combines top labels with the bottom dropdown labels into a single list
+- Annotations update automatically when month or source dropdown is changed — each button's `args[1]` includes the correct `_all_annotations(mo, so)` for that selection
+
+### Fixed
+- `notebooks/marketing_ads_analysis.ipynb` — dropdown `direction` changed from `'down'` to `'up'`; with menus positioned at `y=-0.25` (below the chart), `direction='down'` caused the option list to open further off-screen and be invisible; `'up'` opens the list toward the chart where it is visible
+
+## [2.2.0] — 2026-05-01
+
+Revenue heatmap added to the marketing analysis notebook: all revenue sources, day-of-week × hour (BRT), with independent month and source dropdowns.
+
+### Added
+- `notebooks/marketing_ads_analysis.ipynb` — "Revenue Heatmap — Day of Week × Hour (BRT)" section with a 24×7 Plotly heatmap; x-axis = day of week, y-axis = hour of day in Brasilia local time; color intensity = total revenue (USD)
+- Heatmap covers all three platform revenue sources combined: `conversion` (spread + fee, BRL converted via per-row `exchange_rate` — same formula as `daily_revenue_by_product()`), `card_fee` (`card_annual_fees.amount_usdc`), and `card_transaction` (`billing_charges.amount / 1_000_000`)
+- Two independent Plotly `updatemenus` dropdowns positioned below the x-axis: **Month** (All months + each `YYYY-MM`) and **Source** (All sources + conversion / card_fee / card_transaction); each button calls `restyle` to swap `z` on a single trace — avoids trace-count explosion
+- All (month × source) pivots precomputed at render time into a dict keyed by `(month_opt, source_opt)`; switching between options is instant with no re-query
+- Card fee and billing data fetched via `oq._engine_lazy` (reuses the existing `OnrampQueries` engine, no second connection pool); `_to_exclusive_end` applied for consistent inclusive-end date handling
+
+### Changed
+- Dropdown labels changed from "Total" / month strings to "All months" / "All sources" for clarity
+- Dropdowns repositioned from `y=1.18` (above the title) to `y=-0.15` (below the x-axis); labels at `y=-0.08`; `margin` changed from `t=120` to `t=60, b=120`
+
 ## [2.1.0] — 2026-04-29
 
 Daily revenue charts added to Marketing - Ads tab and PDF; conversion revenue NULL bug fixed; all-users revenue centralized in `OnrampQueries`.

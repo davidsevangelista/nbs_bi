@@ -64,9 +64,9 @@ def panel(title: str = "") -> dict:
         paper_bgcolor=BG,
         plot_bgcolor=PLOT_BG,
         font=dict(color=TEXT, size=12),
-        xaxis=dict(gridcolor=GRID, showgrid=True),
-        yaxis=dict(gridcolor=GRID, showgrid=True),
-        margin=dict(t=40, b=60, l=10, r=10),
+        xaxis=dict(gridcolor=GRID, showgrid=True, automargin=True),
+        yaxis=dict(gridcolor=GRID, showgrid=True, automargin=True),
+        margin=dict(t=40, b=60, l=60, r=40),
         legend=dict(orientation="h", y=-0.2),
     )
 

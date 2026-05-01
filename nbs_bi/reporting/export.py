@@ -567,6 +567,10 @@ def _mpl_daily_revenue_vs_spend(
         ax1.bar(dates, y, bottom=baseline, color=color, alpha=0.75, label=lbl, width=0.8)
         baseline = baseline + y
 
+    total_rev = sum(merged[c].values for c, _, _ in available)
+    rolling_avg = pd.Series(total_rev).rolling(7, min_periods=1).mean().values
+    ax1.plot(dates, rolling_avg, color=_AMBER, lw=2, label="7-Day Avg Revenue", zorder=5)
+
     ax1.set_ylabel("Revenue (USD)", fontsize=7)
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
     ax1.legend(fontsize=6, loc="upper left")
@@ -668,6 +672,10 @@ def _mpl_daily_rev_all_vs_cohort(
         label="Cohort starts here",
         zorder=5,
     )
+
+    total_rev = sum(merged[col].values for col, _, _ in available)
+    rolling_avg = pd.Series(total_rev).rolling(7, min_periods=1).mean().values
+    ax1.plot(dates, rolling_avg, color=_AMBER, lw=2, label="7-Day Avg Revenue", zorder=5)
 
     ax1.set_ylabel("Revenue (USD)", fontsize=7)
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))

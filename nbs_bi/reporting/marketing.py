@@ -645,7 +645,6 @@ def _fig_daily_revenue_vs_spend(
         ("daily_rev_conversion_usd", "Conversion", TEAL),
         ("daily_rev_card_fees_usd", "Card Fees", AMBER),
         ("daily_rev_billing_usd", "Billing", VIOLET),
-        ("daily_rev_swap_usd", "Swap Fees", BLUE),
     ]
     available = [(c, label, color) for c, label, color in rev_cols if c in cum_rev_df.columns]
     if not available:
@@ -777,12 +776,12 @@ def _fig_daily_rev_all_vs_cohort(
             )
         )
 
-    # Dot+line at the cohort boundary (left axis)
+    # Cohort revenue from zero — readable directly off the y-axis
     fig.add_trace(
         go.Scatter(
             x=dates_str,
-            y=boundary,
-            name="Cohort starts here",
+            y=coh_total,
+            name="Cohort Revenue",
             mode="lines+markers",
             line=dict(color="#ffffff", width=1.5),
             marker=dict(
@@ -792,7 +791,7 @@ def _fig_daily_rev_all_vs_cohort(
         )
     )
 
-    # Ad spend on right axis
+    # Ad spend on same (left) axis as revenue
     has_spend = merged["daily_spend_usd"].gt(0).any()
     if has_spend:
         fig.add_trace(
@@ -802,7 +801,7 @@ def _fig_daily_rev_all_vs_cohort(
                 name="Total Ad Spend (USD)",
                 mode="lines+markers",
                 line=dict(color=ROSE, width=2, dash="dot"),
-                yaxis="y2",
+                yaxis="y",
             )
         )
 
@@ -822,15 +821,8 @@ def _fig_daily_rev_all_vs_cohort(
 
     layout = panel("Daily Platform Revenue — Cohort Boundary")
     layout["barmode"] = "stack"
-    layout["yaxis"]["title"] = "Revenue (USD)"
+    layout["yaxis"]["title"] = "Revenue / Ad Spend (USD)"
     layout["xaxis"]["title"] = "Date"
-    if has_spend:
-        layout["yaxis2"] = dict(
-            title="Ad Spend (USD)",
-            overlaying="y",
-            side="right",
-            gridcolor="rgba(0,0,0,0)",
-        )
     fig.update_layout(**layout)
     return fig
 
