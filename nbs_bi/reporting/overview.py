@@ -335,7 +335,6 @@ def _fig_revenue_composition_7d(daily_rev: pd.DataFrame) -> go.Figure | None:
         ("daily_rev_conversion_usd", "Conversions", TEAL),
         ("daily_rev_card_fees_usd", "Card Fees", AMBER),
         ("daily_rev_billing_usd", "Card Billing", VIOLET),
-        ("daily_rev_swap_usd", "Swaps", BLUE),
     ]
     fig = go.Figure()
     for col, label, color in traces:
