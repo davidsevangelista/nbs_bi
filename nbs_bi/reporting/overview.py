@@ -504,6 +504,9 @@ class OverviewSection:
         if fig is None:
             st.info("No revenue data available for the last 7 days.")
             return
+        col = "daily_rev_usd"
+        total = float(self._rev7d[col].sum()) if col in self._rev7d.columns else 0.0
+        st.metric("Total Revenue — Last 7 Days", fmt_usd(total))
         st.plotly_chart(fig, use_container_width=True)
 
     def _render_revenue_trend(self) -> None:
