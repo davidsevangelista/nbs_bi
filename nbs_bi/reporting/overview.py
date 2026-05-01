@@ -503,6 +503,7 @@ class OverviewSection:
         """Render full-width stacked bar: revenue by product for the last 7 days."""
         fig = _fig_revenue_composition_7d(self._rev7d)
         if fig is None:
+            st.info("No revenue data available for the last 7 days.")
             return
         st.plotly_chart(fig, use_container_width=True)
 

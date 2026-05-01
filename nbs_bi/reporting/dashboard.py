@@ -72,11 +72,16 @@ def _load_revenue_7d(db_url: str) -> pd.DataFrame:
     """
     today = date.today()
     start = (today - timedelta(days=6)).isoformat()
-    end = today.isoformat()
+    # end_date convention in OnrampQueries is inclusive; _run adds +1 internally.
+    # Pass tomorrow so the date spine built inside daily_revenue_by_product includes today.
+    end = (today + timedelta(days=1)).isoformat()
     try:
         q = OnrampQueries(start_date=start, end_date=end, db_url=db_url)
         return q.daily_revenue_by_product()
-    except Exception:
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).error("_load_revenue_7d failed: %s", exc, exc_info=True)
         return pd.DataFrame()
 
 
