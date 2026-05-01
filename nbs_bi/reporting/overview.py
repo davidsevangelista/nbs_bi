@@ -319,21 +319,69 @@ def _fig_funnel(funnel: dict) -> go.Figure | None:
 # ---------------------------------------------------------------------------
 
 
+def _fig_revenue_composition_7d(daily_rev: pd.DataFrame) -> go.Figure | None:
+    """Stacked bar: daily revenue by product line for the last 7 days (USD).
+
+    Args:
+        daily_rev: DataFrame with columns date, daily_rev_conversion_usd,
+            daily_rev_card_fees_usd, daily_rev_billing_usd, daily_rev_swap_usd.
+
+    Returns:
+        Plotly Figure or None if data is empty.
+    """
+    if _empty(daily_rev):
+        return None
+    traces = [
+        ("daily_rev_conversion_usd", "Conversions", TEAL),
+        ("daily_rev_card_fees_usd", "Card Fees", AMBER),
+        ("daily_rev_billing_usd", "Card Billing", VIOLET),
+        ("daily_rev_swap_usd", "Swaps", BLUE),
+    ]
+    fig = go.Figure()
+    for col, label, color in traces:
+        if col not in daily_rev.columns:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=daily_rev["date"],
+                y=daily_rev[col],
+                name=label,
+                marker_color=color,
+            )
+        )
+    layout = panel("Revenue Composition — Last 7 Days (USD)")
+    layout["barmode"] = "stack"
+    layout["yaxis"]["title"] = "USD"
+    layout["xaxis"]["dtick"] = "D1"
+    layout["xaxis"]["tickformat"] = "%b %d"
+    fig.update_layout(**layout)
+    return fig
+
+
 class OverviewSection:
     """Streamlit rendering for the Overview tab (Tab 1).
 
     Args:
         ramp_report: Dict returned by ``OnrampReport.build()``.
         client_report: Dict returned by ``ClientReport.build()``.
+        revenue_7d: DataFrame from ``OnrampQueries.daily_revenue_by_product()``
+            for the last 7 days. Optional — chart is hidden when absent.
     """
 
-    def __init__(self, ramp_report: dict, client_report: dict) -> None:
+    def __init__(
+        self,
+        ramp_report: dict,
+        client_report: dict,
+        revenue_7d: pd.DataFrame | None = None,
+    ) -> None:
         self._r = ramp_report
         self._c = client_report
+        self._rev7d = revenue_7d if revenue_7d is not None else pd.DataFrame()
 
     def render(self) -> None:
         """Render all overview components."""
         self._render_volume_kpis()
+        self._render_revenue_composition_7d()
         col_left, col_right = st.columns(2)
         with col_left:
             self._render_funnel()
@@ -450,6 +498,13 @@ class OverviewSection:
         s2.markdown(_kpi_strip("WAU", f"{wau:,}"), unsafe_allow_html=True)
         s3.markdown(_kpi_strip("MAU", f"{mau:,}"), unsafe_allow_html=True)
         s4.markdown(_kpi_strip("KYC %", f"{kyc_pct:.1%}"), unsafe_allow_html=True)
+
+    def _render_revenue_composition_7d(self) -> None:
+        """Render full-width stacked bar: revenue by product for the last 7 days."""
+        fig = _fig_revenue_composition_7d(self._rev7d)
+        if fig is None:
+            return
+        st.plotly_chart(fig, use_container_width=True)
 
     def _render_revenue_trend(self) -> None:
         """Render the monthly revenue stacked bar chart."""

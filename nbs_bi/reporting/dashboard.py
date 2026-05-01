@@ -17,11 +17,13 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
 from nbs_bi.clients.report import ClientReport
 from nbs_bi.config import ADS_DATABASE_URL, READONLY_DATABASE_URL
+from nbs_bi.onramp.queries import OnrampQueries
 from nbs_bi.onramp.report import OnrampReport
 from nbs_bi.reporting.cards import CardAnalyticsSection
 from nbs_bi.reporting.clients import ClientSection
@@ -54,6 +56,28 @@ def _latest_rain_invoice_total() -> tuple[float, str, str]:
 # ---------------------------------------------------------------------------
 # Cached data loaders
 # ---------------------------------------------------------------------------
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_revenue_7d(db_url: str) -> pd.DataFrame:
+    """Fetch daily revenue by product line for the last 7 days including today.
+
+    Args:
+        db_url: Database URL — part of cache key.
+
+    Returns:
+        DataFrame with columns date, daily_rev_conversion_usd,
+        daily_rev_card_fees_usd, daily_rev_billing_usd, daily_rev_swap_usd,
+        daily_rev_usd.
+    """
+    today = date.today()
+    start = (today - timedelta(days=6)).isoformat()
+    end = today.isoformat()
+    try:
+        q = OnrampQueries(start_date=start, end_date=end, db_url=db_url)
+        return q.daily_revenue_by_product()
+    except Exception:
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=3600, show_spinner="Loading ramp data…")
@@ -130,10 +154,11 @@ def _tab_overview(start_date: str, end_date: str, invoice_total: float) -> None:
         client_report = _load_client_report(
             start_date, end_date, READONLY_DATABASE_URL, invoice_total
         )
+        revenue_7d = _load_revenue_7d(READONLY_DATABASE_URL)
     except Exception as exc:
         st.error(f"Failed to load overview data: {exc}", icon="🔴")
         return
-    OverviewSection(ramp_report, client_report).render()
+    OverviewSection(ramp_report, client_report, revenue_7d).render()
 
 
 def _tab_ramp(start_date: str, end_date: str) -> None:
