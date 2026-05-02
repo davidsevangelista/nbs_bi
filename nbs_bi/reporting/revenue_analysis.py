@@ -334,21 +334,22 @@ class RevenueAnalysisSection:
         )
         return fig
 
-    def _build_peak_figure(self, pivots: dict, month_opts: list[str]) -> go.Figure:
-        """Assemble peak revenue hour per day-of-week — one line per month (BRT).
+    def _make_bands(self, pivots: dict, selected_months: list[str]) -> list[dict[str, Any]]:
+        """Return yellow rect shapes at ±1 h around peak per day for selected months.
 
-        Each month is drawn as a Scatter line with opacity scaled from 0.25
-        (oldest) to 1.0 (newest). Yellow bands highlight ±1 h around the
-        overall peak per day across all history.
+        Args:
+            pivots: Precomputed pivot dict keyed by (month, source).
+            selected_months: Real month strings whose data to combine.
+
+        Returns:
+            List of Plotly shape dicts, one per day of week.
         """
-        real_months = [mo for mo in month_opts if mo != "All months"]
-        n = len(real_months)
-        alphas = [0.25 + 0.75 * i / max(n - 1, 1) for i in range(n)]
-
-        arr_all = np.array(pivots[("All months", "All sources")], dtype="float64")
+        combined = np.zeros((24, len(self.DOW_ORDER)), dtype="float64")
+        for mo in selected_months:
+            combined += np.array(pivots[(mo, "All sources")], dtype="float64")
         shapes = []
         for di in range(len(self.DOW_ORDER)):
-            ph = int(arr_all[:, di].argmax())
+            ph = int(combined[:, di].argmax())
             shapes.append(
                 dict(
                     type="rect",
@@ -363,6 +364,29 @@ class RevenueAnalysisSection:
                     layer="below",
                 )
             )
+        return shapes
+
+    def _build_peak_figure(
+        self,
+        pivots: dict,
+        month_opts: list[str],
+        selected_months: list[str],
+    ) -> go.Figure:
+        """Assemble peak revenue hour chart filtered to selected months (BRT).
+
+        All months are always added as traces; visibility is toggled per
+        selection so the opacity gradient stays consistent. Yellow bands
+        reflect only the selected months' combined peaks.
+
+        Args:
+            pivots: Precomputed pivot dict keyed by (month, source).
+            month_opts: Full list including 'All months' sentinel.
+            selected_months: Subset of real months to show.
+        """
+        real_months = [mo for mo in month_opts if mo != "All months"]
+        n = len(real_months)
+        alphas = [0.25 + 0.75 * i / max(n - 1, 1) for i in range(n)]
+        active = set(selected_months)
 
         fig = go.Figure()
         for i, mo in enumerate(real_months):
@@ -375,6 +399,7 @@ class RevenueAnalysisSection:
                     y=peak_h,
                     mode="lines+markers",
                     name=mo,
+                    visible=mo in active,
                     line=dict(color=color, width=2),
                     marker=dict(size=8, color=color),
                     hovertemplate=f"<b>{mo}</b><br>%{{x}}<br>Peak: %{{y}}:00 BRT<extra></extra>",
@@ -391,7 +416,8 @@ class RevenueAnalysisSection:
                 gridcolor=GRID,
                 title="Hour of Day (BRT)",
             ),
-            shapes=shapes,
+            showlegend=False,
+            shapes=self._make_bands(pivots, selected_months or real_months),
             height=420,
             margin=dict(t=60, b=60, l=60, r=40),
         )
@@ -404,12 +430,33 @@ class RevenueAnalysisSection:
         if self._df.empty:
             st.info("No revenue data available for the selected date range.", icon="ℹ️")
             return
+
         pivots, day_avgs, peak_hrs, month_opts, source_opts = self._precompute()
         st.plotly_chart(
             self._build_figure(pivots, day_avgs, peak_hrs, month_opts, source_opts),
             use_container_width=True,
         )
-        st.plotly_chart(
-            self._build_peak_figure(pivots, month_opts),
-            use_container_width=True,
-        )
+
+        real_months = [mo for mo in month_opts if mo != "All months"]
+        n = len(real_months)
+        alphas = [0.25 + 0.75 * i / max(n - 1, 1) for i in range(n)]
+
+        col_cb, col_chart = st.columns([1, 5])
+        selected: list[str] = []
+        with col_cb:
+            for i, mo in enumerate(real_months):
+                a = alphas[i]
+                color = f"rgba(99,110,250,{a:.2f})"
+                st.markdown(
+                    f'<span style="color:{color};font-size:13px;'
+                    f'font-family:monospace;">● {mo}</span>',
+                    unsafe_allow_html=True,
+                )
+                if st.checkbox("_", value=True, key=f"peak_{mo}", label_visibility="collapsed"):
+                    selected.append(mo)
+
+        with col_chart:
+            st.plotly_chart(
+                self._build_peak_figure(pivots, month_opts, selected),
+                use_container_width=True,
+            )
