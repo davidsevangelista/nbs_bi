@@ -441,7 +441,7 @@ class RevenueAnalysisSection:
         n = len(real_months)
         alphas = [0.25 + 0.75 * i / max(n - 1, 1) for i in range(n)]
 
-        col_cb, col_chart = st.columns([1, 5])
+        col_cb, col_chart = st.columns([1, 8])
         selected: list[str] = []
         with col_cb:
             for i, mo in enumerate(real_months):
