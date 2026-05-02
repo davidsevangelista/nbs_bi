@@ -4,12 +4,13 @@ Run with::
 
     streamlit run nbs_bi/reporting/dashboard.py
 
-Five tabs:
-    Tab 1 — Overview        (OverviewSection: cross-module KPIs, volume, revenue, funnel)
-    Tab 2 — Conversions     (OnrampReport → RampSection: 4 subtabs)
-    Tab 3 — Cards           (CardAnalyticsSection: Cost Model + Usage Patterns + Tier Pricing)
-    Tab 4 — Clients         (ClientReport → ClientSection)
-    Tab 5 — Marketing - Ads (MetaAdsSection: cumulative spend, ROI, channel comparison)
+Six tabs:
+    Tab 1 — Overview          (OverviewSection: cross-module KPIs, volume, revenue, funnel)
+    Tab 2 — Revenue Analysis  (RevenueAnalysisSection: hour × day-of-week revenue heatmap)
+    Tab 3 — Conversions       (OnrampReport → RampSection: 4 subtabs)
+    Tab 4 — Cards             (CardAnalyticsSection: Cost Model + Usage Patterns + Tier Pricing)
+    Tab 5 — Clients           (ClientReport → ClientSection)
+    Tab 6 — Marketing - Ads   (MetaAdsSection: cumulative spend, ROI, channel comparison)
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from nbs_bi.reporting.clients import ClientSection
 from nbs_bi.reporting.marketing import MetaAdsSection
 from nbs_bi.reporting.overview import OverviewSection
 from nbs_bi.reporting.ramp import RampSection
+from nbs_bi.reporting.revenue_analysis import RevenueAnalysisSection
 
 load_dotenv()
 
@@ -82,6 +84,27 @@ def _load_revenue_7d(db_url: str) -> pd.DataFrame:
         import logging
 
         logging.getLogger(__name__).error("_load_revenue_7d failed: %s", exc, exc_info=True)
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600, show_spinner="Loading revenue analysis…")
+def _load_revenue_analysis(start_date: str, end_date: str, db_url: str) -> pd.DataFrame:
+    """Load combined revenue DataFrame for the heatmap.
+
+    Args:
+        start_date: ISO date string (inclusive).
+        end_date: ISO date string passed to OnrampQueries (exclusive-end convention).
+        db_url: Database URL — part of cache key.
+
+    Returns:
+        DataFrame with columns: created_at, rev_usd, source.
+    """
+    try:
+        return RevenueAnalysisSection.load(db_url, start_date, end_date)
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).error("_load_revenue_analysis failed: %s", exc, exc_info=True)
         return pd.DataFrame()
 
 
@@ -164,6 +187,17 @@ def _tab_overview(start_date: str, end_date: str, invoice_total: float) -> None:
         st.error(f"Failed to load overview data: {exc}", icon="🔴")
         return
     OverviewSection(ramp_report, client_report, revenue_7d).render()
+
+
+def _tab_revenue_analysis(start_date: str, end_date: str) -> None:
+    if not READONLY_DATABASE_URL:
+        st.error(
+            "Set `READONLY_DATABASE_URL` in your `.env` file to load revenue data.",
+            icon="🔴",
+        )
+        return
+    df = _load_revenue_analysis(start_date, end_date, READONLY_DATABASE_URL)
+    RevenueAnalysisSection(df).render()
 
 
 def _tab_ramp(start_date: str, end_date: str) -> None:
@@ -249,8 +283,8 @@ def main() -> None:
     invoice_total, _invoice_id, _invoice_period = _latest_rain_invoice_total()
     start_date, end_date = _default_date_range()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["Overview", "Conversions", "Cards", "Clients", "Marketing - Ads"]
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        ["Overview", "Revenue Analysis", "Conversions", "Cards", "Clients", "Marketing - Ads"]
     )
 
     from datetime import date as _date
@@ -261,12 +295,14 @@ def main() -> None:
     with tab1:
         _tab_overview(start_date, end_date, invoice_total)
     with tab2:
-        _tab_ramp(start_date, end_date)
+        _tab_revenue_analysis(start_date, end_date)
     with tab3:
-        _tab_cards(_date_from, _date_to, invoice_total)
+        _tab_ramp(start_date, end_date)
     with tab4:
-        _tab_clients(start_date, end_date, invoice_total)
+        _tab_cards(_date_from, _date_to, invoice_total)
     with tab5:
+        _tab_clients(start_date, end_date, invoice_total)
+    with tab6:
         _tab_marketing(start_date, end_date, invoice_total)
 
 
