@@ -264,9 +264,15 @@ class RevenueAnalysisSection:
             for so in source_opts
         ]
 
-    def _build_figure(self) -> go.Figure:
+    def _build_figure(
+        self,
+        pivots: dict,
+        day_avgs: dict,
+        peak_hrs: dict,
+        month_opts: list[str],
+        source_opts: list[str],
+    ) -> go.Figure:
         """Assemble the Plotly heatmap with peak-hour overlay and dropdowns."""
-        pivots, day_avgs, peak_hrs, month_opts, source_opts = self._precompute()
         m0, s0 = "All months", "All sources"
         init_ann = _BOTTOM_ANNOTATIONS + self._top_annotations(day_avgs[(m0, s0)])
 
@@ -328,11 +334,82 @@ class RevenueAnalysisSection:
         )
         return fig
 
+    def _build_peak_figure(self, pivots: dict, month_opts: list[str]) -> go.Figure:
+        """Assemble peak revenue hour per day-of-week — one line per month (BRT).
+
+        Each month is drawn as a Scatter line with opacity scaled from 0.25
+        (oldest) to 1.0 (newest). Yellow bands highlight ±1 h around the
+        overall peak per day across all history.
+        """
+        real_months = [mo for mo in month_opts if mo != "All months"]
+        n = len(real_months)
+        alphas = [0.25 + 0.75 * i / max(n - 1, 1) for i in range(n)]
+
+        arr_all = np.array(pivots[("All months", "All sources")], dtype="float64")
+        shapes = []
+        for di in range(len(self.DOW_ORDER)):
+            ph = int(arr_all[:, di].argmax())
+            shapes.append(
+                dict(
+                    type="rect",
+                    x0=di - 0.4,
+                    x1=di + 0.4,
+                    y0=max(0, ph - 1),
+                    y1=min(23, ph + 1),
+                    xref="x",
+                    yref="y",
+                    fillcolor="rgba(255, 200, 0, 0.15)",
+                    line=dict(width=0),
+                    layer="below",
+                )
+            )
+
+        fig = go.Figure()
+        for i, mo in enumerate(real_months):
+            arr = np.array(pivots[(mo, "All sources")], dtype="float64")
+            peak_h = arr.argmax(axis=0).tolist()
+            color = f"rgba(99, 110, 250, {alphas[i]:.2f})"
+            fig.add_trace(
+                go.Scatter(
+                    x=self.DOW_ORDER,
+                    y=peak_h,
+                    mode="lines+markers",
+                    name=mo,
+                    line=dict(color=color, width=2),
+                    marker=dict(size=8, color=color),
+                    hovertemplate=f"<b>{mo}</b><br>%{{x}}<br>Peak: %{{y}}:00 BRT<extra></extra>",
+                )
+            )
+
+        fig.update_layout(**panel("Peak Revenue Hour by Day of Week — by Month (BRT)"))
+        fig.update_layout(
+            xaxis_title="Day of Week",
+            yaxis=dict(
+                tickmode="linear",
+                dtick=1,
+                range=[-0.5, 23.5],
+                gridcolor=GRID,
+                title="Hour of Day (BRT)",
+            ),
+            shapes=shapes,
+            height=420,
+            margin=dict(t=60, b=60, l=60, r=40),
+        )
+        return fig
+
     def render(self) -> None:
-        """Render the revenue heatmap in the active Streamlit tab."""
+        """Render the heatmap and peak-hour chart in the active Streamlit tab."""
         import streamlit as st
 
         if self._df.empty:
             st.info("No revenue data available for the selected date range.", icon="ℹ️")
             return
-        st.plotly_chart(self._build_figure(), use_container_width=True)
+        pivots, day_avgs, peak_hrs, month_opts, source_opts = self._precompute()
+        st.plotly_chart(
+            self._build_figure(pivots, day_avgs, peak_hrs, month_opts, source_opts),
+            use_container_width=True,
+        )
+        st.plotly_chart(
+            self._build_peak_figure(pivots, month_opts),
+            use_container_width=True,
+        )
