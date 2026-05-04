@@ -28,10 +28,22 @@ htmlcov/
 
 # Data (never commit raw or processed financial data)
 data/invoices/*.pdf
-data/processed/*
-data/cards_simulation/*
+data/invoices/*.json
+data/processed/
+data/cards_simulation/
 data/nbs_corp_card/
+data/bank_statement/
+data/bp/
+data/*.pdf
+data/*.csv
+data/*.png
+data/*.jpg
+data/*.xlsx
 !data/processed/.gitkeep
+!data/invoices/.gitkeep
+
+# Parquet cache (any location)
+*.parquet
 
 # Streamlit secrets (configure via Streamlit Cloud UI instead)
 .streamlit/secrets.toml
@@ -39,6 +51,10 @@ data/nbs_corp_card/
 # Jupyter
 .ipynb_checkpoints/
 # notebooks/*.ipynb
+notebooks/data/
+notebooks/campaigns/
+notebooks/*.html
+notebooks/*.png
 
 # IDEs
 .vscode/

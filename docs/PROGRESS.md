@@ -92,8 +92,10 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] `reporting/ramp.py` — Tab 2: 4 subtabs (Visão Geral, Receita, Clientes, FX & Volume); granularity toggle; 8+ charts
 - [x] `reporting/cards.py` — Tab 3 (Cards): 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + **line-per-driver evolution** + summary table + revenue KPI row); fully translated to English
 - [x] `reporting/clients.py` — Tab 4: `ClientSection` with 5 sub-tabs (LTV & Cohorts, Acquisition, Segments, Founders Club, Product Adoption); LTV & Cohorts tab has 5 KPIs + revenue histogram + cohort total profit heatmap (YlGn, absolute sums); avg heatmaps now use active-user denominator
-- [x] `reporting/marketing.py` — Tab 5: `MetaAdsSection`; auto-loads most-recent Rain CSV from `data/nbs_corp_card/`; shows only most-recent campaign; 3-chart stack (cumulative spend vs cohort revenue; cumulative contribution margin with dual-axis card txns + conversions; stacked revenue breakdown by source); KPI strip (spend, revenue, ROAS, CAC, net contribution margin); referral selectbox filters entire cohort analysis; tracking start gated at `2026-04-12`
-- [x] `reporting/dashboard.py` — Streamlit entry point: **5 tabs** (Overview, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed; title "NBS Data Analytics"
+- [x] `reporting/marketing.py` — Tab 5: `MetaAdsSection`; auto-loads most-recent Rain CSV from `data/nbs_corp_card/`; shows only most-recent campaign; 3-chart stack (cumulative spend vs cohort revenue; cumulative contribution margin with dual-axis card txns + conversions; stacked revenue breakdown by source); KPI strip (spend, revenue, ROAS, CAC, net contribution margin); referral selectbox filters entire cohort analysis; tracking start gated at `2026-04-12`; `_append_meta_ads_channel_trace()` merges campaign cohort profit into cumulative channel chart as `meta_ads` series
+- [x] `reporting/marketing.py` — All 6 Marketing-Ads charts aligned to `analysis_start` / `analysis_end` date pickers: Plot 4 (Daily Signups vs Ad Spend) replaced hardcoded 14-day campaign-start lookback with `[start_date, end_date]` filter; Plot 5 (Daily Revenue vs Ad Spend) switched from cohort-only `cum_rev_df` to full-platform `all_users_rev_df` so pre-campaign revenue shows; Plot 6 (Daily Platform Revenue) fetch range changed from `_TRACKING_START`→tomorrow to `str(start_date)`→`str(end_date)`
+- [x] `reporting/dashboard.py` — Streamlit entry point: **6 tabs** (Overview, Revenue Analysis, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed; title "NBS Data Analytics"
+- [x] `reporting/revenue_analysis.py` — `RevenueAnalysisSection`: 24×7 (hour × day-of-week, BRT) Plotly heatmap aggregating 3 revenue streams (conversions, card_annual_fees, billing_charges); Viridis colorscale; peak-hour white line overlay; per-day avg USD annotations above columns; month + source dropdown filters; second chart — "Peak Revenue Hour by Day of Week" with per-month colour-faded scatter lines + yellow ±1h highlight bands; month checkbox panel on the left via `st.columns([1, 8])`
 - [x] `use_container_width=True` → `width="stretch"` everywhere (Streamlit deprecation)
 - [x] Dark NBS green theme: Plotly charts, `theme.py` constants, and `overview.py` CSS all aligned to dark shell (`#0D1117` bg / `#161B22` plot bg / `#00E676` accent)
 - [x] Full English translation: Cards tab and Conversions (Ramp) tab; activation funnels use `go.Funnel` (correct top-to-bottom direction)
@@ -106,7 +108,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 ## Phase 7 — Client Revenue & Behaviour (`nbs_bi.clients`)
 
 - [x] Define spec (see [specs/clients.md](specs/clients.md))
-- [x] `clients/queries.py` — 11 SQL queries, Parquet cache
+- [x] `clients/queries.py` — 11 SQL queries, Parquet cache; `_COHORT_BASE_SQL` uses 4-channel attribution: `mkt_ads` (NEOBANKLESS/GOOGLE codes after 2026-04-14), `direct_referral` (other referral codes), `founder` (founders table), `organic` (all else)
 - [x] `clients/models.py` — `ClientModel`: master join, unified USD LTV, product adoption, cohort LTV, activation funnel, CAC breakeven; active-user denominator fix; `cohort_total_profit()` and `cohort_monthly_profit()` added
 - [x] `clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant
 - [x] `clients/report.py` — `ClientReport.build()` dict
@@ -120,11 +122,11 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
-## Current State — 2026-05-01 (v2.3.1)
+## Current State — 2026-05-02 (v2.5.1)
 
 ### What's been built
 
-`nbs_bi` is a fully operational BI platform deployed on Streamlit Community Cloud. All 5 dashboard tabs are live. Data flows from two PostgreSQL databases (production read-only replica + Neon ads DB) through module-specific query/model/report pipelines into a dark-themed Streamlit dashboard with Plotly visualisations.
+`nbs_bi` is a fully operational BI platform deployed on Streamlit Community Cloud. All 6 dashboard tabs are live. Data flows from two PostgreSQL databases (production read-only replica + Neon ads DB) through module-specific query/model/report pipelines into a dark-themed Streamlit dashboard with Plotly visualisations.
 
 **Phase 1 — Cards** (`nbs_bi.cards`):
 - `CardCostModel` validates against Feb 2026 invoice ($6,693.58). March 2026 invoice ($7,857.40) also parsed and loaded.
@@ -133,12 +135,13 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 **Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention. Revenue USD computed by converting `fee_amount_brl + spread_revenue_brl` at per-tx `exchange_rate`.
 
-**Phase 6 — Reporting** (`nbs_bi.reporting`): 5-tab Streamlit dashboard titled "NBS Data Analytics", deployed and accessible at `nbs-data-analytics.streamlit.app`:
-- Tab 1 — Overview: 2 KPI rows (Conversions: count, volume BRL, revenue USD; Cards: txns, volume USD, revenue USD from card fees + billing); revenue trend, volume, daily active users, activation funnel
-- Tab 2 — Conversions: 4 subtabs, 8+ charts, granularity toggle (Daily/Weekly/Monthly); fully translated to English
-- Tab 3 — Cards: 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + line-per-driver evolution + revenue KPI row + cost KPI row + summary table); fully translated to English
-- Tab 4 — Clients: LTV cohorts, acquisition, segments, founders (full 9-column revenue breakdown per user), product adoption
-- Tab 5 — Marketing - Ads: cohort P&L — cumulative spend vs revenue; contribution margin with dual-axis txn counts; stacked revenue breakdown; referral code filter
+**Phase 6 — Reporting** (`nbs_bi.reporting`): 6-tab Streamlit dashboard titled "NBS Data Analytics", deployed and accessible at `nbs-data-analytics.streamlit.app`:
+- Tab 1 — Overview: 2 KPI rows (Conversions: count, volume BRL, revenue USD; Cards: txns, volume USD, revenue USD from card fees + billing); revenue trend, volume, daily active users, activation funnel; 7-day stacked bar shows `$X,XXX` total label above each bar
+- Tab 2 — Revenue Analysis: `RevenueAnalysisSection` — 24×7 heatmap (hour × day-of-week, BRT) aggregating conversions + card_annual_fees + billing_charges; Viridis colorscale; peak-hour white line; per-day avg annotations; month + source dropdowns; "Peak Revenue Hour by Day of Week" chart with per-month colour-faded lines, left-side month checkboxes, yellow ±1h peak bands
+- Tab 3 — Conversions: 4 subtabs, 8+ charts, granularity toggle (Daily/Weekly/Monthly); fully translated to English
+- Tab 4 — Cards: 4 sub-tabs — Program Costs (invoice selector, cost breakdown, sensitivity, trend), Usage Patterns, Price Tiers, Evolution (cross-invoice trend + Δ vs prior + line-per-driver evolution + revenue KPI row + cost KPI row + summary table); fully translated to English
+- Tab 5 — Clients: LTV cohorts, acquisition, segments, founders (full 9-column revenue breakdown per user), product adoption
+- Tab 6 — Marketing - Ads: cohort P&L — cumulative spend vs revenue; contribution margin with dual-axis txn counts; stacked revenue breakdown; referral code filter
 - Dark NBS green theme throughout: `#0D1117` background, `#161B22` chart bg, `#00E676` primary accent
 - Default date range: full history from 2025-08-15 to today
 
@@ -180,7 +183,40 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 - `sklearn` absent locally → `CardCostSimulator` lazy-loaded so analytics imports always work
 - `streamlit` absent locally → `reporting/cards.py` has an import-time shim so figure-builder tests collect without the UI runtime
-- 7 pre-existing test failures: `test_simulator.py` (4, missing `sklearn`), `test_campaigns.py` (1, referral DB error mock), `test_marketing.py` (2, profit chart shape assertions) — non-blocking
+- 6 pre-existing test failures: `test_simulator.py` (4, missing `sklearn`), `test_campaigns.py` (1, referral DB error mock), `test_marketing.py` (1, zero-cohort division shape assertion) — non-blocking; 204 tests pass
+
+---
+
+## 4-Channel Acquisition Attribution (v2.4.0, 2026-05-01) + mkt_ads consolidation (v2.4.1, 2026-05-01)
+
+- [x] `clients/queries.py` — `_COHORT_BASE_SQL`: `rc.code IN ('NEOBANKLESS','GOOGLE') OR ur.source_type IN ('meta_ads','google_ads','mkt_ads')` → `mkt_ads` (no date gate); other referral codes remain `direct_referral`; founders table → `founder`; all else → `organic`; catches DB rows where `source_type = 'meta_ads'` passed through before this fix
+- [x] `reporting/theme.py` — `SOURCE_COLORS`: renamed `founder_invite` → `founder`; added `mkt_ads: ROSE`
+- [x] `reporting/marketing.py` — `_CHANNEL_COLORS`: removed stale `"meta_ads"` entry; only `"mkt_ads"` remains for paid channel (all platforms aggregated)
+- [x] `reporting/marketing.py` — `_build_channel_comparison()`: ads row now labelled `"mkt_ads"` (was `"meta_ads"`)
+- [x] `reporting/marketing.py` — `_append_meta_ads_channel_trace()`: appended group labelled `"mkt_ads"` (was `"meta_ads"`); cumulative operational profit by acquisition channel chart now shows single `mkt_ads` trace for all ad platforms
+- [x] `reporting/marketing.py` — `_fig_channel_comparison()`: ROAS annotation check updated to `"mkt_ads"`
+- [x] `cards/analytics.py` — `_SQL_TOP_SPENDERS`: renamed `founder_invite` → `founder`
+- [x] `tests/reporting/test_marketing.py` — three assertions updated from `"meta_ads"` → `"mkt_ads"`
+
+---
+
+## Revenue Heatmap Enhancements (v2.4.1, 2026-05-01)
+
+- [x] `notebooks/marketing_ads_analysis.ipynb` — peak-hour line overlay: `_peak_hours()` finds the highest-revenue hour (0–23) per day column in the 24×7 pivot; `go.Scatter` trace (white line + markers) connects peaks Mon→Sun on top of the heatmap; dropdown buttons updated with array-per-trace format `{'z': [new_z, None], 'y': [None, new_peaks]}` so heatmap and scatter stay in sync for every month/source selection
+- [x] `notebooks/marketing_ads_analysis.ipynb` — y-axis direction: removed `autorange='reversed'`; hours now flow bottom-to-top (0 at bottom, 23 at top)
+
+---
+
+## Marketing Deep Analysis Notebook (v2.4.0, 2026-05-01)
+
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A1: Channel LTV:CAC economics table (mkt_ads vs founder vs direct_referral vs organic)
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A2: Referral code quality scatter plot (cohort size vs LTV/CAC) for campaign 10
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A3: Activation funnel drop-off by campaign (signup → KYC → first txn → repeat)
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A4: Champion CPF profile (demographic modal attributes from `cpf_validation_data` joined to segments)
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A5: Product adoption cross-sell funnel by acquisition source (onramp → card → swaps)
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A6: At-risk VIP retention opportunity (total at-risk ARR from `at_risk_users()`)
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A7: Campaign 9 vs 10 autopsy (quality metrics comparison; 5-bullet hypothesis)
+- [x] `notebooks/marketing_ads_analysis.ipynb` — A8: Revenue timing patterns (spend-day to signup lag correlation; optimal ad delivery schedule)
 
 ---
 
@@ -228,6 +264,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 ### Campaign monitoring
 - [ ] Watch campaign_3 ROAS at ~30-day cohort mark (~May 14, 2026); compare referral filter vs all-users
 - [ ] Upload future Rain CSV exports to Neon as new ad spend data arrives (`nbs-ads-upload <file> --db-url $ADS_DATABASE_URL`)
+- [ ] Fix A4 CPF champion profile join (0 matches): `cpf_df.user_id` vs `segments_df.user_id` likely a UUID string format mismatch in `notebooks/marketing_ads_analysis.ipynb`
 
 ### Cards
 - [ ] Investigate and close the ~$1,500 unmodelled fee gap in NKEMEJLO-0009 (March 2026)

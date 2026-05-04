@@ -34,7 +34,8 @@ BG: str = "#0D1117"
 
 # Acquisition source → colour mapping used across clients tab.
 SOURCE_COLORS: dict[str, str] = {
-    "founder_invite": EMERALD,
+    "mkt_ads": ROSE,
+    "founder": EMERALD,
     "referral": BLUE,
     "organic": AMBER,
     "unknown": TEXT_MUTED,

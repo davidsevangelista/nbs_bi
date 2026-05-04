@@ -7,6 +7,67 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-05-02
+
+Marketing-Ads tab: all six charts now share the same `analysis_start` / `analysis_end` date window.
+
+### Fixed
+- `nbs_bi/reporting/marketing.py` — Plot 4 ("Daily Signups vs Ad Spend"): removed hardcoded 14-day lookback before campaign start; `daily` DataFrame is now filtered to `[start_date, end_date]` exactly
+- `nbs_bi/reporting/marketing.py` — Plot 5 ("Daily Revenue vs Ad Spend"): switched revenue source from cohort-only `cum_rev_df` to full-platform `all_users_rev_df` (from `OnrampQueries.daily_revenue_by_product()`); chart now shows all platform revenue across the selected window, not just revenue from the ad cohort
+- `nbs_bi/reporting/marketing.py` — Plot 6 ("Daily Platform Revenue — Cohort Boundary"): `OnrampQueries` fetch range changed from hardcoded `_TRACKING_START` (2025-08-15) → tomorrow to `str(start_date)` → `str(end_date)`; chart no longer spans full company history regardless of picker values
+
+## [2.5.0] — 2026-05-02
+
+Revenue Analysis dashboard tab + dashboard error surfacing + 7-day chart cache key fix.
+
+### Added
+- `nbs_bi/reporting/revenue_analysis.py` — new module `RevenueAnalysisSection`: 24×7 (hour × day-of-week, BRT timezone) Plotly heatmap aggregating three revenue streams (conversions via `OnrampQueries.conversions()`, `card_annual_fees`, `billing_charges`); Viridis colorscale with peak-hour white line overlay and per-day average USD annotations above columns; two independent dropdown filters (Month, Source via `updatemenus`); second chart — "Peak Revenue Hour by Day of Week" with per-month colour-faded scatter lines (opacity gradient oldest→newest), left-side month checkbox panel via `st.columns([1, 8])`, and yellow ±1h peak-hour band shapes that update on checkbox toggle
+- `nbs_bi/reporting/dashboard.py` — 6th tab "Revenue Analysis" inserted between Overview and Conversions; `_load_revenue_analysis()` cached loader; `_tab_revenue_analysis()` renderer
+
+### Fixed
+- `nbs_bi/reporting/dashboard.py` — `_load_revenue_7d()`: added `today_iso: str` parameter to the function signature so `@st.cache_data` includes the current date in its cache key; previously the result was cached only on `db_url`, causing today's revenue bar to be absent if the server had been running since the prior calendar day
+- `nbs_bi/reporting/dashboard.py` — removed silent `try/except` wrappers inside `_load_revenue_7d()` and `_load_revenue_analysis()` that were swallowing exceptions and returning empty DataFrames with no visible error; errors now propagate to tab renderers
+- `nbs_bi/reporting/dashboard.py` — `_tab_revenue_analysis()`: wrapped in `try/except` with `st.error()` + `st.exception()` so any render failure is visible in the UI
+- `nbs_bi/reporting/dashboard.py` — `_tab_overview()`: separated 7-day revenue loader from main ramp/client loaders; 7d failure now shows `st.warning()` and falls back to empty DataFrame rather than aborting the entire overview tab
+
+## [2.4.1] — 2026-05-01
+
+Revenue heatmap peak-hour overlay + `mkt_ads` full consolidation across all channels.
+
+### Added
+- `notebooks/marketing_ads_analysis.ipynb` — peak-hour line on revenue heatmap: `_peak_hours()` finds the max-revenue hour per day column; `go.Scatter` trace (white line + markers) connects Mon→Sun peaks; dropdown buttons updated with array-per-trace args so both heatmap (`z`) and scatter (`y`) stay in sync on month/source change
+- `notebooks/marketing_ads_analysis.ipynb` — heatmap y-axis now flows bottom-to-top (hour 0 at bottom, hour 23 at top); removed `autorange='reversed'`
+
+### Changed
+- `nbs_bi/clients/queries.py` — `_COHORT_BASE_SQL` `mkt_ads` branch: removed date gate (`2026-04-14`); now catches `rc.code IN ('NEOBANKLESS','GOOGLE') OR ur.source_type IN ('meta_ads','google_ads','mkt_ads')` — fixes legacy DB rows where `source_type = 'meta_ads'` was passing through unchanged and surfacing as a separate channel in the cumulative profit chart
+- `nbs_bi/reporting/marketing.py` — `_CHANNEL_COLORS`: removed stale `"meta_ads"` key; all ad platforms now unified under `"mkt_ads"` (ROSE)
+- `nbs_bi/reporting/marketing.py` — `_build_channel_comparison()`, `_append_meta_ads_channel_trace()`, `_fig_channel_comparison()`: all `"meta_ads"` acquisition_source literals replaced with `"mkt_ads"`
+- `tests/reporting/test_marketing.py` — three assertions updated from `"meta_ads"` → `"mkt_ads"`
+
+## [2.4.0] — 2026-05-01
+
+4-channel acquisition attribution reclassification + marketing deep-analysis notebook (A1–A8).
+
+### Added
+- `nbs_bi/clients/queries.py` — `_COHORT_BASE_SQL`: new date-gated CASE expression for `acquisition_source`; users with NEOBANKLESS or GOOGLE referral codes and `created_at >= 2026-04-14` now classified as `mkt_ads` instead of `direct_referral`; `founder_invite` renamed to `founder`; logic: `mkt_ads` → `ur.source_type` (if set) → `founder` (founders table) → `organic`
+- `nbs_bi/reporting/marketing.py` — `_append_meta_ads_channel_trace()`: bridges `CampaignAnalyzer.cumulative_profit()` data (date-window cohort) into the `ClientModel.cumulative_profit_by_source()` format so Meta Ads campaign profit appears as a `meta_ads` channel in the cumulative profit chart
+- `nbs_bi/reporting/marketing.py` — `_CHANNEL_COLORS`: added `mkt_ads` (ROSE, same as `meta_ads`) for DB-sourced paid channel label
+- `notebooks/marketing_ads_analysis.ipynb` — deep-analysis sections A1–A8: channel LTV:CAC economics, referral code quality scatter, funnel drop-off by campaign, champion CPF profile, product adoption cross-sell funnel, at-risk VIP retention, campaign 9 vs 10 autopsy, revenue timing patterns
+
+### Changed
+- `nbs_bi/reporting/theme.py` — `SOURCE_COLORS`: renamed `"founder_invite"` → `"founder"`; added `"mkt_ads": ROSE`
+- `nbs_bi/reporting/marketing.py` — `_CHANNEL_COLORS`: renamed `"founder_invite"` → `"founder"`
+- `nbs_bi/cards/analytics.py` — `_SQL_TOP_SPENDERS`: renamed `'founder_invite'` → `'founder'` in CASE expression
+- `tests/clients/test_models.py` — fixture and assertion updated: `"founder_invite"` → `"founder"`
+- `tests/reporting/test_marketing.py` — fixture updated: `"founder_invite"` → `"founder"`
+
+## [2.3.2] — 2026-05-01
+
+Total revenue labels on 7-day revenue stacked bar chart.
+
+### Changed
+- `reporting/overview.py` — `_fig_revenue_composition_7d()`: added a `go.Scatter` text trace that renders `$X,XXX` totals above each stacked bar; sums `daily_rev_conversion_usd + daily_rev_card_fees_usd + daily_rev_billing_usd` per day; trace is hidden from legend and skips hover
+
 ## [2.3.1] — 2026-05-01
 
 Notebook HTML/PDF export fix: Plotly charts now appear in exported output.

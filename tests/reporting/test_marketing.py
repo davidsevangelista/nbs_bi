@@ -106,7 +106,7 @@ def acquisition_summary() -> pd.DataFrame:
                 "conversion_rate": 0.22,
             },
             {
-                "acquisition_source": "founder_invite",
+                "acquisition_source": "founder",
                 "n_users": 1200,
                 "avg_net_revenue_usd": 28.0,
                 "total_net_revenue_usd": 33600.0,
@@ -151,20 +151,36 @@ def test_build_cumulative_spend_campaign_flags(daily_spend, campaigns):
 
 def test_build_channel_comparison_row_count(campaign_summary, acquisition_summary):
     result = _build_channel_comparison(campaign_summary, acquisition_summary)
-    assert len(result) == len(acquisition_summary) + 1
+    assert len(result) == len(campaign_summary) + len(acquisition_summary)
 
 
-def test_build_channel_comparison_meta_row(campaign_summary, acquisition_summary):
+def test_build_channel_comparison_campaign_rows(campaign_summary, acquisition_summary):
     result = _build_channel_comparison(campaign_summary, acquisition_summary)
-    meta = result[result["acquisition_source"] == "meta_ads"].iloc[0]
-    assert meta["spend_usd"] == pytest.approx(campaign_summary["total_spend_usd"].sum())
+    campaign_ids = set(campaign_summary["campaign_id"])
+    result_ids = set(result["acquisition_source"])
+    assert campaign_ids.issubset(result_ids)
+    c1 = result[result["acquisition_source"] == "campaign_1"].iloc[0]
+    assert c1["spend_usd"] == pytest.approx(120.0)
+    assert c1["roas"] == pytest.approx(2.10)
 
 
-def test_build_channel_comparison_non_meta_spend_nan(campaign_summary, acquisition_summary):
+def test_build_channel_comparison_non_campaign_spend_nan(campaign_summary, acquisition_summary):
     result = _build_channel_comparison(campaign_summary, acquisition_summary)
-    non_meta = result[result["acquisition_source"] != "meta_ads"]
-    assert non_meta["spend_usd"].isna().all()
-    assert non_meta["roas"].isna().all()
+    organic = result[~result["acquisition_source"].str.startswith("campaign_")]
+    assert organic["spend_usd"].isna().all()
+    assert organic["roas"].isna().all()
+
+
+def test_build_channel_comparison_excludes_mkt_ads_from_acquisition(campaign_summary):
+    acq_with_mkt_ads = pd.DataFrame(
+        [
+            {"acquisition_source": "mkt_ads", "n_users": 500, "avg_net_revenue_usd": 5.0, "total_net_revenue_usd": 2500.0, "conversion_rate": 0.1},
+            {"acquisition_source": "organic", "n_users": 1000, "avg_net_revenue_usd": 10.0, "total_net_revenue_usd": 10000.0, "conversion_rate": 0.15},
+        ]
+    )
+    result = _build_channel_comparison(campaign_summary, acq_with_mkt_ads)
+    assert "mkt_ads" not in result["acquisition_source"].values
+    assert "organic" in result["acquisition_source"].values
 
 
 def test_kpi_cac_formula(campaign_summary):
@@ -187,9 +203,8 @@ def test_empty_summary_no_exception():
 
 def test_empty_acquisition(campaign_summary):
     result = _build_channel_comparison(campaign_summary, pd.DataFrame())
-    # Only the meta_ads row should be present
-    assert len(result) == 1
-    assert result.iloc[0]["acquisition_source"] == "meta_ads"
+    assert len(result) == len(campaign_summary)
+    assert set(result["acquisition_source"]) == set(campaign_summary["campaign_id"])
 
 
 def test_single_campaign_cumulative(campaigns, daily_spend):
@@ -211,7 +226,7 @@ def test_zero_cohort_users_no_division_error():
         ]
     )
     result = _build_channel_comparison(summary, pd.DataFrame())
-    assert result.iloc[0]["avg_net_revenue_usd"] == 0.0
+    assert result.iloc[0]["avg_operational_profit_usd"] == 0.0
     assert result.iloc[0]["conversion_rate"] == 0.0
 
 

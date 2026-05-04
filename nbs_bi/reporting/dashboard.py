@@ -61,30 +61,26 @@ def _latest_rain_invoice_total() -> tuple[float, str, str]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _load_revenue_7d(db_url: str) -> pd.DataFrame:
+def _load_revenue_7d(db_url: str, today_iso: str) -> pd.DataFrame:
     """Fetch daily revenue by product line for the last 7 days including today.
 
     Args:
         db_url: Database URL — part of cache key.
+        today_iso: Today's date as ISO string — included in the cache key so
+            the result is recomputed each calendar day even within the TTL.
 
     Returns:
         DataFrame with columns date, daily_rev_conversion_usd,
         daily_rev_card_fees_usd, daily_rev_billing_usd, daily_rev_swap_usd,
         daily_rev_usd.
     """
-    today = date.today()
+    today = date.fromisoformat(today_iso)
     start = (today - timedelta(days=6)).isoformat()
-    # end_date convention in OnrampQueries is inclusive; _run adds +1 internally.
-    # Pass tomorrow so the date spine built inside daily_revenue_by_product includes today.
+    # Pass tomorrow: _run applies _to_exclusive_end internally, so end_date in
+    # the date spine becomes today (i.e. pd.Timestamp(tomorrow) - 1 day = today).
     end = (today + timedelta(days=1)).isoformat()
-    try:
-        q = OnrampQueries(start_date=start, end_date=end, db_url=db_url)
-        return q.daily_revenue_by_product()
-    except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).error("_load_revenue_7d failed: %s", exc, exc_info=True)
-        return pd.DataFrame()
+    q = OnrampQueries(start_date=start, end_date=end, db_url=db_url)
+    return q.daily_revenue_by_product()
 
 
 @st.cache_data(ttl=3600, show_spinner="Loading revenue analysis…")
@@ -99,13 +95,7 @@ def _load_revenue_analysis(start_date: str, end_date: str, db_url: str) -> pd.Da
     Returns:
         DataFrame with columns: created_at, rev_usd, source.
     """
-    try:
-        return RevenueAnalysisSection.load(db_url, start_date, end_date)
-    except Exception as exc:
-        import logging as _logging
-
-        _logging.getLogger(__name__).error("_load_revenue_analysis failed: %s", exc, exc_info=True)
-        return pd.DataFrame()
+    return RevenueAnalysisSection.load(db_url, start_date, end_date)
 
 
 @st.cache_data(ttl=3600, show_spinner="Loading ramp data…")
@@ -182,10 +172,15 @@ def _tab_overview(start_date: str, end_date: str, invoice_total: float) -> None:
         client_report = _load_client_report(
             start_date, end_date, READONLY_DATABASE_URL, invoice_total
         )
-        revenue_7d = _load_revenue_7d(READONLY_DATABASE_URL)
     except Exception as exc:
         st.error(f"Failed to load overview data: {exc}", icon="🔴")
+        st.exception(exc)
         return
+    try:
+        revenue_7d = _load_revenue_7d(READONLY_DATABASE_URL, date.today().isoformat())
+    except Exception as exc:
+        st.warning(f"7-day revenue chart unavailable: {exc}", icon="⚠️")
+        revenue_7d = pd.DataFrame()
     OverviewSection(ramp_report, client_report, revenue_7d).render()
 
 
@@ -196,8 +191,12 @@ def _tab_revenue_analysis(start_date: str, end_date: str) -> None:
             icon="🔴",
         )
         return
-    df = _load_revenue_analysis(start_date, end_date, READONLY_DATABASE_URL)
-    RevenueAnalysisSection(df).render()
+    try:
+        df = _load_revenue_analysis(start_date, end_date, READONLY_DATABASE_URL)
+        RevenueAnalysisSection(df).render()
+    except Exception as exc:
+        st.error(f"Revenue Analysis failed: {exc}", icon="🔴")
+        st.exception(exc)
 
 
 def _tab_ramp(start_date: str, end_date: str) -> None:

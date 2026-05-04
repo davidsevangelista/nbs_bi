@@ -348,6 +348,20 @@ def _fig_revenue_composition_7d(daily_rev: pd.DataFrame) -> go.Figure | None:
                 marker_color=color,
             )
         )
+    total_cols = [c for c, _, _ in traces if c in daily_rev.columns]
+    totals = daily_rev[total_cols].sum(axis=1)
+    fig.add_trace(
+        go.Scatter(
+            x=daily_rev["date"],
+            y=totals,
+            mode="text",
+            text=[f"${v:,.0f}" for v in totals],
+            textposition="top center",
+            textfont={"size": 11},
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
     layout = panel("Revenue Composition — Last 7 Days (USD)")
     layout["barmode"] = "stack"
     layout["yaxis"]["title"] = "USD"

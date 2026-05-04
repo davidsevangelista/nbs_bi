@@ -116,7 +116,7 @@ SELECT
     COALESCE(
         ur.source_type,
         CASE WHEN f.invite_code IS NOT NULL AND f.invite_code <> ''
-             THEN 'founder_invite' ELSE 'unknown' END
+             THEN 'founder' ELSE 'unknown' END
     )                               AS acquisition_source,
     rc.code                         AS referral_code,
     rc.public_name                  AS referral_code_name,

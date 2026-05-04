@@ -27,7 +27,7 @@ def _make_cohort_base(n: int = 4) -> pd.DataFrame:
             ),
             "status": ["active"] * n,
             "account_type": ["personal"] * n,
-            "acquisition_source": ["founder_invite", "referral", "organic", "unknown"],
+            "acquisition_source": ["founder", "referral", "organic", "unknown"],
             "referral_code_id": [None, "rc1", None, None],
             "referral_code": [None, "CODE1", None, None],
             "referral_code_name": [None, "Partner A", None, None],
@@ -252,7 +252,7 @@ def test_acquisition_summary_has_expected_sources():
     model = _build_model()
     acq = model.acquisition_summary()
     sources = set(acq["acquisition_source"].tolist())
-    assert "founder_invite" in sources
+    assert "founder" in sources
     assert "referral" in sources
 
 

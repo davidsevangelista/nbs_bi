@@ -56,11 +56,13 @@ _TRACKING_START = "2025-08-15"
 # Meta Ads row colour in channel comparison chart.
 _META_COLOR = ROSE
 
-# Channel colour map (extends theme SOURCE_COLORS with meta_ads).
+# Channel colour map — all ad platforms aggregated under mkt_ads.
 _CHANNEL_COLORS: dict[str, str] = {
-    "meta_ads": _META_COLOR,
+    "mkt_ads": _META_COLOR,
+    "founder": EMERALD,
     "founder_invite": EMERALD,
     "referral": BLUE,
+    "direct_referral": BLUE,
     "organic": AMBER,
     "unknown": TEXT_MUTED,
 }
@@ -114,58 +116,67 @@ def _build_channel_comparison(
 ) -> pd.DataFrame:
     """Merge Meta Ads campaign metrics with acquisition_summary rows.
 
+    One row is emitted per campaign (from ``summary``), followed by the
+    organic-channel rows from ``acquisition``.  Rows with
+    ``acquisition_source == "mkt_ads"`` are excluded from ``acquisition``
+    to avoid double-counting paid traffic that is already captured per-campaign.
+
     Args:
         summary: Output of ``CampaignAnalyzer.roi_summary()``.
         acquisition: Output of ``ClientReport.build()["acquisition"]``.
-        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` —
-            when provided, the Meta Ads row uses ``cum_profit_usd`` (revenue
-            minus card COGS and KYC cost) instead of gross revenue, making
-            the metric comparable with other channels' ``net_revenue_usd``.
+            ``mkt_ads`` rows are excluded (paid traffic is in ``summary``).
+        cum_profit_df: Unused — retained for API compatibility.
 
     Returns:
         DataFrame with schema: ``acquisition_source``, ``n_users``,
         ``avg_operational_profit_usd``, ``total_operational_profit_usd``,
         ``conversion_rate``, ``spend_usd``, ``roas``.
-        Meta Ads row is prepended; other channels have NaN for
+        Campaign rows keep their spend and ROAS; organic rows have NaN for
         ``spend_usd`` and ``roas``.
     """
-    total_spend = float(summary["total_spend_usd"].sum()) if not summary.empty else 0.0
-    n_users = int(summary["cohort_users"].sum()) if not summary.empty else 0
-    transacting = int(summary["transacting_users"].sum()) if not summary.empty else 0
+    campaign_rows = []
+    for _, row in summary.iterrows():
+        n = int(row["cohort_users"]) if pd.notna(row.get("cohort_users")) else 0
+        txn = int(row["transacting_users"]) if pd.notna(row.get("transacting_users")) else 0
+        spend = float(row.get("total_spend_usd") or 0.0)
+        rev = float(row.get("total_revenue_usd") or 0.0)
+        roas_val = float(row["roas"]) if pd.notna(row.get("roas")) else np.nan
+        campaign_rows.append(
+            {
+                "acquisition_source": str(row["campaign_id"]),
+                "n_users": n,
+                "avg_operational_profit_usd": rev / n if n > 0 else 0.0,
+                "total_operational_profit_usd": rev,
+                "conversion_rate": txn / n if n > 0 else 0.0,
+                "spend_usd": spend,
+                "roas": roas_val,
+            }
+        )
 
-    _has_profit = (
-        cum_profit_df is not None
-        and not cum_profit_df.empty
-        and "cum_profit_usd" in cum_profit_df.columns
+    meta_df = pd.DataFrame(campaign_rows) if campaign_rows else pd.DataFrame(
+        columns=[
+            "acquisition_source", "n_users", "avg_operational_profit_usd",
+            "total_operational_profit_usd", "conversion_rate", "spend_usd", "roas",
+        ]
     )
-    if _has_profit:
-        total_op_profit = float(cum_profit_df["cum_profit_usd"].iloc[-1])  # type: ignore[index]
-    else:
-        total_op_profit = float(summary["total_revenue_usd"].sum()) if not summary.empty else 0.0
-
-    meta_row = {
-        "acquisition_source": "meta_ads",
-        "n_users": n_users,
-        "avg_operational_profit_usd": total_op_profit / n_users if n_users > 0 else 0.0,
-        "total_operational_profit_usd": total_op_profit,
-        "conversion_rate": transacting / n_users if n_users > 0 else 0.0,
-        "spend_usd": total_spend,
-        "roas": total_op_profit / total_spend if total_spend > 0 else np.nan,
-    }
 
     if acquisition is not None and not acquisition.empty:
-        acq = acquisition.rename(
-            columns={
-                "avg_net_revenue_usd": "avg_operational_profit_usd",
-                "total_net_revenue_usd": "total_operational_profit_usd",
-            }
-        ).copy()
+        acq = (
+            acquisition[acquisition["acquisition_source"] != "mkt_ads"]
+            .rename(
+                columns={
+                    "avg_net_revenue_usd": "avg_operational_profit_usd",
+                    "total_net_revenue_usd": "total_operational_profit_usd",
+                }
+            )
+            .copy()
+        )
+        acq["spend_usd"] = np.nan
+        acq["roas"] = np.nan
     else:
         acq = pd.DataFrame()
-    acq["spend_usd"] = np.nan
-    acq["roas"] = np.nan
 
-    return pd.concat([pd.DataFrame([meta_row]), acq], ignore_index=True)
+    return pd.concat([meta_df, acq], ignore_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -828,17 +839,23 @@ def _fig_daily_rev_all_vs_cohort(
 
 
 def _fig_channel_comparison(comparison: pd.DataFrame) -> go.Figure | None:
-    """Horizontal bar: avg operational profit per acquisition channel."""
+    """Horizontal bar: avg operational profit per campaign and acquisition channel."""
     if comparison.empty:
         return None
     col = "avg_operational_profit_usd"
     if col not in comparison.columns:
         return None
-    colors = [_CHANNEL_COLORS.get(s, TEXT_MUTED) for s in comparison["acquisition_source"]]
+    colors = []
+    for _, row in comparison.iterrows():
+        spend = row.get("spend_usd")
+        if pd.notna(spend) and float(spend) > 0:
+            colors.append(_META_COLOR)
+        else:
+            colors.append(_CHANNEL_COLORS.get(str(row["acquisition_source"]), TEXT_MUTED))
     texts = []
     for _, row in comparison.iterrows():
         label = _fmt_usd_safe(row[col])
-        if pd.notna(row.get("roas")) and row["acquisition_source"] == "meta_ads":
+        if pd.notna(row.get("roas")):
             label += f"  ROAS {row['roas']:.2f}×"
         texts.append(label)
     fig = go.Figure(
@@ -851,10 +868,54 @@ def _fig_channel_comparison(comparison: pd.DataFrame) -> go.Figure | None:
             textposition="outside",
         )
     )
-    layout = panel("Avg Operational Profit (USD) by Acquisition Channel")
+    layout = panel("Avg Operational Profit (USD) by Campaign / Channel")
     layout["xaxis"]["title"] = "Avg Operational Profit (USD)"
     fig.update_layout(**layout)
     return fig
+
+
+def _append_meta_ads_channel_trace(
+    profit_by_source_daily: pd.DataFrame | None,
+    cum_profit_df: pd.DataFrame | None,
+) -> pd.DataFrame | None:
+    """Append a ``meta_ads`` row-group to the channel daily DataFrame.
+
+    The campaign cohort's cumulative operational profit (``cum_profit_usd`` from
+    ``CampaignAnalyzer.cumulative_profit()``) is aligned to the same
+    ``signup_date`` / ``cumulative_net_revenue_usd`` shape used by
+    ``ClientModel.cumulative_profit_by_source()``, using the cohort's calendar
+    date as the X-axis value.
+
+    Args:
+        profit_by_source_daily: Existing channel daily DataFrame.
+        cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` —
+            must contain ``date`` and ``cum_profit_usd`` columns.
+
+    Returns:
+        Combined DataFrame with a ``meta_ads`` group appended, or the original
+        DataFrame unchanged if either input is missing/empty.
+    """
+    if cum_profit_df is None or cum_profit_df.empty:
+        return profit_by_source_daily
+    if "date" not in cum_profit_df.columns or "cum_profit_usd" not in cum_profit_df.columns:
+        return profit_by_source_daily
+
+    meta = cum_profit_df[["date", "cum_profit_usd"]].copy()
+    meta = meta.rename(
+        columns={"date": "signup_date", "cum_profit_usd": "cumulative_net_revenue_usd"}
+    )
+    meta["acquisition_source"] = "mkt_ads"
+    meta["daily_net_revenue_usd"] = meta["cumulative_net_revenue_usd"].diff().fillna(
+        meta["cumulative_net_revenue_usd"].iloc[0] if not meta.empty else 0.0
+    )
+    meta["signup_date"] = pd.to_datetime(meta["signup_date"])
+
+    if profit_by_source_daily is None or profit_by_source_daily.empty:
+        return meta
+    existing = profit_by_source_daily[
+        profit_by_source_daily["acquisition_source"] != "mkt_ads"
+    ]
+    return pd.concat([existing, meta], ignore_index=True)
 
 
 def _fig_channel_daily(daily: pd.DataFrame) -> go.Figure | None:
@@ -863,7 +924,8 @@ def _fig_channel_daily(daily: pd.DataFrame) -> go.Figure | None:
     Args:
         daily: Output of ``ClientModel.cumulative_profit_by_source()`` —
             columns ``signup_date``, ``acquisition_source``,
-            ``cumulative_net_revenue_usd``.
+            ``cumulative_net_revenue_usd``. May include a ``meta_ads`` group
+            added via ``_append_meta_ads_channel_trace()``.
 
     Returns:
         Plotly Figure or None if data is empty.
@@ -1065,9 +1127,8 @@ class MetaAdsSection:
         latest_id = summary["campaign_id"].iloc[-1]
         summary = summary[summary["campaign_id"] == latest_id].reset_index(drop=True)
         if not daily.empty and "campaign_id" in daily.columns:
-            latest_start = pd.to_datetime(summary["start"].iloc[0])
-            cutoff = latest_start - pd.Timedelta(days=14)
-            daily = daily[pd.to_datetime(daily["date"]) >= cutoff].reset_index(drop=True)
+            _d = pd.to_datetime(daily["date"]).dt.date
+            daily = daily[(_d >= start_date) & (_d <= end_date)].reset_index(drop=True)
 
         referral_code = ""
         if analyzer is not None:
@@ -1095,8 +1156,8 @@ class MetaAdsSection:
 
         all_users_rev_df = pd.DataFrame()
         if analyzer is not None and cum_rev_df is not None and not cum_rev_df.empty:
-            _au_start = _TRACKING_START  # always show from company launch (Aug 2025)
-            _au_end = str((pd.Timestamp.today().normalize() + pd.Timedelta(days=1)).date())
+            _au_start = str(start_date)
+            _au_end = str(end_date)
             try:
                 from nbs_bi.config import INCLUDE_SWAP_FEES
                 from nbs_bi.onramp import OnrampQueries
@@ -1447,8 +1508,8 @@ class MetaAdsSection:
             if fig4:
                 st.plotly_chart(fig4, width="stretch")
 
-        if cum_rev_df is not None and not cum_rev_df.empty and not spend_df.empty:
-            fig_rev_spend = _fig_daily_revenue_vs_spend(cum_rev_df, spend_df)
+        if all_users_rev_df is not None and not all_users_rev_df.empty and not spend_df.empty:
+            fig_rev_spend = _fig_daily_revenue_vs_spend(all_users_rev_df, spend_df)
             if fig_rev_spend:
                 st.plotly_chart(fig_rev_spend, width="stretch")
 
@@ -1491,7 +1552,10 @@ class MetaAdsSection:
         if fig:
             st.plotly_chart(fig, width="stretch")
 
-        fig_daily = _fig_channel_daily(self._profit_by_source_daily)
+        daily_with_meta = _append_meta_ads_channel_trace(
+            self._profit_by_source_daily, cum_profit_df
+        )
+        fig_daily = _fig_channel_daily(daily_with_meta)
         if fig_daily:
             st.plotly_chart(fig_daily, width="stretch")
 

@@ -43,12 +43,16 @@ SELECT
     u.last_active_at,
     u.status::TEXT                  AS status,
     u.account_type::TEXT            AS account_type,
-    COALESCE(
-        ur.source_type,
-        CASE WHEN f.invite_code IS NOT NULL AND f.invite_code <> ''
-             THEN 'founder_invite'
-             ELSE 'organic' END
-    )                               AS acquisition_source,
+    CASE
+        WHEN rc.code IN ('NEOBANKLESS', 'GOOGLE')
+             OR ur.source_type IN ('meta_ads', 'google_ads', 'mkt_ads')
+        THEN 'mkt_ads'
+        WHEN ur.source_type IS NOT NULL
+        THEN ur.source_type
+        WHEN f.invite_code IS NOT NULL AND f.invite_code <> ''
+        THEN 'founder'
+        ELSE 'organic'
+    END                             AS acquisition_source,
     ur.attributed_referral_code_id::TEXT AS referral_code_id,
     rc.code                         AS referral_code,
     rc.public_name                  AS referral_code_name,
