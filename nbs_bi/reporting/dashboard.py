@@ -181,7 +181,11 @@ def _tab_overview(start_date: str, end_date: str, invoice_total: float) -> None:
     except Exception as exc:
         st.warning(f"7-day revenue chart unavailable: {exc}", icon="⚠️")
         revenue_7d = pd.DataFrame()
-    OverviewSection(ramp_report, client_report, revenue_7d).render()
+    try:
+        OverviewSection(ramp_report, client_report, revenue_7d).render()
+    except Exception as exc:
+        st.error(f"Overview render error: {exc}", icon="🔴")
+        st.exception(exc)
 
 
 def _tab_revenue_analysis(start_date: str, end_date: str) -> None:

@@ -104,14 +104,19 @@ class RevenueAnalysisSection:
         bound = {"start_date": start_date, "end_date": _to_exclusive_end(end_date)}
 
         conv_raw = oq.conversions()
-        rate = pd.to_numeric(conv_raw["exchange_rate"], errors="coerce").replace(0, float("nan"))
-        conv_raw["rev_usd"] = (
-            conv_raw["fee_amount_brl"].fillna(0) / rate
-            + conv_raw["fee_amount_usdc"].fillna(0)
-            + conv_raw["spread_revenue_brl"].fillna(0) / rate
-            + conv_raw["spread_revenue_usdc"].fillna(0)
-        )
-        conv_df = conv_raw[["created_at", "rev_usd"]].assign(source="conversion")
+        if conv_raw.empty:
+            conv_df = pd.DataFrame(columns=["created_at", "rev_usd", "source"])
+        else:
+            rate = pd.to_numeric(conv_raw["exchange_rate"], errors="coerce").replace(
+                0, float("nan")
+            )
+            conv_raw["rev_usd"] = (
+                conv_raw["fee_amount_brl"].fillna(0) / rate
+                + conv_raw["fee_amount_usdc"].fillna(0)
+                + conv_raw["spread_revenue_brl"].fillna(0) / rate
+                + conv_raw["spread_revenue_usdc"].fillna(0)
+            )
+            conv_df = conv_raw[["created_at", "rev_usd"]].assign(source="conversion")
 
         with oq._engine_lazy.connect() as conn:
             card_df = pd.read_sql(text(_SQL_CARD_FEES), conn, params=bound).assign(
