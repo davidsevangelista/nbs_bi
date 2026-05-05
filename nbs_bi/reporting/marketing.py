@@ -599,20 +599,26 @@ def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
         return None
     fig = go.Figure()
     colors = [ROSE, VIOLET, AMBER, TEAL]
+    _date_totals = daily.groupby("date")["new_signups"].sum()
     for i, cid in enumerate(daily["campaign_id"].unique()):
         if not cid:
             continue
         mask = daily["campaign_id"] == cid
+        _name = f"{cid} signups"
+        _t = [[v] for v in _date_totals.reindex(daily.loc[mask, "date"]).fillna(0)]
         fig.add_trace(
             go.Bar(
                 x=daily.loc[mask, "date"].astype(str),
                 y=daily.loc[mask, "new_signups"],
-                name=f"{cid} signups",
+                name=_name,
                 marker_color=colors[i % len(colors)],
                 opacity=0.6,
+                customdata=_t,
+                hovertemplate=f"<b>{_name}</b>: %{{y:,.0f}}<br><b>Total Signups</b>: %{{customdata[0]:,.0f}}<extra></extra>",
             )
         )
     organic = ~daily["is_campaign"]
+    _t_org = [[v] for v in _date_totals.reindex(daily.loc[organic, "date"]).fillna(0)]
     fig.add_trace(
         go.Bar(
             x=daily.loc[organic, "date"].astype(str),
@@ -620,6 +626,8 @@ def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
             name="Organic signups",
             marker_color=BLUE,
             opacity=0.4,
+            customdata=_t_org,
+            hovertemplate="<b>Organic signups</b>: %{y:,.0f}<br><b>Total Signups</b>: %{customdata[0]:,.0f}<extra></extra>",
         )
     )
     spending = daily["daily_spend_usd"] > 0
@@ -670,6 +678,7 @@ def _fig_daily_revenue_vs_spend(
     merged = rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
     merged["total_rev_usd"] = sum(merged[c] for c, _, _ in available)
     merged["rev_rolling_7d"] = merged["total_rev_usd"].rolling(7, min_periods=1).mean()
+    _t = [[v] for v in merged["total_rev_usd"]]
 
     fig = go.Figure()
     for col, lbl, color in available:
@@ -679,6 +688,8 @@ def _fig_daily_revenue_vs_spend(
                 y=merged[col],
                 name=lbl,
                 marker_color=color,
+                customdata=_t,
+                hovertemplate=f"<b>{lbl}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
             )
         )
 
@@ -773,6 +784,9 @@ def _fig_daily_rev_all_vs_cohort(
     boundary = (all_total - coh_total).clip(lower=0)
 
     dates_str = merged["date"].astype(str)
+    _rev_cols_all = [col for col, _, _ in available]
+    _total_all = merged[_rev_cols_all].fillna(0).sum(axis=1)
+    _t = [[v] for v in _total_all]
     fig = go.Figure()
 
     # Total all-users stacked bars
@@ -784,6 +798,8 @@ def _fig_daily_rev_all_vs_cohort(
                 name=lbl,
                 marker_color=color,
                 marker_line_width=0,
+                customdata=_t,
+                hovertemplate=f"<b>{lbl}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
             )
         )
 

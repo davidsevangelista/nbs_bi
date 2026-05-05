@@ -106,6 +106,8 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
         ("total_card_fee_usd", "Card Fees", AMBER),
         ("total_billing_usd", "Billing", TEAL),
     ]
+    _rev_cols = [col for col, _, _ in components if col in summary.columns]
+    _t = [[v] for v in summary[_rev_cols].fillna(0).sum(axis=1)]
     for col, label, color in components:
         if col not in summary.columns:
             continue
@@ -116,6 +118,8 @@ def _fig_cohort_totals(summary: pd.DataFrame) -> go.Figure | None:
                 name=label,
                 marker_color=color,
                 offsetgroup="revenue",
+                customdata=_t,
+                hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total Revenue</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
             )
         )
     fig.add_trace(

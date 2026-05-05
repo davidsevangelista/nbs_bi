@@ -15,8 +15,15 @@ Six tabs:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+_BRT = timezone(timedelta(hours=-3))  # Brazil Standard Time (UTC-3, permanent since 2019)
+
+
+def _today_brt() -> date:
+    """Return today's date in Brazil Standard Time."""
+    return datetime.now(_BRT).date()
 
 import pandas as pd
 import streamlit as st
@@ -140,7 +147,7 @@ def _default_date_range() -> tuple[str, str]:
     Returns:
         Tuple of ISO date strings (inclusive start, exclusive end).
     """
-    today = date.today()
+    today = _today_brt()
     start = date(2025, 8, 15)
     exclusive_end = today + timedelta(days=1)
     return start.isoformat(), exclusive_end.isoformat()
@@ -177,7 +184,7 @@ def _tab_overview(start_date: str, end_date: str, invoice_total: float) -> None:
         st.exception(exc)
         return
     try:
-        revenue_7d = _load_revenue_7d(READONLY_DATABASE_URL, date.today().isoformat())
+        revenue_7d = _load_revenue_7d(READONLY_DATABASE_URL, _today_brt().isoformat())
     except Exception as exc:
         st.warning(f"7-day revenue chart unavailable: {exc}", icon="⚠️")
         revenue_7d = pd.DataFrame()

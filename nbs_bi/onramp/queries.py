@@ -187,7 +187,7 @@ _USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 _CARD_FEES_DAILY_SQL = """
 SELECT
-    DATE(paid_at AT TIME ZONE 'UTC') AS rev_date,
+    DATE(paid_at AT TIME ZONE 'America/Sao_Paulo') AS rev_date,
     COALESCE(SUM(amount_usdc::FLOAT), 0.0) AS card_fee_usd
 FROM card_annual_fees
 WHERE status = 'paid'
@@ -199,7 +199,7 @@ ORDER BY 1
 
 _BILLING_DAILY_SQL = """
 SELECT
-    DATE(created_at AT TIME ZONE 'UTC') AS rev_date,
+    DATE(created_at AT TIME ZONE 'America/Sao_Paulo') AS rev_date,
     COALESCE(SUM(amount::FLOAT / 1000000.0), 0.0) AS billing_usd
 FROM billing_charges
 WHERE status = 'settled'
@@ -211,7 +211,7 @@ ORDER BY 1
 
 _SWAPS_DAILY_SQL = """
 SELECT
-    DATE("timestamp" AT TIME ZONE 'UTC') AS rev_date,
+    DATE("timestamp" AT TIME ZONE 'America/Sao_Paulo') AS rev_date,
     COALESCE(SUM(
         CASE
             WHEN input_mint  = :usdc_mint THEN input_amount::FLOAT  / 1000000.0
@@ -724,7 +724,9 @@ class OnrampQueries:
         conv_df = self.conversions(start_date=start_date, end_date=end_date)
         if not conv_df.empty:
             conv_df["_date"] = (
-                pd.to_datetime(conv_df["created_at"], utc=True).dt.tz_convert(None).dt.date
+                pd.to_datetime(conv_df["created_at"], utc=True)
+                .dt.tz_convert("America/Sao_Paulo")
+                .dt.date
             )
             rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(0, float("nan"))
             conv_df["_conv_usd"] = (

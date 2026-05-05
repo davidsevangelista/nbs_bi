@@ -261,6 +261,14 @@ def _fig_cost_driver_stacked(history: list[tuple[str, CardCostModel]]) -> go.Fig
         "#03A9F4",
         "#FF6F00",
     ]
+    # Pre-compute per-period invoice totals for hover
+    _period_totals: list[float] = []
+    for _, m in history:
+        billed = getattr(m.inputs, "invoice_total_usd", 0.0) or 0.0
+        modelled = m.cost_breakdown().total
+        _period_totals.append(billed if billed > 0 else modelled)
+    _t = [[v] for v in _period_totals]
+
     fig = go.Figure()
     for i, key in enumerate(line_items):
         label = _LABELS.get(key, key.replace("_", " ").title())
@@ -271,7 +279,8 @@ def _fig_cost_driver_stacked(history: list[tuple[str, CardCostModel]]) -> go.Fig
                 x=periods,
                 y=values,
                 marker_color=colors[i % len(colors)],
-                hovertemplate=f"{label}: $%{{y:,.2f}}<extra></extra>",
+                customdata=_t,
+                hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
             )
         )
     # Add "Outros" trace for fees not captured by the rate model (billed − modelled gap)
@@ -287,7 +296,8 @@ def _fig_cost_driver_stacked(history: list[tuple[str, CardCostModel]]) -> go.Fig
                 x=periods,
                 y=outros,
                 marker_color="#B0BEC5",
-                hovertemplate="Other: $%{y:,.2f}<extra></extra>",
+                customdata=_t,
+                hovertemplate="<b>Other (unmodelled)</b>: $%{y:,.2f}<br><b>Total</b>: $%{customdata[0]:,.2f}<extra></extra>",
             )
         )
     fig.update_layout(

@@ -133,6 +133,9 @@ def _fig_revenue_monthly(revenue_monthly: pd.DataFrame) -> go.Figure:
         Plotly Figure.
     """
     fig = go.Figure()
+    _rev_cols = [c for c in ["fee_brl", "spread_brl"] if c in revenue_monthly.columns]
+    _pre_totals = revenue_monthly[_rev_cols].fillna(0).sum(axis=1).reset_index(drop=True)
+    _t = [[v] for v in _pre_totals]
     totals = pd.Series([0.0] * len(revenue_monthly), dtype=float)
     for col, label, color in [
         ("fee_brl", "Explicit Fees", EMERALD),
@@ -145,6 +148,8 @@ def _fig_revenue_monthly(revenue_monthly: pd.DataFrame) -> go.Figure:
                     y=revenue_monthly[col],
                     name=label,
                     marker_color=color,
+                    customdata=_t,
+                    hovertemplate=f"<b>{label}</b>: R$\xa0%{{y:,.0f}}<br><b>Total</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>",
                 )
             )
             totals = totals + revenue_monthly[col].fillna(0).reset_index(drop=True)
@@ -190,16 +195,23 @@ def _fig_revenue_by_direction(rev_dir: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     for side in ["onramp", "offramp"]:
         sub = rev_dir[rev_dir["side"] == side].sort_values("month")
+        _side_cols = [c for c in ["fee_brl", "spread_brl"] if c in sub.columns]
+        _side_totals = sub[_side_cols].fillna(0).sum(axis=1).reset_index(drop=True)
+        _t = [[v] for v in _side_totals]
+        _side_lbl = side.capitalize()
         for component, col in [("fee", "fee_brl"), ("spread", "spread_brl")]:
             if col not in sub.columns:
                 continue
+            _trace_lbl = f"{_side_lbl} — {component}"
             fig.add_trace(
                 go.Bar(
                     x=sub["month"],
                     y=sub[col],
-                    name=f"{side.capitalize()} — {component}",
+                    name=_trace_lbl,
                     marker_color=colors.get((side, component), "#888"),
                     offsetgroup=side,
+                    customdata=_t,
+                    hovertemplate=f"<b>{_trace_lbl}</b>: R$\xa0%{{y:,.0f}}<br><b>Total {_side_lbl}</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>",
                 )
             )
     layout = panel()
@@ -274,12 +286,18 @@ def _fig_new_vs_returning(nvr: pd.DataFrame) -> go.Figure:
         Plotly Figure.
     """
     fig = go.Figure()
+    _nvr_cols = [c for c in ["new_users", "returning_users"] if c in nvr.columns]
+    _t = [[v] for v in nvr[_nvr_cols].fillna(0).sum(axis=1)]
     for col, label, color in [
         ("new_users", "New", TEAL),
         ("returning_users", "Returning", BLUE),
     ]:
         if col in nvr.columns:
-            fig.add_trace(go.Bar(x=nvr["month"], y=nvr[col], name=label, marker_color=color))
+            fig.add_trace(go.Bar(
+                x=nvr["month"], y=nvr[col], name=label, marker_color=color,
+                customdata=_t,
+                hovertemplate=f"<b>{label}</b>: %{{y:,.0f}}<br><b>Total Users</b>: %{{customdata[0]:,.0f}}<extra></extra>",
+            ))
     layout = panel()
     layout["barmode"] = "stack"
     layout["xaxis"]["title"] = None

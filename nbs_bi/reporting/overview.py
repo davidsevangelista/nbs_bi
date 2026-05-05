@@ -191,6 +191,14 @@ def _fig_monthly_revenue(
             ("card_fee_usd", "Card Fees", AMBER, card_revenue_monthly),
             ("billing_usd", "Card Billing", VIOLET, card_revenue_monthly),
         ]
+    n = len(revenue_monthly)
+    _totals = pd.Series(0.0, index=range(n))
+    for col, _, _, df in traces:
+        if col in df.columns:
+            vals = df[col].fillna(0).reset_index(drop=True)
+            if len(vals) == n:
+                _totals = _totals + vals
+    _t = [[v] for v in _totals]
     for col, label, color, df in traces:
         if col in df.columns:
             fig.add_trace(
@@ -199,6 +207,8 @@ def _fig_monthly_revenue(
                     y=df[col],
                     name=label,
                     marker_color=color,
+                    customdata=_t,
+                    hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
                 )
             )
     layout = panel("Monthly Revenue (USD)")
@@ -229,8 +239,13 @@ def _fig_volume_monthly(conv_daily: pd.DataFrame) -> go.Figure | None:
     agg["total"] = agg["onramp"] + agg["offramp"]
     mom_text = _mom_annotations(agg["total"])
     fig = go.Figure()
+    _t = [[v] for v in agg["total"]]
     for col, label, color in [("onramp", "Onramp", BLUE), ("offramp", "Offramp", AMBER)]:
-        fig.add_trace(go.Bar(x=agg["month"], y=agg[col], name=label, marker_color=color))
+        fig.add_trace(go.Bar(
+            x=agg["month"], y=agg[col], name=label, marker_color=color,
+            customdata=_t,
+            hovertemplate=f"<b>{label}</b>: R$\xa0%{{y:,.0f}}<br><b>Total</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>",
+        ))
     fig.add_trace(
         go.Scatter(
             x=agg["month"],
@@ -337,6 +352,9 @@ def _fig_revenue_composition_7d(daily_rev: pd.DataFrame) -> go.Figure | None:
         ("daily_rev_billing_usd", "Card Billing", VIOLET),
     ]
     fig = go.Figure()
+    total_cols = [c for c, _, _ in traces if c in daily_rev.columns]
+    totals = daily_rev[total_cols].sum(axis=1)
+    _t = [[v] for v in totals]
     for col, label, color in traces:
         if col not in daily_rev.columns:
             continue
@@ -346,10 +364,10 @@ def _fig_revenue_composition_7d(daily_rev: pd.DataFrame) -> go.Figure | None:
                 y=daily_rev[col],
                 name=label,
                 marker_color=color,
+                customdata=_t,
+                hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
             )
         )
-    total_cols = [c for c, _, _ in traces if c in daily_rev.columns]
-    totals = daily_rev[total_cols].sum(axis=1)
     fig.add_trace(
         go.Scatter(
             x=daily_rev["date"],
