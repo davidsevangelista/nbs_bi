@@ -307,7 +307,7 @@ def _resample_combined(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
 
     Args:
         df: DataFrame with columns date (datetime), conv_usd, card_usd.
-        granularity: One of 'Daily', 'Weekly', 'Monthly'.
+        granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
 
     Returns:
         Resampled DataFrame with the same column structure. Trailing stub
@@ -316,7 +316,10 @@ def _resample_combined(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
     """
     if granularity == "Daily":
         return df
-    freq = "7D" if granularity == "Weekly" else "MS"
+    freq_map = {"Weekly": "W-MON", "Monthly": "MS", "Yearly": "YS"}
+    freq = freq_map.get(granularity)
+    if freq is None:
+        return df
     result = (
         df.set_index("date")[["conv_usd", "card_usd"]]
         .resample(freq)

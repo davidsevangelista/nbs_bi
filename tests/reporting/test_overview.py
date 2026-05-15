@@ -24,10 +24,10 @@ def test_resample_combined_daily_unchanged() -> None:
 
 
 def test_resample_combined_weekly_reduces_rows() -> None:
-    # 14 days → 2 weeks
+    # 14 days (Thu-Wed) with W-MON → 3 weeks (partial+full+partial)
     df = _make_combined(14)
     result = _resample_combined(df, "Weekly")
-    assert len(result) == 2
+    assert len(result) == 3
 
 
 def test_resample_combined_monthly_reduces_rows() -> None:
@@ -42,11 +42,11 @@ def test_resample_combined_monthly_reduces_rows() -> None:
 
 
 def test_resample_combined_weekly_sums_correctly() -> None:
-    # 7 days, conv_usd=10 each → weekly sum = 70
+    # 7 days (Thu-Wed), conv_usd=10 each → first W-MON week (Thu-Mon) = 50
     df = _make_combined(7)
     result = _resample_combined(df, "Weekly")
-    assert result["conv_usd"].iloc[0] == pytest.approx(70.0)
-    assert result["card_usd"].iloc[0] == pytest.approx(35.0)
+    assert result["conv_usd"].iloc[0] == pytest.approx(50.0)
+    assert result["card_usd"].iloc[0] == pytest.approx(25.0)
 
 
 def test_resample_combined_daily_preserves_values() -> None:

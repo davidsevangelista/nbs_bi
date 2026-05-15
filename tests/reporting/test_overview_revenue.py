@@ -3,7 +3,6 @@
 import datetime
 
 import pandas as pd
-import pytest
 
 from nbs_bi.reporting.overview import _fig_monthly_revenue
 
@@ -55,3 +54,23 @@ def test_fig_monthly_revenue_non_zero_without_card_rev():
 
     fee_trace = next(t for t in fig.data if t.name == "Conv Fees")
     assert all(y > 0 for y in fee_trace.y), f"fee_usd is zero: {fee_trace.y}"
+
+
+def test_resample_combined_yearly_collapses_to_one_row():
+    """_resample_combined with Yearly granularity should collapse all 2026 dates to one row."""
+    from nbs_bi.reporting.overview import _resample_combined
+
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime([
+                "2026-01-15", "2026-02-15", "2026-03-15",
+                "2026-04-15", "2026-05-15",
+            ]),
+            "conv_usd": [100.0, 200.0, 150.0, 300.0, 250.0],
+            "card_usd": [50.0, 60.0, 70.0, 80.0, 90.0],
+        }
+    )
+    result = _resample_combined(df, "Yearly")
+    assert len(result) == 1
+    assert abs(result["conv_usd"].iloc[0] - 1000.0) < 0.01
+    assert abs(result["card_usd"].iloc[0] - 350.0) < 0.01
