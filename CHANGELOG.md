@@ -12,6 +12,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `_compute_take_rate` pure function: computes total revenue ÷ total volume per period, drops zero-volume periods
 - `_fig_take_rate` pure function: single `go.Scatter` line chart with % y-axis
 - `_agg_revenue` and `_agg_volume` helpers extracted from `_compute_take_rate` for 50-line compliance
+- Overview tab: single shared granularity radio (`key="overview_charts_gran"`) drives all three bottom charts (Revenue, Volume, Take Rate) together
+
+### Fixed
+- Revenue chart showed zeros for Daily/Weekly/Yearly granularities: `_fig_monthly_revenue` now normalizes both date columns to `datetime64[ns]` before merging, preventing silent zero-fill from date-type mismatch
+
+### Changed
+- `_resample_combined` now supports Yearly granularity via `"YS"` anchor, alongside existing Daily/Weekly/Monthly
+- `_render_revenue_trend`, `_render_combined_volume`, `_render_take_rate` now accept `granularity: str` parameter; individual radios removed
 
 ## [2.5.3] — 2026-05-15
 
