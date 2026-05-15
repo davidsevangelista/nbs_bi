@@ -62,3 +62,49 @@ def test_compute_take_rate_basic(daily_rev, daily_card_rev, daily_conv, daily_ca
     assert len(result) == 2
     assert abs(result.loc[0, "take_rate_pct"] - 12.0) < 0.01
     assert abs(result.loc[1, "take_rate_pct"] - 12.0) < 0.01
+
+
+def test_compute_take_rate_zero_volume_row_dropped(daily_rev, daily_card_rev):
+    conv = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            "onramp": [0.0, 1000.0],
+            "offramp": [0.0, 0.0],
+        }
+    )
+    card_zero = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            "amount_usd": [0.0, 100.0],
+        }
+    )
+    result = _compute_take_rate(
+        daily_rev, daily_card_rev, conv, card_zero,
+        fx_rate=5.0,
+        granularity="Daily",
+    )
+    # Day 1 has zero volume → must be absent
+    assert len(result) == 1
+    assert pd.Timestamp("2026-01-01") not in result["date"].values
+
+
+def test_compute_take_rate_all_empty():
+    result = _compute_take_rate(
+        pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
+        fx_rate=5.0,
+        granularity="Daily",
+    )
+    assert result.empty
+    assert list(result.columns) == ["date", "take_rate_pct"]
+
+
+def test_compute_take_rate_weekly(daily_rev, daily_card_rev, daily_conv, daily_card):
+    # Both dates (2026-01-01 and 2026-01-02) fall in the same W-MON bucket
+    result = _compute_take_rate(
+        daily_rev, daily_card_rev, daily_conv, daily_card,
+        fx_rate=5.0,
+        granularity="Weekly",
+    )
+    assert len(result) == 1
+    assert "take_rate_pct" in result.columns
+    assert result.loc[0, "take_rate_pct"] > 0
