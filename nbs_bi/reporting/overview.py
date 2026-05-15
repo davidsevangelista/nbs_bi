@@ -264,6 +264,115 @@ def _fig_volume_monthly(conv_daily: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
+def _resample_combined(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
+    """Resample merged conv+card DataFrame to the chosen granularity.
+
+    Args:
+        df: DataFrame with columns date (datetime), conv_usd, card_usd.
+        granularity: One of 'Daily', 'Weekly', 'Monthly'.
+
+    Returns:
+        Resampled DataFrame with the same column structure. Trailing stub
+        buckets (where the bucket start equals the last data point) are
+        dropped to avoid single-day partial periods at the end of a range.
+    """
+    if granularity == "Daily":
+        return df
+    freq = "7D" if granularity == "Weekly" else "MS"
+    result = (
+        df.set_index("date")[["conv_usd", "card_usd"]]
+        .resample(freq)
+        .sum()
+        .reset_index()
+    )
+    # Drop trailing stub: last bucket starts on the very last input date
+    if len(result) > 1 and not df.empty:
+        last_input = df["date"].max()
+        if result["date"].iloc[-1] == last_input:
+            result = result.iloc[:-1].reset_index(drop=True)
+    return result
+
+
+def _fig_combined_volume(
+    conv_daily: pd.DataFrame,
+    card_daily: pd.DataFrame,
+    fx_rate: float,
+    granularity: str = "Monthly",
+) -> go.Figure | None:
+    """Stacked bar: conversion volume (USD) + card spend (USD) at chosen granularity.
+
+    Args:
+        conv_daily: DataFrame with columns date, onramp (BRL), offramp (BRL).
+        card_daily: DataFrame with columns date, amount_usd.
+        fx_rate: Period median BRL/USDC rate used to convert BRL volume to USD.
+            If 0.0, conversion bars are set to 0 to avoid division by zero.
+        granularity: One of 'Daily', 'Weekly', 'Monthly'.
+
+    Returns:
+        Plotly Figure or None if both inputs are empty.
+    """
+    conv_empty = _empty(conv_daily)
+    card_empty = _empty(card_daily) or "amount_usd" not in card_daily.columns
+    if conv_empty and card_empty:
+        return None
+
+    safe_rate = fx_rate if fx_rate and fx_rate > 0 else None
+
+    if not conv_empty:
+        c = conv_daily[["date"]].copy()
+        c["date"] = pd.to_datetime(c["date"], errors="coerce")
+        brl = conv_daily.get("onramp", pd.Series(0.0)).fillna(0.0) + conv_daily.get(
+            "offramp", pd.Series(0.0)
+        ).fillna(0.0)
+        c["conv_usd"] = brl / safe_rate if safe_rate else pd.Series(0.0, index=c.index)
+    else:
+        # conv_empty is True; base the date column on card_daily
+        if not card_empty:
+            c = card_daily[["date"]].copy()
+            c["date"] = pd.to_datetime(c["date"], errors="coerce")
+        else:
+            c = pd.DataFrame(columns=["date"])
+        c["conv_usd"] = 0.0
+
+    if not card_empty:
+        k = card_daily[["date", "amount_usd"]].copy()
+        k["date"] = pd.to_datetime(k["date"], errors="coerce")
+        k = k.rename(columns={"amount_usd": "card_usd"})
+    else:
+        k = c[["date"]].copy()
+        k["card_usd"] = 0.0
+
+    merged = c.merge(k, on="date", how="outer").fillna(0.0).sort_values("date")
+    df = _resample_combined(merged, granularity)
+
+    totals = df["conv_usd"].fillna(0.0) + df["card_usd"].fillna(0.0)
+    _t = [[v] for v in totals]
+
+    fig = go.Figure()
+    for col, label, color in [
+        ("conv_usd", "Conversions (USD)", BLUE),
+        ("card_usd", "Card Spend (USD)", AMBER),
+    ]:
+        fig.add_trace(
+            go.Bar(
+                x=df["date"],
+                y=df[col],
+                name=label,
+                marker_color=color,
+                customdata=_t,
+                hovertemplate=(
+                    f"<b>{label}</b>: $%{{y:,.0f}}"
+                    "<br><b>Total</b>: $%{customdata[0]:,.0f}<extra></extra>"
+                ),
+            )
+        )
+    layout = panel("Volume (USD)")
+    layout["barmode"] = "stack"
+    layout["yaxis"]["title"] = "USD"
+    fig.update_layout(**layout)
+    return fig
+
+
 def _fig_active_users(active_daily: pd.DataFrame) -> go.Figure | None:
     """Area chart: daily unique active users (PIX activity).
 
