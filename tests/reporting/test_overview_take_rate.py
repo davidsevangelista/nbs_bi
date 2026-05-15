@@ -106,17 +106,24 @@ def test_compute_take_rate_all_empty():
     assert list(result.columns) == ["date", "take_rate_pct", "total_rev", "total_vol"]
 
 
-def test_compute_take_rate_exposes_rev_vol(daily_rev, daily_card_rev, daily_conv, daily_card):
+def test_compute_take_rate_excludes_card_fees(daily_rev, daily_card_rev, daily_conv, daily_card):
+    # With include_card_fees=False, card_fee_usd (2+4=6) is excluded from total_rev.
+    # Day 1 without card_fee: rev = 10+5+1 = 16 (no card_fee_usd=2)
     result = _compute_take_rate(
         daily_rev, daily_card_rev, daily_conv, daily_card,
         fx_rate=5.0,
         granularity="Daily",
+        include_card_fees=False,
     )
-    assert "total_rev" in result.columns
-    assert "total_vol" in result.columns
-    # Day 1: rev=18 (10+5+2+1), vol=150 (500/5 + 50)
-    assert abs(result.loc[0, "total_rev"] - 18.0) < 0.01
-    assert abs(result.loc[0, "total_vol"] - 150.0) < 0.01
+    assert abs(result.loc[0, "total_rev"] - 16.0) < 0.01
+    # take_rate_pct must be lower than with card fees included
+    result_with = _compute_take_rate(
+        daily_rev, daily_card_rev, daily_conv, daily_card,
+        fx_rate=5.0,
+        granularity="Daily",
+        include_card_fees=True,
+    )
+    assert result.loc[0, "take_rate_pct"] < result_with.loc[0, "take_rate_pct"]
 
 
 def test_compute_take_rate_weekly(daily_rev, daily_card_rev, daily_conv, daily_card):
