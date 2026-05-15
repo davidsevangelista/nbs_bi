@@ -528,7 +528,7 @@ class OverviewSection:
             self._render_revenue_trend()
         with col_right:
             self._render_active_users()
-            self._render_volume()
+            self._render_combined_volume()
 
     # ------------------------------------------------------------------
     # Private render methods
@@ -664,6 +664,34 @@ class OverviewSection:
     def _render_volume(self) -> None:
         """Render the monthly BRL volume stacked bar chart."""
         fig = _fig_volume_monthly(_get(self._r, "conv_daily"))
+        if fig is None:
+            st.info("No volume data for this period.")
+            return
+        st.plotly_chart(fig, width="stretch")
+
+    def _render_combined_volume(self) -> None:
+        """Render stacked bar: conversion + card spend volume in USD with granularity toggle."""
+        conv_daily = _get(self._r, "conv_daily")
+        card_daily = _get(self._r, "card_daily")
+        summary = _get(self._r, "summary")
+
+        if _empty(conv_daily) and _empty(card_daily):
+            st.info("No volume data for this period.")
+            return
+
+        vol_usd = float(_kpi(summary, "Total volume USD") or 0.0)
+        brl_onramp = float(_kpi(summary, "Onramp volume BRL") or 0.0)
+        brl_offramp = float(_kpi(summary, "Offramp volume BRL") or 0.0)
+        brl_total = brl_onramp + brl_offramp
+        fx_rate = vol_usd / brl_total if brl_total > 0 else 1.0
+
+        granularity = st.radio(
+            "Granularity",
+            ["Daily", "Weekly", "Monthly"],
+            horizontal=True,
+            key="overview_vol_gran",
+        )
+        fig = _fig_combined_volume(conv_daily, card_daily, fx_rate=fx_rate, granularity=granularity)
         if fig is None:
             st.info("No volume data for this period.")
             return
