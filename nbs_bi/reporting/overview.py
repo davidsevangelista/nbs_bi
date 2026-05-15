@@ -237,7 +237,10 @@ def _fig_monthly_revenue(
                 name=label,
                 marker_color=color,
                 customdata=_t,
-                hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
+                hovertemplate=(
+                    f"<b>{label}</b>: $%{{y:,.2f}}"
+                    "<br><b>Total</b>: $%{customdata[0]:,.2f}<extra></extra>"
+                ),
             )
         )
     layout = panel(title)
@@ -361,6 +364,26 @@ def _agg_revenue(
     return revenue[["date", "total_rev"]]
 
 
+def _resample_vol(
+    conv: pd.DataFrame,
+    card: pd.DataFrame,
+    freq: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Resample conv and card daily DataFrames to the given frequency.
+
+    Args:
+        conv: DataFrame with columns date, onramp, offramp.
+        card: DataFrame with columns date, amount_usd.
+        freq: Pandas offset alias (e.g. 'W-MON', 'MS', 'YS').
+
+    Returns:
+        Tuple of (resampled conv, resampled card).
+    """
+    conv = conv.set_index("date")[["onramp", "offramp"]].resample(freq).sum().reset_index()
+    card = card.set_index("date")[["amount_usd"]].resample(freq).sum().reset_index()
+    return conv, card
+
+
 def _agg_volume(
     conv_daily: pd.DataFrame,
     card_daily: pd.DataFrame,
@@ -397,8 +420,7 @@ def _agg_volume(
     if granularity != "Daily":
         freq = freq_map.get(granularity)
         if freq:
-            conv = conv.set_index("date")[["onramp", "offramp"]].resample(freq).sum().reset_index()
-            card = card.set_index("date")[["amount_usd"]].resample(freq).sum().reset_index()
+            conv, card = _resample_vol(conv, card, freq)
     brl = conv["onramp"].fillna(0.0) + conv["offramp"].fillna(0.0)
     if fx_rate and fx_rate > 0:
         conv["conv_usd"] = brl / fx_rate
@@ -849,7 +871,11 @@ class OverviewSection:
             card_rev = _get(self._r, "card_revenue_daily")
             if granularity == "Weekly":
                 rev = _resample_revenue(rev, "Weekly") if not _empty(rev) else rev
-                card_rev = _resample_revenue(card_rev, "Weekly") if not _empty(card_rev) else card_rev
+                card_rev = (
+                    _resample_revenue(card_rev, "Weekly")
+                    if not _empty(card_rev)
+                    else card_rev
+                )
         elif granularity == "Monthly":
             rev = _get(self._r, "revenue_monthly")
             if not _empty(rev) and "month" in rev.columns:
@@ -909,7 +935,7 @@ class OverviewSection:
         brl_onramp = float(_kpi(summary, "Onramp volume BRL") or 0.0)
         brl_offramp = float(_kpi(summary, "Offramp volume BRL") or 0.0)
         brl_total = brl_onramp + brl_offramp
-        fx_rate = brl_total / vol_usd if vol_usd > 0 else 1.0
+        fx_rate = brl_total / vol_usd if vol_usd > 0 else 0.0
 
         granularity = st.radio(
             "Granularity",
@@ -922,6 +948,8 @@ class OverviewSection:
         if granularity in ("Daily", "Weekly"):
             rev = _get(self._r, "revenue_daily")
             card_rev = _get(self._r, "card_revenue_daily")
+        # Monthly uses pre-aggregated keys for revenue (authoritative),
+        # daily for volume (resampled internally).
         elif granularity == "Monthly":
             rev = _get(self._r, "revenue_monthly")
             if not _empty(rev) and "month" in rev.columns:
