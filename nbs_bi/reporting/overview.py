@@ -166,52 +166,77 @@ def _mom_annotations(series: pd.Series) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _fig_monthly_revenue(
-    revenue_monthly: pd.DataFrame,
-    card_revenue_monthly: pd.DataFrame | None = None,
-) -> go.Figure | None:
-    """Stacked bar: monthly conversion + card revenue in USD.
+def _resample_revenue(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
+    """Resample a daily revenue DataFrame to the chosen granularity.
 
     Args:
-        revenue_monthly: DataFrame with columns month, fee_usd, spread_usd.
-        card_revenue_monthly: DataFrame with columns month, card_fee_usd, billing_usd.
+        df: DataFrame with a 'date' column (datetime) and numeric value columns.
+        granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
+
+    Returns:
+        Resampled DataFrame with the same column structure.
+    """
+    if df.empty:
+        return df
+    value_cols = [c for c in df.columns if c != "date"]
+    freq = {"Weekly": "W-MON", "Monthly": "MS", "Yearly": "YS"}.get(granularity)
+    if freq is None:
+        return df
+    return (
+        df.set_index("date")[value_cols]
+        .resample(freq)
+        .sum()
+        .reset_index()
+    )
+
+
+def _fig_monthly_revenue(
+    revenue: pd.DataFrame,
+    card_revenue: pd.DataFrame | None = None,
+    title: str = "Revenue (USD)",
+) -> go.Figure | None:
+    """Stacked bar: conversion + card revenue in USD at any granularity.
+
+    Args:
+        revenue: DataFrame with columns date, fee_usd, spread_usd.
+        card_revenue: DataFrame with columns date, card_fee_usd, billing_usd.
+        title: Chart panel title.
 
     Returns:
         Plotly Figure or None if data is empty.
     """
-    if _empty(revenue_monthly):
+    if _empty(revenue):
         return None
-    fig = go.Figure()
+    merged = revenue.copy()
+    if not _empty(card_revenue):
+        merged = merged.merge(card_revenue, on="date", how="outer").fillna(0.0)
+    merged = merged.sort_values("date")
     traces = [
-        ("fee_usd", "Conv Fees", TEAL, revenue_monthly),
-        ("spread_usd", "Conv Spread", BLUE, revenue_monthly),
+        ("fee_usd", "Conv Fees", TEAL),
+        ("spread_usd", "Conv Spread", BLUE),
+        ("card_fee_usd", "Card Fees", AMBER),
+        ("billing_usd", "Card Billing", VIOLET),
     ]
-    if not _empty(card_revenue_monthly):
-        traces += [
-            ("card_fee_usd", "Card Fees", AMBER, card_revenue_monthly),
-            ("billing_usd", "Card Billing", VIOLET, card_revenue_monthly),
-        ]
-    n = len(revenue_monthly)
-    _totals = pd.Series(0.0, index=range(n))
-    for col, _, _, df in traces:
-        if col in df.columns:
-            vals = df[col].fillna(0).reset_index(drop=True)
-            if len(vals) == n:
-                _totals = _totals + vals
-    _t = [[v] for v in _totals]
-    for col, label, color, df in traces:
-        if col in df.columns:
-            fig.add_trace(
-                go.Bar(
-                    x=df["month"],
-                    y=df[col],
-                    name=label,
-                    marker_color=color,
-                    customdata=_t,
-                    hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
-                )
+    totals = pd.Series(0.0, index=range(len(merged)))
+    for col, _, _ in traces:
+        if col in merged.columns:
+            totals += merged[col].fillna(0.0).reset_index(drop=True)
+    _t = [[v] for v in totals]
+    fig = go.Figure()
+    for col, label, color in traces:
+        if col not in merged.columns:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=merged["date"],
+                y=merged[col],
+                name=label,
+                marker_color=color,
+                customdata=_t,
+                hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
             )
-    layout = panel("Monthly Revenue (USD)")
+        )
+    layout = panel(title)
     layout["barmode"] = "stack"
     layout["yaxis"]["title"] = "USD"
     fig.update_layout(**layout)
@@ -291,6 +316,84 @@ def _resample_combined(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
         if result["date"].iloc[-1] == last_input:
             result = result.iloc[:-1].reset_index(drop=True)
     return result
+
+
+def _compute_take_rate(
+    rev_df: pd.DataFrame,
+    card_rev_df: pd.DataFrame,
+    conv_daily: pd.DataFrame,
+    card_daily: pd.DataFrame,
+    fx_rate: float,
+    granularity: str,
+) -> pd.DataFrame:
+    """Compute take rate (%) per period: total revenue / total volume * 100.
+
+    Args:
+        rev_df: Daily conversion revenue with columns date, fee_usd, spread_usd.
+        card_rev_df: Daily card/billing revenue with columns date, card_fee_usd, billing_usd.
+        conv_daily: Daily conversion volumes with columns date, onramp (BRL), offramp (BRL).
+        card_daily: Daily card spend with columns date, amount_usd.
+        fx_rate: Period BRL/USD rate used to convert BRL volumes to USD.
+        granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
+
+    Returns:
+        DataFrame with columns [date, take_rate_pct]. Periods with zero volume
+        are dropped. Returns empty DataFrame if inputs are all empty.
+    """
+    safe_rate = fx_rate if fx_rate and fx_rate > 0 else None
+
+    # --- Revenue side ---
+    rev = rev_df.copy() if not _empty(rev_df) else pd.DataFrame(columns=["date", "fee_usd", "spread_usd"])
+    card_rev = card_rev_df.copy() if not _empty(card_rev_df) else pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
+
+    rev["date"] = pd.to_datetime(rev["date"], errors="coerce")
+    card_rev["date"] = pd.to_datetime(card_rev["date"], errors="coerce")
+
+    if granularity != "Daily":
+        rev = _resample_revenue(rev, granularity)
+        card_rev = _resample_revenue(card_rev, granularity)
+
+    revenue = rev.merge(card_rev, on="date", how="outer").fillna(0.0)
+    for col in ("fee_usd", "spread_usd", "card_fee_usd", "billing_usd"):
+        if col not in revenue.columns:
+            revenue[col] = 0.0
+    revenue["total_rev"] = (
+        revenue["fee_usd"] + revenue["spread_usd"]
+        + revenue["card_fee_usd"] + revenue["billing_usd"]
+    )
+
+    # --- Volume side ---
+    conv = conv_daily.copy() if not _empty(conv_daily) else pd.DataFrame(columns=["date", "onramp", "offramp"])
+    card = card_daily.copy() if not _empty(card_daily) else pd.DataFrame(columns=["date", "amount_usd"])
+
+    conv["date"] = pd.to_datetime(conv["date"], errors="coerce")
+    card["date"] = pd.to_datetime(card["date"], errors="coerce")
+
+    for col in ("onramp", "offramp"):
+        if col not in conv.columns:
+            conv[col] = 0.0
+    if "amount_usd" not in card.columns:
+        card["amount_usd"] = 0.0
+
+    if granularity != "Daily":
+        freq = {"Weekly": "7D", "Monthly": "MS", "Yearly": "YS"}.get(granularity)
+        if freq:
+            conv = conv.set_index("date")[["onramp", "offramp"]].resample(freq).sum().reset_index()
+            card = card.set_index("date")[["amount_usd"]].resample(freq).sum().reset_index()
+
+    brl = conv["onramp"].fillna(0.0) + conv["offramp"].fillna(0.0)
+    conv["conv_usd"] = brl / safe_rate if safe_rate else pd.Series(0.0, index=conv.index)
+
+    vol = conv[["date", "conv_usd"]].merge(card[["date", "amount_usd"]], on="date", how="outer").fillna(0.0)
+    vol["total_vol"] = vol["conv_usd"] + vol["amount_usd"]
+
+    # --- Merge and compute rate ---
+    merged = revenue[["date", "total_rev"]].merge(vol[["date", "total_vol"]], on="date", how="outer").fillna(0.0)
+    merged = merged[merged["total_vol"] > 0].copy()
+    if merged.empty:
+        return pd.DataFrame(columns=["date", "take_rate_pct"])
+    merged["take_rate_pct"] = merged["total_rev"] / merged["total_vol"] * 100
+    return merged[["date", "take_rate_pct"]].sort_values("date").reset_index(drop=True)
 
 
 def _fig_combined_volume(
@@ -521,14 +624,13 @@ class OverviewSection:
     def render(self) -> None:
         """Render all overview components."""
         self._render_volume_kpis()
-        self._render_revenue_composition_7d()
         col_left, col_right = st.columns(2)
         with col_left:
             self._render_funnel()
-            self._render_revenue_trend()
         with col_right:
             self._render_active_users()
-            self._render_combined_volume()
+        self._render_revenue_trend()
+        self._render_combined_volume()
 
     # ------------------------------------------------------------------
     # Private render methods
@@ -651,15 +753,35 @@ class OverviewSection:
         st.plotly_chart(fig, use_container_width=True)
 
     def _render_revenue_trend(self) -> None:
-        """Render the monthly revenue stacked bar chart."""
-        fig = _fig_monthly_revenue(
-            _get(self._r, "revenue_monthly"),
-            _get(self._r, "card_revenue_monthly"),
+        """Render revenue stacked bar with Daily/Weekly/Monthly/Yearly toggle."""
+        granularity = st.radio(
+            "Granularity",
+            ["Daily", "Weekly", "Monthly", "Yearly"],
+            index=2,
+            horizontal=True,
+            key="overview_rev_gran",
         )
+        if granularity in ("Daily", "Weekly"):
+            rev = _get(self._r, "revenue_daily")
+            card_rev = _get(self._r, "card_revenue_daily")
+            if granularity == "Weekly":
+                rev = _resample_revenue(rev, "Weekly") if not _empty(rev) else rev
+                card_rev = _resample_revenue(card_rev, "Weekly") if not _empty(card_rev) else card_rev
+        elif granularity == "Monthly":
+            rev = _get(self._r, "revenue_monthly")
+            if not _empty(rev) and "month" in rev.columns:
+                rev = rev.rename(columns={"month": "date"})
+            card_rev = _get(self._r, "card_revenue_monthly")
+            if not _empty(card_rev) and "month" in card_rev.columns:
+                card_rev = card_rev.rename(columns={"month": "date"})
+        else:
+            rev = _resample_revenue(_get(self._r, "revenue_daily"), "Yearly")
+            card_rev = _resample_revenue(_get(self._r, "card_revenue_daily"), "Yearly")
+        fig = _fig_monthly_revenue(rev, card_rev)
         if fig is None:
             st.info("No revenue data for this period.")
             return
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     def _render_volume(self) -> None:
         """Render the monthly BRL volume stacked bar chart."""
@@ -695,7 +817,7 @@ class OverviewSection:
         if fig is None:
             st.info("No volume data for this period.")
             return
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     def _render_active_users(self) -> None:
         """Render the daily active users area chart."""
