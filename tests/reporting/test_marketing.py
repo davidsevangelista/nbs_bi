@@ -15,6 +15,8 @@ from nbs_bi.reporting.marketing import (
     _build_channel_comparison,
     _build_cumulative_spend,
     _fig_cumulative_profit,
+    _fig_cumulative_spend,
+    _fig_daily_rev_all_vs_cohort,
 )
 
 # ---------------------------------------------------------------------------
@@ -300,3 +302,86 @@ def test_fig_cumulative_profit_returns_none_missing_columns():
         }
     )
     assert _fig_cumulative_profit(df) is None
+
+
+# ---------------------------------------------------------------------------
+# Per-platform spend chart behaviour
+# ---------------------------------------------------------------------------
+
+
+def _make_multi_platform_spend() -> pd.DataFrame:
+    import datetime
+
+    dates = [datetime.date(2026, 2, 15) + pd.Timedelta(days=i) for i in range(3)]
+    rows = []
+    for d in dates:
+        rows.append({"date": d, "platform": "meta", "daily_spend_usd": 20.0})
+        rows.append({"date": d, "platform": "google", "daily_spend_usd": 10.0})
+    return pd.DataFrame(rows)
+
+
+def _make_single_platform_spend() -> pd.DataFrame:
+    import datetime
+
+    dates = [datetime.date(2026, 2, 15) + pd.Timedelta(days=i) for i in range(3)]
+    return pd.DataFrame(
+        {"date": dates, "platform": ["meta"] * 3, "daily_spend_usd": [20.0, 22.0, 18.0]}
+    )
+
+
+def test_fig_cumulative_spend_multi_platform_has_two_spend_traces(campaigns):
+    """When per_platform_spend has two platforms, two cumulative spend lines are drawn."""
+    pp = _make_multi_platform_spend()
+    agg = pp.groupby("date")["daily_spend_usd"].sum().reset_index()
+    cum_df = _build_cumulative_spend(agg, campaigns)
+    fig = _fig_cumulative_spend(cum_df, campaigns, per_platform_spend=pp)
+    assert fig is not None
+    spend_trace_names = [t.name for t in fig.data if "Spend" in (t.name or "")]
+    assert len(spend_trace_names) == 2
+    assert any("Meta" in n for n in spend_trace_names)
+    assert any("Google" in n for n in spend_trace_names)
+
+
+def test_fig_cumulative_spend_single_platform_has_one_spend_trace(campaigns, daily_spend):
+    """When per_platform_spend has one platform, the single combined line is used."""
+    pp = _make_single_platform_spend()
+    cum_df = _build_cumulative_spend(daily_spend, campaigns)
+    fig = _fig_cumulative_spend(cum_df, campaigns, per_platform_spend=pp)
+    assert fig is not None
+    spend_traces = [t for t in fig.data if "Spend" in (t.name or "")]
+    assert len(spend_traces) == 1
+
+
+def test_fig_cumulative_spend_no_platform_column_falls_back_to_combined(campaigns, daily_spend):
+    """When per_platform_spend has no platform column, original combined line is kept."""
+    pp = daily_spend.copy()  # no platform column
+    cum_df = _build_cumulative_spend(daily_spend, campaigns)
+    fig = _fig_cumulative_spend(cum_df, campaigns, per_platform_spend=pp)
+    assert fig is not None
+    spend_traces = [t for t in fig.data if "Cumulative Spend" in (t.name or "")]
+    assert len(spend_traces) == 1
+
+
+def test_fig_daily_rev_all_vs_cohort_multi_platform_spend_lines():
+    """When per_platform_spend has two platforms, two ad-spend lines appear in the chart."""
+    all_users = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-02-15", periods=3, freq="D"),
+            "daily_rev_conversion_usd": [100.0, 120.0, 90.0],
+            "daily_rev_card_fees_usd": [10.0, 12.0, 8.0],
+            "daily_rev_billing_usd": [5.0, 6.0, 4.0],
+        }
+    )
+    spend_agg = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-02-15", periods=3, freq="D"),
+            "daily_spend_usd": [30.0, 32.0, 28.0],
+        }
+    )
+    pp = _make_multi_platform_spend()
+    fig = _fig_daily_rev_all_vs_cohort(all_users, pd.DataFrame(), spend_agg, per_platform_spend=pp)
+    assert fig is not None
+    spend_traces = [t for t in fig.data if "Spend" in (t.name or "")]
+    assert len(spend_traces) == 2
+    assert any("Meta" in t.name for t in spend_traces)
+    assert any("Google" in t.name for t in spend_traces)

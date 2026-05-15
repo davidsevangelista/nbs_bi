@@ -56,6 +56,12 @@ _TRACKING_START = "2025-08-15"
 # Meta Ads row colour in channel comparison chart.
 _META_COLOR = ROSE
 
+# Per-platform spend line colours.
+_PLATFORM_COLORS: dict[str, str] = {
+    "meta": ROSE,
+    "google": BLUE,
+}
+
 # Channel colour map — all ad platforms aggregated under mkt_ads.
 _CHANNEL_COLORS: dict[str, str] = {
     "mkt_ads": _META_COLOR,
@@ -189,6 +195,7 @@ def _fig_cumulative_spend(
     campaigns: list[dict],
     cum_rev_df: pd.DataFrame | None = None,
     cum_profit_df: pd.DataFrame | None = None,
+    per_platform_spend: pd.DataFrame | None = None,
 ) -> go.Figure | None:
     """Line chart of cumulative spend, cohort revenue, and profit with campaign markers.
 
@@ -199,23 +206,59 @@ def _fig_cumulative_spend(
             revenue overlay for the most recent campaign's cohort.
         cum_profit_df: Output of ``CampaignAnalyzer.cumulative_profit()`` — optional
             profit overlay (revenue − COGS − ad spend) for the latest cohort.
+        per_platform_spend: Raw spend DataFrame with ``platform`` and
+            ``daily_spend_usd`` columns. When it contains multiple platforms a
+            separate cumulative line is drawn per platform; otherwise the
+            combined ``cum_df`` line is used.
 
     Returns:
         Plotly Figure or None if data is empty.
     """
     if cum_df.empty:
         return None
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=cum_df["date"].astype(str),
-            y=cum_df["cumulative_spend_usd"],
-            mode="lines",
-            line=dict(color=ROSE, width=2),
-            name="Cumulative Spend (USD)",
-            hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
-        )
+
+    _pp = (
+        per_platform_spend
+        if per_platform_spend is not None and "platform" in per_platform_spend.columns
+        else None
     )
+    _platforms = sorted(_pp["platform"].unique()) if _pp is not None else []
+    _multi = len(_platforms) > 1
+
+    fig = go.Figure()
+    if _multi:
+        for plat in _platforms:
+            plat_df = (
+                _pp[_pp["platform"] == plat]
+                .assign(date=lambda d: pd.to_datetime(d["date"]))
+                .groupby("date")["daily_spend_usd"]
+                .sum()
+                .reset_index()
+                .sort_values("date")
+            )
+            plat_df["cumulative"] = plat_df["daily_spend_usd"].cumsum()
+            color = _PLATFORM_COLORS.get(plat, TEXT_MUTED)
+            fig.add_trace(
+                go.Scatter(
+                    x=plat_df["date"].astype(str),
+                    y=plat_df["cumulative"],
+                    mode="lines",
+                    line=dict(color=color, width=2),
+                    name=f"Cumulative Spend — {plat.capitalize()} (USD)",
+                    hovertemplate=f"%{{x}}: %{{y:$,.2f}}<extra>{plat.capitalize()}</extra>",
+                )
+            )
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=cum_df["date"].astype(str),
+                y=cum_df["cumulative_spend_usd"],
+                mode="lines",
+                line=dict(color=ROSE, width=2),
+                name="Cumulative Spend (USD)",
+                hovertemplate="%{x}: %{y:$,.2f}<extra></extra>",
+            )
+        )
     if cum_rev_df is not None and not cum_rev_df.empty and "cum_rev_usd" in cum_rev_df.columns:
         fig.add_trace(
             go.Scatter(
@@ -272,27 +315,28 @@ def _fig_cumulative_spend(
             yanchor="bottom",
             font=dict(size=10, color=TEXT_MUTED),
         )
-    spend_days = cum_df[cum_df["daily_spend_usd"] > 0]
-    for _, row in spend_days.iterrows():
-        x_str = str(row["date"])
-        fig.add_vline(
-            x=x_str,
-            line_dash="dash",
-            line_color=ROSE,
-            line_width=1,
-            opacity=0.35,
-        )
-        fig.add_annotation(
-            x=x_str,
-            y=1.0,
-            yref="paper",
-            text=_fmt_usd_safe(row["daily_spend_usd"]),
-            showarrow=False,
-            textangle=-90,
-            font=dict(size=9, color=ROSE),
-            xanchor="left",
-            yanchor="top",
-        )
+    if not _multi:
+        spend_days = cum_df[cum_df["daily_spend_usd"] > 0]
+        for _, row in spend_days.iterrows():
+            x_str = str(row["date"])
+            fig.add_vline(
+                x=x_str,
+                line_dash="dash",
+                line_color=ROSE,
+                line_width=1,
+                opacity=0.35,
+            )
+            fig.add_annotation(
+                x=x_str,
+                y=1.0,
+                yref="paper",
+                text=_fmt_usd_safe(row["daily_spend_usd"]),
+                showarrow=False,
+                textangle=-90,
+                font=dict(size=9, color=ROSE),
+                xanchor="left",
+                yanchor="top",
+            )
     layout = panel("Cumulative Ad Spend vs Cohort Revenue (USD)")
     layout["xaxis"]["title"] = "Date"
     layout["yaxis"]["title"] = "USD"
@@ -646,6 +690,7 @@ def _fig_daily_rev_all_vs_cohort(
     all_users_df: pd.DataFrame,
     cohort_df: pd.DataFrame,
     spend_agg: pd.DataFrame,
+    per_platform_spend: pd.DataFrame | None = None,
 ) -> go.Figure | None:
     """Full stacked bars (total revenue) with a dot+line marking the cohort boundary.
 
@@ -657,6 +702,10 @@ def _fig_daily_rev_all_vs_cohort(
         all_users_df: Output of ``CampaignAnalyzer.all_users_daily_revenue()``.
         cohort_df: Output of ``CampaignAnalyzer.cumulative_revenue()`` — cohort only.
         spend_agg: Aggregated spend DataFrame with columns ``date``, ``daily_spend_usd``.
+        per_platform_spend: Raw spend DataFrame with ``platform`` and
+            ``daily_spend_usd`` columns. When it contains multiple platforms a
+            separate spend line is drawn per platform; otherwise the combined
+            ``spend_agg`` line is used.
 
     Returns:
         Plotly Figure or None if all_users_df is empty.
@@ -729,9 +778,42 @@ def _fig_daily_rev_all_vs_cohort(
         )
     )
 
-    # Ad spend on same (left) axis as revenue
+    # Ad spend on same (left) axis as revenue — per-platform when "All" is selected
+    _pp2 = (
+        per_platform_spend
+        if per_platform_spend is not None and "platform" in per_platform_spend.columns
+        else None
+    )
+    _platforms2 = sorted(_pp2["platform"].unique()) if _pp2 is not None else []
+    _multi2 = len(_platforms2) > 1
+    _dates_norm = pd.to_datetime(merged["date"]).dt.normalize()
+
     has_spend = merged["daily_spend_usd"].gt(0).any()
-    if has_spend:
+    if _multi2:
+        for plat in _platforms2:
+            plat_daily = (
+                _pp2[_pp2["platform"] == plat]
+                .assign(date=lambda d: pd.to_datetime(d["date"]).dt.normalize())
+                .groupby("date")["daily_spend_usd"]
+                .sum()
+                .reset_index()
+            )
+            plat_merged = pd.DataFrame({"date": _dates_norm}).merge(
+                plat_daily, on="date", how="left"
+            ).fillna(0.0)
+            if plat_merged["daily_spend_usd"].gt(0).any():
+                color = _PLATFORM_COLORS.get(plat, TEXT_MUTED)
+                fig.add_trace(
+                    go.Scatter(
+                        x=dates_str,
+                        y=plat_merged["daily_spend_usd"],
+                        name=f"{plat.capitalize()} Ad Spend (USD)",
+                        mode="lines+markers",
+                        line=dict(color=color, width=2, dash="dot"),
+                        yaxis="y",
+                    )
+                )
+    elif has_spend:
         fig.add_trace(
             go.Scatter(
                 x=dates_str,
@@ -1032,12 +1114,24 @@ class MetaAdsSection:
             st.warning("No spend data for the selected platform in this date range.")
             return
 
-        # Per-platform breakdown for KPI tile.
+        # Per-platform breakdown for KPI tiles — scoped to selected platform.
+        _spend_for_kpi = (
+            spend_df
+            if selected_platform is None
+            else spend_df[spend_df["platform"] == selected_platform]
+        ) if "platform" in spend_df.columns else spend_df
         spend_breakdown: dict[str, float] = (
-            spend_df.groupby("platform")["daily_spend_usd"].sum().to_dict()
-            if "platform" in spend_df.columns
+            _spend_for_kpi.groupby("platform")["daily_spend_usd"].sum().to_dict()
+            if "platform" in _spend_for_kpi.columns
             else {}
         )
+
+        # Raw per-platform spend for chart overlays (date-filtered, platform-scoped).
+        spend_df_for_charts = (
+            spend_df
+            if selected_platform is None
+            else spend_df[spend_df["platform"] == selected_platform]
+        ) if "platform" in spend_df.columns else spend_df
 
         # Rebuild analyzer scoped to the selected window/platform.
         analyzer = CampaignAnalyzer(spend_agg, db_url=self._analytics_db_url or self._db_url)
@@ -1140,6 +1234,7 @@ class MetaAdsSection:
             cum_rev_df,
             cum_profit_df,
             all_users_rev_df=all_users_rev_df,
+            spend_df_raw=spend_df_for_charts,
         )
         st.divider()
         self._render_channel(summary, cum_profit_df)
@@ -1414,11 +1509,15 @@ class MetaAdsSection:
         cum_rev_df: pd.DataFrame | None = None,
         cum_profit_df: pd.DataFrame | None = None,
         all_users_rev_df: pd.DataFrame | None = None,
+        spend_df_raw: pd.DataFrame | None = None,
     ) -> None:
         """Render cumulative spend, ROI, CAC, and daily signups charts."""
         if not spend_df.empty:
             cum_df = _build_cumulative_spend(spend_df, campaigns)
-            fig = _fig_cumulative_spend(cum_df, campaigns, cum_rev_df, cum_profit_df)
+            fig = _fig_cumulative_spend(
+                cum_df, campaigns, cum_rev_df, cum_profit_df,
+                per_platform_spend=spend_df_raw,
+            )
             if fig:
                 st.plotly_chart(fig, width="stretch")
 
@@ -1437,7 +1536,10 @@ class MetaAdsSection:
 
         if all_users_rev_df is not None and not all_users_rev_df.empty and not spend_df.empty:
             fig_all = _fig_daily_rev_all_vs_cohort(
-                all_users_rev_df, cum_rev_df if cum_rev_df is not None else pd.DataFrame(), spend_df
+                all_users_rev_df,
+                cum_rev_df if cum_rev_df is not None else pd.DataFrame(),
+                spend_df,
+                per_platform_spend=spend_df_raw,
             )
             if fig_all:
                 st.plotly_chart(fig_all, width="stretch")
