@@ -230,6 +230,24 @@ def test_take_rate_kpis_empty():
     assert l30_pct is None
 
 
+def test_take_rate_kpis_missing_columns():
+    df = pd.DataFrame({"date": pd.to_datetime(["2026-01-01"]), "take_rate_pct": [5.0]})
+    avg_pct, l30_pct = _take_rate_kpis(df)
+    assert avg_pct is None
+    assert l30_pct is None
+
+
+def test_take_rate_kpis_zero_volume():
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
+        "take_rate_pct": [5.0, 6.0],
+        "total_rev": [10.0, 20.0],
+        "total_vol": [0.0, 0.0],
+    })
+    avg_pct, l30_pct = _take_rate_kpis(df)
+    assert avg_pct is None
+
+
 # ---------------------------------------------------------------------------
 # _fig_take_rate annotation
 # ---------------------------------------------------------------------------
