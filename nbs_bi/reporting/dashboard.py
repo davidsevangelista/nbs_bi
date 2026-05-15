@@ -263,27 +263,13 @@ def _tab_clients(start_date: str, end_date: str, invoice_total: float) -> None:
 
 
 def _tab_marketing(start_date: str, end_date: str, invoice_total: float) -> None:
-    if not READONLY_DATABASE_URL:
-        st.error(
-            "Set `READONLY_DATABASE_URL` in your `.env` file to load marketing data.",
-            icon="🔴",
-        )
-        return
-
-    try:
-        client_report = _load_client_report(
-            start_date, end_date, READONLY_DATABASE_URL, invoice_total
-        )
-    except Exception as exc:
-        st.error(f"Failed to load client data for channel comparison: {exc}", icon="🔴")
-        client_report = {}
-
     MetaAdsSection(
         campaign_data=None,
-        acquisition=client_report.get("acquisition"),
+        acquisition=None,
         db_url=ADS_DATABASE_URL or None,
         analytics_db_url=READONLY_DATABASE_URL or None,
-        profit_by_source_daily=client_report.get("profit_by_source_daily"),
+        profit_by_source_daily=None,
+        invoice_total=invoice_total,
     ).render()
 
 

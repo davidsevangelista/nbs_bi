@@ -50,8 +50,13 @@ def _fmt_usd_safe(v: object) -> str:
     return fmt_usd(f) if pd.notna(f) else "—"
 
 
+import datetime as _dt
+
 # Company launch date — ad spend data before this is ignored.
 _TRACKING_START = "2025-08-15"
+
+# Default ads analysis start date — first campaign of interest.
+_DEFAULT_ADS_START = _dt.date(2026, 4, 14)
 
 # Meta Ads row colour in channel comparison chart.
 _META_COLOR = ROSE
@@ -72,6 +77,32 @@ _CHANNEL_COLORS: dict[str, str] = {
     "organic": AMBER,
     "unknown": TEXT_MUTED,
 }
+
+
+@st.cache_data(ttl=3600, show_spinner="Loading acquisition data…")
+def _load_acquisition_for_dates(
+    start_date: str,
+    end_date: str,
+    db_url: str,
+    invoice_total: float,
+) -> pd.DataFrame:
+    """Load acquisition summary for a specific date range.
+
+    Args:
+        start_date: Inclusive ISO date string.
+        end_date: Exclusive ISO date string.
+        db_url: SQLAlchemy DB URL.
+        invoice_total: Rain invoice total for pro-rata card cost allocation.
+
+    Returns:
+        DataFrame with columns ``acquisition_source``, ``n_users``,
+        ``avg_net_revenue_usd``, ``total_net_revenue_usd``, ``conversion_rate``.
+        Empty DataFrame if the key is absent.
+    """
+    from nbs_bi.clients.report import ClientReport
+
+    report = ClientReport(start_date, end_date, invoice_total, db_url).build()
+    return report.get("acquisition", pd.DataFrame())
 
 
 # ---------------------------------------------------------------------------
@@ -1020,12 +1051,14 @@ class MetaAdsSection:
         db_url: str | None = None,
         analytics_db_url: str | None = None,
         profit_by_source_daily: pd.DataFrame | None = None,
+        invoice_total: float = 0.0,
     ) -> None:
         self._data = campaign_data
         self._acquisition = acquisition
         self._db_url = db_url
         self._analytics_db_url = analytics_db_url
         self._profit_by_source_daily = profit_by_source_daily
+        self._invoice_total = invoice_total
 
     def render(self) -> None:  # pragma: no cover
         """Render all Marketing - Ads tab components into the active Streamlit context."""
@@ -1064,9 +1097,7 @@ class MetaAdsSection:
         min_date = spend_dates.min().date()
         max_date = spend_dates.max().date()
 
-        import datetime as _dt
-
-        _default_start = min_date
+        _default_start = max(min_date, _DEFAULT_ADS_START)
 
         # Reset date inputs when the data range changes (earlier or later data added).
         _max_key = "ads_data_max_date"
@@ -1237,7 +1268,12 @@ class MetaAdsSection:
             spend_df_raw=spend_df_for_charts,
         )
         st.divider()
-        self._render_channel(summary, cum_profit_df)
+        self._render_channel(
+            summary,
+            cum_profit_df,
+            start_date=str(start_date),
+            end_date=str(end_date),
+        )
         st.divider()
         self._render_summary_table(summary)
 
@@ -1558,9 +1594,24 @@ class MetaAdsSection:
         self,
         summary: pd.DataFrame,
         cum_profit_df: pd.DataFrame | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> None:
         """Render channel comparison chart, daily evolution, and summary table."""
-        acq = self._acquisition
+        if self._analytics_db_url and start_date and end_date:
+            try:
+                acq = _load_acquisition_for_dates(
+                    start_date, end_date, self._analytics_db_url, self._invoice_total
+                )
+            except Exception as exc:
+                st.error(
+                    f"Failed to load acquisition data for the selected period: {exc}",
+                    icon="🔴",
+                )
+                return
+        else:
+            acq = self._acquisition
+
         if acq is None or (isinstance(acq, pd.DataFrame) and acq.empty):
             st.info("Channel comparison unavailable — load ClientReport to compare sources.")
             return

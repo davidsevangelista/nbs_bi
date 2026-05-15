@@ -7,6 +7,8 @@ methods are excluded via pragma: no cover.
 
 from __future__ import annotations
 
+import datetime
+
 import pandas as pd
 import pytest
 
@@ -17,7 +19,15 @@ from nbs_bi.reporting.marketing import (
     _fig_cumulative_profit,
     _fig_cumulative_spend,
     _fig_daily_rev_all_vs_cohort,
+    _load_acquisition_for_dates,
 )
+
+
+def test_default_ads_start_respects_constant():
+    """_DEFAULT_ADS_START must be 2026-04-14 and be a datetime.date."""
+    from nbs_bi.reporting.marketing import _DEFAULT_ADS_START
+
+    assert _DEFAULT_ADS_START == datetime.date(2026, 4, 14)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -385,3 +395,75 @@ def test_fig_daily_rev_all_vs_cohort_multi_platform_spend_lines():
     assert len(spend_traces) == 2
     assert any("Meta" in t.name for t in spend_traces)
     assert any("Google" in t.name for t in spend_traces)
+
+
+# ---------------------------------------------------------------------------
+# MetaAdsSection invoice_total param (Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_metaads_section_stores_invoice_total():
+    section = MetaAdsSection(campaign_data=None, acquisition=None, invoice_total=99.50)
+    assert section._invoice_total == 99.50
+
+
+def test_metaads_section_invoice_total_defaults_to_zero():
+    section = MetaAdsSection(campaign_data=None, acquisition=None)
+    assert section._invoice_total == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _load_acquisition_for_dates (Task 3)
+# ---------------------------------------------------------------------------
+
+
+def test_load_acquisition_for_dates_returns_dataframe():
+    """_load_acquisition_for_dates calls ClientReport and returns acquisition key."""
+    from unittest.mock import MagicMock, patch
+
+    expected = pd.DataFrame([{"acquisition_source": "organic", "n_users": 10}])
+    mock_report = MagicMock()
+    mock_report.build.return_value = {"acquisition": expected}
+
+    with patch("nbs_bi.clients.report.ClientReport", return_value=mock_report):
+        _load_acquisition_for_dates.clear()
+        result = _load_acquisition_for_dates(
+            "2026-04-14", "2026-05-15", "postgresql://test", 100.0
+        )
+
+    pd.testing.assert_frame_equal(result, expected)
+
+
+def test_load_acquisition_for_dates_missing_key_returns_empty():
+    """When ClientReport.build() has no 'acquisition' key, return empty DataFrame."""
+    from unittest.mock import MagicMock, patch
+
+    mock_report = MagicMock()
+    mock_report.build.return_value = {}
+
+    with patch("nbs_bi.clients.report.ClientReport", return_value=mock_report):
+        _load_acquisition_for_dates.clear()
+        result = _load_acquisition_for_dates(
+            "2026-04-14", "2026-05-15", "postgresql://test", 0.0
+        )
+
+    assert isinstance(result, pd.DataFrame)
+    assert result.empty
+
+
+# ---------------------------------------------------------------------------
+# MetaAdsSection analytics_db_url wiring (Task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_metaads_section_uses_analytics_db_url_for_channel():
+    """When analytics_db_url is set, section stores correct values for lazy load."""
+    section = MetaAdsSection(
+        campaign_data=None,
+        acquisition=None,
+        analytics_db_url="postgresql://test",
+        invoice_total=150.0,
+    )
+    assert section._analytics_db_url == "postgresql://test"
+    assert section._invoice_total == 150.0
+    assert section._acquisition is None
