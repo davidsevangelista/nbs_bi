@@ -745,9 +745,16 @@ class OverviewSection:
             self._render_funnel()
         with col_right:
             self._render_active_users()
-        self._render_revenue_trend()
-        self._render_combined_volume()
-        self._render_take_rate()
+        granularity = st.radio(
+            "Granularity",
+            ["Daily", "Weekly", "Monthly", "Yearly"],
+            index=2,
+            horizontal=True,
+            key="overview_charts_gran",
+        )
+        self._render_revenue_trend(granularity)
+        self._render_combined_volume(granularity)
+        self._render_take_rate(granularity)
 
     # ------------------------------------------------------------------
     # Private render methods
@@ -869,15 +876,8 @@ class OverviewSection:
         st.metric("Total Revenue — Last 7 Days", fmt_usd(total))
         st.plotly_chart(fig, use_container_width=True)
 
-    def _render_revenue_trend(self) -> None:
+    def _render_revenue_trend(self, granularity: str) -> None:
         """Render revenue stacked bar with Daily/Weekly/Monthly/Yearly toggle."""
-        granularity = st.radio(
-            "Granularity",
-            ["Daily", "Weekly", "Monthly", "Yearly"],
-            index=2,
-            horizontal=True,
-            key="overview_rev_gran",
-        )
         if granularity in ("Daily", "Weekly"):
             rev = _get(self._r, "revenue_daily")
             card_rev = _get(self._r, "card_revenue_daily")
@@ -912,7 +912,7 @@ class OverviewSection:
             return
         st.plotly_chart(fig, width="stretch")
 
-    def _render_combined_volume(self) -> None:
+    def _render_combined_volume(self, granularity: str) -> None:
         """Render stacked bar: conversion + card spend volume in USD with granularity toggle."""
         conv_daily = _get(self._r, "conv_daily")
         card_daily = _get(self._r, "card_daily")
@@ -928,19 +928,13 @@ class OverviewSection:
         brl_total = brl_onramp + brl_offramp
         fx_rate = brl_total / vol_usd if vol_usd > 0 else 1.0
 
-        granularity = st.radio(
-            "Granularity",
-            ["Daily", "Weekly", "Monthly"],
-            horizontal=True,
-            key="overview_vol_gran",
-        )
         fig = _fig_combined_volume(conv_daily, card_daily, fx_rate=fx_rate, granularity=granularity)
         if fig is None:
             st.info("No volume data for this period.")
             return
         st.plotly_chart(fig, use_container_width=True)
 
-    def _render_take_rate(self) -> None:
+    def _render_take_rate(self, granularity: str) -> None:
         """Render take rate % line chart with Daily/Weekly/Monthly/Yearly toggle."""
         summary = _get(self._r, "summary")
         vol_usd = float(_kpi(summary, "Total volume USD") or 0.0)
@@ -948,14 +942,6 @@ class OverviewSection:
         brl_offramp = float(_kpi(summary, "Offramp volume BRL") or 0.0)
         brl_total = brl_onramp + brl_offramp
         fx_rate = brl_total / vol_usd if vol_usd > 0 else 0.0
-
-        granularity = st.radio(
-            "Granularity",
-            ["Daily", "Weekly", "Monthly", "Yearly"],
-            index=2,
-            horizontal=True,
-            key="overview_tr_gran",
-        )
 
         if granularity in ("Daily", "Weekly"):
             rev = _get(self._r, "revenue_daily")
