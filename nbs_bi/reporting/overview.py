@@ -992,6 +992,11 @@ class OverviewSection:
 
     def _render_take_rate(self, granularity: str) -> None:
         """Render take rate % line chart with Daily/Weekly/Monthly/Yearly toggle."""
+        include_card_fees = st.checkbox(
+            "Include card annual fees",
+            value=True,
+            key="tr_incl_card_fees",
+        )
         summary = _get(self._r, "summary")
         vol_usd = float(_kpi(summary, "Total volume USD") or 0.0)
         brl_onramp = float(_kpi(summary, "Onramp volume BRL") or 0.0)
@@ -1025,8 +1030,10 @@ class OverviewSection:
             card_daily,
             fx_rate=fx_rate,
             granularity=granularity,
+            include_card_fees=include_card_fees,
         )
-        fig = _fig_take_rate(df)
+        avg_pct, l30_pct = _take_rate_kpis(df) if not _empty(df) else (None, None)
+        fig = _fig_take_rate(df, avg_pct=avg_pct, l30_pct=l30_pct)
         if fig is None:
             st.info("No data to compute take rate for this period.")
             return

@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Overview take rate chart: checkbox to include/exclude card annual fees from the revenue numerator (default: included)
+- Overview take rate chart: volume-weighted Avg and L30 KPI annotation in top-right corner of the chart
 - Overview tab: take rate % line chart as fourth full-width row, with Daily/Weekly/Monthly/Yearly granularity toggle (`_render_take_rate`)
 - `_compute_take_rate` pure function: computes total revenue ÷ total volume per period, drops zero-volume periods
 - `_fig_take_rate` pure function: single `go.Scatter` line chart with % y-axis
