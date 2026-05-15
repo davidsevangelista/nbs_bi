@@ -181,3 +181,42 @@ def test_progressive_fee_sweep_shape(raw_spend: pd.DataFrame) -> None:
     df = ca.progressive_fee_sweep(raw_spend, gap_values=[10.0, 20.0, 30.0], n_bins=5)
     assert df.shape == (3, 3)
     assert list(df.columns) == ["gap", "revenue_usd", "coverage_ratio"]
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — require READONLY_DATABASE_URL
+# ---------------------------------------------------------------------------
+
+_db = pytest.mark.skipif(
+    not __import__("nbs_bi.config", fromlist=["READONLY_DATABASE_URL"]).READONLY_DATABASE_URL,
+    reason="READONLY_DATABASE_URL not set",
+)
+
+
+@_db
+def test_load_card_transactions_excludes_internal_users() -> None:
+    """load_card_transactions must not include @neobankless.com user spend."""
+    from sqlalchemy import create_engine, text
+
+    from nbs_bi.cards.analytics import load_card_transactions
+    from nbs_bi.config import READONLY_DATABASE_URL
+
+    engine = create_engine(READONLY_DATABASE_URL)
+    with engine.connect() as conn:
+        expected = conn.execute(
+            text("""
+                SELECT COUNT(*) FROM card_transactions ct
+                JOIN users u ON u.id = ct.user_id
+                WHERE ct.status = 'completed'
+                  AND ct.transaction_type = 'spend'
+                  AND ct.posted_at IS NOT NULL
+                  AND ct.amount > 0
+                  AND u.email NOT LIKE '%@neobankless.com'
+            """)
+        ).scalar()
+
+    df = load_card_transactions()
+    assert len(df) == expected, (
+        f"load_card_transactions returned {len(df)} rows; "
+        f"expected {expected} (external users only)"
+    )

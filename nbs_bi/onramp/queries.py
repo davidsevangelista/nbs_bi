@@ -102,13 +102,15 @@ WHERE pt.created_at >= :start_date
 
 
 _CARD_TXS_ACTIVE_SQL = """
-SELECT user_id::TEXT AS user_id, posted_at AS created_at,
-       amount / 100.0 AS amount_usd
-FROM card_transactions
-WHERE status = 'completed'
-  AND transaction_type = 'spend'
-  AND posted_at >= :start_date
-  AND posted_at <  :end_date
+SELECT ct.user_id::TEXT AS user_id, ct.posted_at AS created_at,
+       ct.amount / 100.0 AS amount_usd
+FROM card_transactions ct
+JOIN users u ON u.id = ct.user_id
+WHERE ct.status = 'completed'
+  AND ct.transaction_type = 'spend'
+  AND ct.posted_at >= :start_date
+  AND ct.posted_at <  :end_date
+  AND u.email NOT LIKE '%@neobankless.com'
 """
 
 _CARD_FEES_ACTIVE_SQL = """

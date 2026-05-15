@@ -1,7 +1,7 @@
-"""Tests for nbs_bi.onramp.queries — conv_revenue_usd canonical function.
+"""Tests for nbs_bi.onramp.queries.
 
-All tests use in-memory DataFrames — no database required.
-Columns are in real units (BRL, USDC), matching the output of _scale_currency().
+Unit tests use in-memory DataFrames — no database required.
+Integration tests (marked db) connect to READONLY_DATABASE_URL.
 """
 
 import math
@@ -129,3 +129,34 @@ def test_conv_revenue_usd_all_zero_revenue_returns_zero() -> None:
     df = _onramp_row(fee_brl=0.0, spread_brl=0.0, rate=5.0, fee_usdc=0.0, spread_usdc=0.0)
     result = conv_revenue_usd(df)
     assert result.iloc[0] == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — require READONLY_DATABASE_URL
+# ---------------------------------------------------------------------------
+
+_db = pytest.mark.skipif(
+    not __import__("nbs_bi.config", fromlist=["READONLY_DATABASE_URL"]).READONLY_DATABASE_URL,
+    reason="READONLY_DATABASE_URL not set",
+)
+
+
+@_db
+def test_card_transactions_active_excludes_internal_users() -> None:
+    """card_transactions_active must not return transactions from @neobankless.com users."""
+    from sqlalchemy import create_engine, text
+
+    from nbs_bi.config import READONLY_DATABASE_URL
+    from nbs_bi.onramp.queries import OnrampQueries
+
+    engine = create_engine(READONLY_DATABASE_URL)
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id::text FROM users WHERE email LIKE '%@neobankless.com'")
+        )
+        internal_ids = {row[0] for row in rows}
+
+    q = OnrampQueries(start_date="2024-01-01", end_date="2026-12-31")
+    df = q.card_transactions_active()
+    leaked = set(df["user_id"]).intersection(internal_ids)
+    assert not leaked, f"Internal user IDs leaked into card_transactions_active: {leaked}"

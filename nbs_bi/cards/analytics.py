@@ -99,14 +99,16 @@ _EWMA_SPAN = 7
 _FORECAST_DAYS = 5
 
 _SQL = """\
-SELECT amount, posted_at
-FROM card_transactions
-WHERE status = 'completed'
-  AND transaction_type = 'spend'
-  AND posted_at IS NOT NULL
-  AND (:date_from IS NULL OR posted_at::date >= :date_from)
-  AND (:date_to   IS NULL OR posted_at::date <= :date_to)
-ORDER BY posted_at
+SELECT ct.amount, ct.posted_at
+FROM card_transactions ct
+JOIN users u ON u.id = ct.user_id
+WHERE ct.status = 'completed'
+  AND ct.transaction_type = 'spend'
+  AND ct.posted_at IS NOT NULL
+  AND u.email NOT LIKE '%@neobankless.com'
+  AND (:date_from IS NULL OR ct.posted_at::date >= :date_from)
+  AND (:date_to   IS NULL OR ct.posted_at::date <= :date_to)
+ORDER BY ct.posted_at
 """
 
 _SQL_TOP_SPENDERS = """\
@@ -125,16 +127,18 @@ SELECT
     COALESCE(cq_agg.ramp_conversions, 0)::int AS ramp_conversions
 FROM (
     SELECT
-        user_id,
+        ct.user_id,
         COUNT(*)                AS n_transactions,
-        SUM(amount)::float / 100 AS total_usd
-    FROM card_transactions
-    WHERE status = 'completed'
-      AND transaction_type = 'spend'
-      AND posted_at IS NOT NULL
-      AND (:date_from IS NULL OR posted_at >= :date_from)
-      AND (:date_to   IS NULL OR posted_at <  :date_to)
-    GROUP BY user_id
+        SUM(ct.amount)::float / 100 AS total_usd
+    FROM card_transactions ct
+    JOIN users u ON u.id = ct.user_id
+    WHERE ct.status = 'completed'
+      AND ct.transaction_type = 'spend'
+      AND ct.posted_at IS NOT NULL
+      AND u.email NOT LIKE '%@neobankless.com'
+      AND (:date_from IS NULL OR ct.posted_at >= :date_from)
+      AND (:date_to   IS NULL OR ct.posted_at <  :date_to)
+    GROUP BY ct.user_id
     ORDER BY total_usd DESC
     LIMIT 20
 ) agg
