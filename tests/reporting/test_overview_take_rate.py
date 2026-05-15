@@ -1,7 +1,5 @@
 """Unit tests for the take rate computation and figure helpers."""
 
-import math
-
 import pandas as pd
 import pytest
 

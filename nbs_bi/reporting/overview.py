@@ -14,6 +14,8 @@ Usage::
 
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -38,6 +40,8 @@ from nbs_bi.reporting.theme import (
 from nbs_bi.reporting.theme import (
     report_get as _get,
 )
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CSS for dark KPI cards
@@ -318,6 +322,84 @@ def _resample_combined(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
     return result
 
 
+def _agg_revenue(
+    rev_df: pd.DataFrame,
+    card_rev_df: pd.DataFrame,
+    granularity: str,
+) -> pd.DataFrame:
+    """Aggregate conversion + card/billing revenue per period.
+
+    Args:
+        rev_df: Daily conversion revenue with columns date, fee_usd, spread_usd.
+        card_rev_df: Daily card/billing revenue with columns date, card_fee_usd, billing_usd.
+        granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
+
+    Returns:
+        DataFrame with columns: date, total_rev.
+    """
+    rev = rev_df.copy() if not _empty(rev_df) else pd.DataFrame(columns=["date", "fee_usd", "spread_usd"])
+    card_rev = card_rev_df.copy() if not _empty(card_rev_df) else pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
+    rev["date"] = pd.to_datetime(rev["date"], errors="coerce")
+    card_rev["date"] = pd.to_datetime(card_rev["date"], errors="coerce")
+    if granularity != "Daily":
+        rev = _resample_revenue(rev, granularity)
+        card_rev = _resample_revenue(card_rev, granularity)
+    revenue = rev.merge(card_rev, on="date", how="outer").fillna(0.0)
+    for col in ("fee_usd", "spread_usd", "card_fee_usd", "billing_usd"):
+        if col not in revenue.columns:
+            revenue[col] = 0.0
+    revenue["total_rev"] = (
+        revenue["fee_usd"] + revenue["spread_usd"]
+        + revenue["card_fee_usd"] + revenue["billing_usd"]
+    )
+    return revenue[["date", "total_rev"]]
+
+
+def _agg_volume(
+    conv_daily: pd.DataFrame,
+    card_daily: pd.DataFrame,
+    fx_rate: float,
+    granularity: str,
+) -> pd.DataFrame:
+    """Aggregate conversion (BRL→USD) + card spend per period.
+
+    Args:
+        conv_daily: Daily conversion volumes with columns date, onramp (BRL), offramp (BRL).
+        card_daily: Daily card spend with columns date, amount_usd.
+        fx_rate: Period BRL/USD rate. Zero or negative means no FX available.
+        granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
+
+    Returns:
+        DataFrame with columns: date, total_vol.
+    """
+    freq_map = {"Weekly": "W-MON", "Monthly": "MS", "Yearly": "YS"}
+    conv = conv_daily.copy() if not _empty(conv_daily) else pd.DataFrame(columns=["date", "onramp", "offramp"])
+    card = card_daily.copy() if not _empty(card_daily) else pd.DataFrame(columns=["date", "amount_usd"])
+    conv["date"] = pd.to_datetime(conv["date"], errors="coerce")
+    card["date"] = pd.to_datetime(card["date"], errors="coerce")
+    for col in ("onramp", "offramp"):
+        if col not in conv.columns:
+            conv[col] = 0.0
+    if "amount_usd" not in card.columns:
+        card["amount_usd"] = 0.0
+    if granularity != "Daily":
+        freq = freq_map.get(granularity)
+        if freq:
+            conv = conv.set_index("date")[["onramp", "offramp"]].resample(freq).sum().reset_index()
+            card = card.set_index("date")[["amount_usd"]].resample(freq).sum().reset_index()
+    brl = conv["onramp"].fillna(0.0) + conv["offramp"].fillna(0.0)
+    if fx_rate and fx_rate > 0:
+        conv["conv_usd"] = brl / fx_rate
+    else:
+        _log.warning(
+            "_agg_volume: fx_rate=%s is zero or invalid; BRL volume zeroed", fx_rate
+        )
+        conv["conv_usd"] = pd.Series(0.0, index=conv.index)
+    vol = conv[["date", "conv_usd"]].merge(card[["date", "amount_usd"]], on="date", how="outer").fillna(0.0)
+    vol["total_vol"] = vol["conv_usd"] + vol["amount_usd"]
+    return vol[["date", "total_vol"]]
+
+
 def _compute_take_rate(
     rev_df: pd.DataFrame,
     card_rev_df: pd.DataFrame,
@@ -333,62 +415,16 @@ def _compute_take_rate(
         card_rev_df: Daily card/billing revenue with columns date, card_fee_usd, billing_usd.
         conv_daily: Daily conversion volumes with columns date, onramp (BRL), offramp (BRL).
         card_daily: Daily card spend with columns date, amount_usd.
-        fx_rate: Period BRL/USD rate used to convert BRL volumes to USD.
+        fx_rate: Period BRL/USD rate. Zero or negative means no FX available.
         granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
 
     Returns:
         DataFrame with columns [date, take_rate_pct]. Periods with zero volume
         are dropped. Returns empty DataFrame if inputs are all empty.
     """
-    safe_rate = fx_rate if fx_rate and fx_rate > 0 else None
-
-    # --- Revenue side ---
-    rev = rev_df.copy() if not _empty(rev_df) else pd.DataFrame(columns=["date", "fee_usd", "spread_usd"])
-    card_rev = card_rev_df.copy() if not _empty(card_rev_df) else pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
-
-    rev["date"] = pd.to_datetime(rev["date"], errors="coerce")
-    card_rev["date"] = pd.to_datetime(card_rev["date"], errors="coerce")
-
-    if granularity != "Daily":
-        rev = _resample_revenue(rev, granularity)
-        card_rev = _resample_revenue(card_rev, granularity)
-
-    revenue = rev.merge(card_rev, on="date", how="outer").fillna(0.0)
-    for col in ("fee_usd", "spread_usd", "card_fee_usd", "billing_usd"):
-        if col not in revenue.columns:
-            revenue[col] = 0.0
-    revenue["total_rev"] = (
-        revenue["fee_usd"] + revenue["spread_usd"]
-        + revenue["card_fee_usd"] + revenue["billing_usd"]
-    )
-
-    # --- Volume side ---
-    conv = conv_daily.copy() if not _empty(conv_daily) else pd.DataFrame(columns=["date", "onramp", "offramp"])
-    card = card_daily.copy() if not _empty(card_daily) else pd.DataFrame(columns=["date", "amount_usd"])
-
-    conv["date"] = pd.to_datetime(conv["date"], errors="coerce")
-    card["date"] = pd.to_datetime(card["date"], errors="coerce")
-
-    for col in ("onramp", "offramp"):
-        if col not in conv.columns:
-            conv[col] = 0.0
-    if "amount_usd" not in card.columns:
-        card["amount_usd"] = 0.0
-
-    if granularity != "Daily":
-        freq = {"Weekly": "7D", "Monthly": "MS", "Yearly": "YS"}.get(granularity)
-        if freq:
-            conv = conv.set_index("date")[["onramp", "offramp"]].resample(freq).sum().reset_index()
-            card = card.set_index("date")[["amount_usd"]].resample(freq).sum().reset_index()
-
-    brl = conv["onramp"].fillna(0.0) + conv["offramp"].fillna(0.0)
-    conv["conv_usd"] = brl / safe_rate if safe_rate else pd.Series(0.0, index=conv.index)
-
-    vol = conv[["date", "conv_usd"]].merge(card[["date", "amount_usd"]], on="date", how="outer").fillna(0.0)
-    vol["total_vol"] = vol["conv_usd"] + vol["amount_usd"]
-
-    # --- Merge and compute rate ---
-    merged = revenue[["date", "total_rev"]].merge(vol[["date", "total_vol"]], on="date", how="outer").fillna(0.0)
+    revenue = _agg_revenue(rev_df, card_rev_df, granularity)
+    vol = _agg_volume(conv_daily, card_daily, fx_rate, granularity)
+    merged = revenue.merge(vol, on="date", how="outer").fillna(0.0)
     merged = merged[merged["total_vol"] > 0].copy()
     if merged.empty:
         return pd.DataFrame(columns=["date", "take_rate_pct"])
