@@ -713,6 +713,7 @@ class OverviewSection:
             self._render_active_users()
         self._render_revenue_trend()
         self._render_combined_volume()
+        self._render_take_rate()
 
     # ------------------------------------------------------------------
     # Private render methods
@@ -898,6 +899,51 @@ class OverviewSection:
         fig = _fig_combined_volume(conv_daily, card_daily, fx_rate=fx_rate, granularity=granularity)
         if fig is None:
             st.info("No volume data for this period.")
+            return
+        st.plotly_chart(fig, use_container_width=True)
+
+    def _render_take_rate(self) -> None:
+        """Render take rate % line chart with Daily/Weekly/Monthly/Yearly toggle."""
+        summary = _get(self._r, "summary")
+        vol_usd = float(_kpi(summary, "Total volume USD") or 0.0)
+        brl_onramp = float(_kpi(summary, "Onramp volume BRL") or 0.0)
+        brl_offramp = float(_kpi(summary, "Offramp volume BRL") or 0.0)
+        brl_total = brl_onramp + brl_offramp
+        fx_rate = brl_total / vol_usd if vol_usd > 0 else 1.0
+
+        granularity = st.radio(
+            "Granularity",
+            ["Daily", "Weekly", "Monthly", "Yearly"],
+            index=2,
+            horizontal=True,
+            key="overview_tr_gran",
+        )
+
+        if granularity in ("Daily", "Weekly"):
+            rev = _get(self._r, "revenue_daily")
+            card_rev = _get(self._r, "card_revenue_daily")
+        elif granularity == "Monthly":
+            rev = _get(self._r, "revenue_monthly")
+            if not _empty(rev) and "month" in rev.columns:
+                rev = rev.rename(columns={"month": "date"})
+            card_rev = _get(self._r, "card_revenue_monthly")
+            if not _empty(card_rev) and "month" in card_rev.columns:
+                card_rev = card_rev.rename(columns={"month": "date"})
+        else:  # Yearly
+            rev = _get(self._r, "revenue_daily")
+            card_rev = _get(self._r, "card_revenue_daily")
+
+        conv_daily = _get(self._r, "conv_daily")
+        card_daily = _get(self._r, "card_daily")
+
+        df = _compute_take_rate(
+            rev, card_rev, conv_daily, card_daily,
+            fx_rate=fx_rate,
+            granularity=granularity,
+        )
+        fig = _fig_take_rate(df)
+        if fig is None:
+            st.info("No data to compute take rate for this period.")
             return
         st.plotly_chart(fig, use_container_width=True)
 
