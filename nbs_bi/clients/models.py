@@ -303,6 +303,26 @@ class ClientModel:
         daily["cumulative_net_revenue_usd"] = daily.groupby("acquisition_source")[
             "daily_net_revenue_usd"
         ].cumsum()
+
+        # Extend each channel's line to today so the chart reaches the current date
+        # even when no new users have joined that channel recently.
+        today = pd.Timestamp.now().normalize()
+        tails = []
+        for source, grp in daily.groupby("acquisition_source"):
+            last = grp.iloc[-1]
+            if last["signup_date"] < today:
+                tails.append(
+                    {
+                        "signup_date": today,
+                        "acquisition_source": source,
+                        "daily_net_revenue_usd": 0.0,
+                        "cumulative_net_revenue_usd": last["cumulative_net_revenue_usd"],
+                    }
+                )
+        if tails:
+            daily = pd.concat([daily, pd.DataFrame(tails)], ignore_index=True).sort_values(
+                "signup_date"
+            )
         return daily.reset_index(drop=True)
 
     def referral_code_summary(self) -> pd.DataFrame:

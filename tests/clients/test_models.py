@@ -507,3 +507,44 @@ def test_monthly_ltv_offramp_only_usdc_revenue_included() -> None:
     assert total_gross == pytest.approx(8.0, rel=1e-3), (
         f"Expected 8.0 USD gross from USDC revenue, got {total_gross}"
     )
+
+
+# ---------------------------------------------------------------------------
+# cumulative_profit_by_source
+# ---------------------------------------------------------------------------
+
+
+def test_cumulative_profit_by_source_extends_to_today() -> None:
+    """Every acquisition source must have a sentinel row at today so the chart
+    line continues to the current date even when no recent signups occurred."""
+    model = _build_model()
+    df = model.cumulative_profit_by_source()
+    today = pd.Timestamp.now().normalize()
+
+    for source in df["acquisition_source"].unique():
+        grp = df[df["acquisition_source"] == source]
+        assert grp["signup_date"].max() == today, (
+            f"Source '{source}' stops before today: {grp['signup_date'].max()}"
+        )
+
+
+def test_cumulative_profit_by_source_sentinel_row_has_zero_daily() -> None:
+    """The sentinel row appended at today must carry the last cumulative value
+    forward with daily_net_revenue_usd == 0 (no new revenue, just extending)."""
+    model = _build_model()
+    df = model.cumulative_profit_by_source()
+    today = pd.Timestamp.now().normalize()
+
+    for source in df["acquisition_source"].unique():
+        grp = df[df["acquisition_source"] == source].sort_values("signup_date")
+        sentinel = grp[grp["signup_date"] == today]
+        assert not sentinel.empty, f"No sentinel row at today for source '{source}'"
+        assert sentinel.iloc[-1]["daily_net_revenue_usd"] == pytest.approx(0.0), (
+            f"Sentinel daily revenue for '{source}' is not zero"
+        )
+        # Cumulative must equal the value of the preceding row
+        if len(grp) > 1:
+            prev_cum = grp.iloc[-2]["cumulative_net_revenue_usd"]
+            assert sentinel.iloc[-1]["cumulative_net_revenue_usd"] == pytest.approx(prev_cum), (
+                f"Sentinel cumulative for '{source}' does not carry forward correctly"
+            )
