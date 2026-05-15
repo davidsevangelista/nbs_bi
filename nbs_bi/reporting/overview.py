@@ -212,8 +212,11 @@ def _fig_monthly_revenue(
     if _empty(revenue):
         return None
     merged = revenue.copy()
+    merged["date"] = pd.to_datetime(merged["date"]).dt.normalize()
     if not _empty(card_revenue):
-        merged = merged.merge(card_revenue, on="date", how="outer").fillna(0.0)
+        cr = card_revenue.copy()
+        cr["date"] = pd.to_datetime(cr["date"]).dt.normalize()
+        merged = merged.merge(cr, on="date", how="outer").fillna(0.0)
     merged = merged.sort_values("date")
     traces = [
         ("fee_usd", "Conv Fees", TEAL),
@@ -276,7 +279,10 @@ def _fig_volume_monthly(conv_daily: pd.DataFrame) -> go.Figure | None:
         fig.add_trace(go.Bar(
             x=agg["month"], y=agg[col], name=label, marker_color=color,
             customdata=_t,
-            hovertemplate=f"<b>{label}</b>: R$\xa0%{{y:,.0f}}<br><b>Total</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>",
+            hovertemplate=(
+                f"<b>{label}</b>: R$\xa0%{{y:,.0f}}<br>"
+                f"<b>Total</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>"
+            ),
         ))
     fig.add_trace(
         go.Scatter(
@@ -681,7 +687,10 @@ def _fig_revenue_composition_7d(daily_rev: pd.DataFrame) -> go.Figure | None:
                 name=label,
                 marker_color=color,
                 customdata=_t,
-                hovertemplate=f"<b>{label}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
+                hovertemplate=(
+                    f"<b>{label}</b>: $%{{y:,.2f}}<br>"
+                    f"<b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>"
+                ),
             )
         )
     fig.add_trace(
