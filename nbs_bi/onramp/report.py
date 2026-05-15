@@ -90,6 +90,7 @@ class OnrampReport:
         return {
             "summary": self._build_summary(conv_df, dep_df, trf_df),
             "conv_daily": self._build_conv_daily(model),
+            "revenue_daily": self._build_revenue_daily(conv_df),
             "revenue_monthly": self._build_revenue_monthly(conv_df),
             "pix_daily": self._build_pix_daily(dep_df, trf_df),
             "fx_stats": model.fx_stats(freq="D") if model else pd.DataFrame(),
@@ -112,6 +113,9 @@ class OnrampReport:
                 ),
             },
             "card_revenue_monthly": q.card_revenue_monthly(
+                start_date=start_date, end_date=end_date
+            ),
+            "card_revenue_daily": q.card_revenue_daily(
                 start_date=start_date, end_date=end_date
             ),
         }
@@ -251,6 +255,39 @@ class OnrampReport:
         rows.append(("Total revenue USD", revenue_usd, "BRL fees at per-tx rate + USDC fees"))
 
         return pd.DataFrame(rows, columns=["metric", "value", "note"])
+
+    @staticmethod
+    def _build_revenue_daily(conv_df: pd.DataFrame) -> pd.DataFrame:
+        """Daily revenue split into fees vs spread, in USD.
+
+        Args:
+            conv_df: Conversions DataFrame (monetary columns already scaled).
+
+        Returns:
+            DataFrame with columns: date, fee_usd, spread_usd.
+        """
+        if conv_df.empty or "fee_amount_brl" not in conv_df.columns:
+            return pd.DataFrame()
+        df = conv_df.copy()
+        df["date"] = (
+            pd.to_datetime(df["created_at"], errors="coerce", utc=True)
+            .dt.tz_convert(None)
+            .dt.normalize()
+        )
+        raw_rate = df.get("exchange_rate", pd.Series(dtype=float))
+        rate = pd.to_numeric(raw_rate, errors="coerce").replace(0, float("nan"))
+        df["fee_usd"] = df["fee_amount_brl"].fillna(0.0) / rate + df.get(
+            "fee_amount_usdc", pd.Series(0.0, index=df.index)
+        ).fillna(0.0)
+        spread_brl = df.get("spread_revenue_brl", pd.Series(0.0, index=df.index))
+        spread_usdc = df.get("spread_revenue_usdc", pd.Series(0.0, index=df.index))
+        df["spread_usd"] = spread_brl.fillna(0.0) / rate + spread_usdc.fillna(0.0)
+        return (
+            df.groupby("date")
+            .agg(fee_usd=("fee_usd", "sum"), spread_usd=("spread_usd", "sum"))
+            .reset_index()
+            .sort_values("date")
+        )
 
     @staticmethod
     def _build_revenue_monthly(conv_df: pd.DataFrame) -> pd.DataFrame:

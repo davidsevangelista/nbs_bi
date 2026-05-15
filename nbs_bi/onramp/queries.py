@@ -731,6 +731,42 @@ class OnrampQueries:
         merged = fees.merge(billing, on="month", how="outer").fillna(0.0)
         return merged.sort_values("month").reset_index(drop=True)
 
+    def card_revenue_daily(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        """Daily card revenue split into card fees and billing charges (USD).
+
+        Args:
+            start_date: Override instance start_date.
+            end_date: Override instance end_date.
+
+        Returns:
+            DataFrame with columns: date (timestamp), card_fee_usd, billing_usd.
+        """
+        params = self._date_params(start_date, end_date)
+        fees = self._run("card_fees_daily", _CARD_FEES_DAILY_SQL, params)
+        billing = self._run("billing_daily", _BILLING_DAILY_SQL, params)
+
+        if fees.empty:
+            fees = pd.DataFrame(columns=["date", "card_fee_usd"])
+        else:
+            fees = fees.rename(columns={"rev_date": "date"})
+            fees["date"] = pd.to_datetime(fees["date"])
+        if billing.empty:
+            billing = pd.DataFrame(columns=["date", "billing_usd"])
+        else:
+            billing = billing.rename(columns={"rev_date": "date"})
+            billing["date"] = pd.to_datetime(billing["date"])
+
+        if fees.empty and billing.empty:
+            return pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
+
+        merged = fees.merge(billing, on="date", how="outer").fillna(0.0)
+        return merged.sort_values("date").reset_index(drop=True)
+
     def daily_revenue_by_product(
         self,
         *,
