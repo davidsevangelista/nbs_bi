@@ -1,9 +1,10 @@
 """Unit tests for the take rate computation and figure helpers."""
 
 import pandas as pd
+import plotly.graph_objects as go
 import pytest
 
-from nbs_bi.reporting.overview import _compute_take_rate
+from nbs_bi.reporting.overview import _compute_take_rate, _fig_take_rate
 
 
 @pytest.fixture()
@@ -108,3 +109,32 @@ def test_compute_take_rate_weekly(daily_rev, daily_card_rev, daily_conv, daily_c
     assert len(result) == 1
     assert "take_rate_pct" in result.columns
     assert result.loc[0, "take_rate_pct"] > 0
+
+
+def test_fig_take_rate_returns_none_on_empty():
+    assert _fig_take_rate(pd.DataFrame()) is None
+    assert _fig_take_rate(pd.DataFrame(columns=["date", "take_rate_pct"])) is None
+
+
+def test_fig_take_rate_has_one_scatter_trace():
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            "take_rate_pct": [5.0, 6.0],
+        }
+    )
+    fig = _fig_take_rate(df)
+    assert fig is not None
+    assert len(fig.data) == 1
+    assert isinstance(fig.data[0], go.Scatter)
+
+
+def test_fig_take_rate_y_axis_labelled_pct():
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-01-01"]),
+            "take_rate_pct": [5.0],
+        }
+    )
+    fig = _fig_take_rate(df)
+    assert fig.layout.yaxis.title.text == "%"

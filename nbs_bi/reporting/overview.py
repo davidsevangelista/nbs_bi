@@ -448,6 +448,36 @@ def _compute_take_rate(
     return merged[["date", "take_rate_pct"]].sort_values("date").reset_index(drop=True)
 
 
+def _fig_take_rate(df: pd.DataFrame) -> go.Figure | None:
+    """Line chart showing take rate (%) over time.
+
+    Args:
+        df: DataFrame with columns date (datetime) and take_rate_pct (float).
+
+    Returns:
+        Plotly Figure or None if df is empty or has no non-null values.
+    """
+    if _empty(df) or "take_rate_pct" not in df.columns or df["take_rate_pct"].dropna().empty:
+        return None
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=df["take_rate_pct"],
+            mode="lines+markers",
+            name="Take Rate",
+            line=dict(color=EMERALD, width=2),
+            marker=dict(size=5),
+            hovertemplate="<b>Take Rate</b>: %{y:.2f}%<extra></extra>",
+        )
+    )
+    layout = panel("Take Rate (%)")
+    layout["yaxis"]["title"] = "%"
+    layout["yaxis"]["ticksuffix"] = "%"
+    fig.update_layout(**layout)
+    return fig
+
+
 def _fig_combined_volume(
     conv_daily: pd.DataFrame,
     card_daily: pd.DataFrame,
