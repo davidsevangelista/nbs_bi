@@ -186,12 +186,7 @@ def _resample_revenue(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
     freq = {"Weekly": "W-MON", "Monthly": "MS", "Yearly": "YS"}.get(granularity)
     if freq is None:
         return df
-    return (
-        df.set_index("date")[value_cols]
-        .resample(freq)
-        .sum()
-        .reset_index()
-    )
+    return df.set_index("date")[value_cols].resample(freq).sum().reset_index()
 
 
 def _fig_monthly_revenue(
@@ -276,14 +271,19 @@ def _fig_volume_monthly(conv_daily: pd.DataFrame) -> go.Figure | None:
     fig = go.Figure()
     _t = [[v] for v in agg["total"]]
     for col, label, color in [("onramp", "Onramp", BLUE), ("offramp", "Offramp", AMBER)]:
-        fig.add_trace(go.Bar(
-            x=agg["month"], y=agg[col], name=label, marker_color=color,
-            customdata=_t,
-            hovertemplate=(
-                f"<b>{label}</b>: R$\xa0%{{y:,.0f}}<br>"
-                f"<b>Total</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>"
-            ),
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=agg["month"],
+                y=agg[col],
+                name=label,
+                marker_color=color,
+                customdata=_t,
+                hovertemplate=(
+                    f"<b>{label}</b>: R$\xa0%{{y:,.0f}}<br>"
+                    f"<b>Total</b>: R$\xa0%{{customdata[0]:,.0f}}<extra></extra>"
+                ),
+            )
+        )
     fig.add_trace(
         go.Scatter(
             x=agg["month"],
@@ -320,12 +320,7 @@ def _resample_combined(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
     freq = freq_map.get(granularity)
     if freq is None:
         return df
-    result = (
-        df.set_index("date")[["conv_usd", "card_usd"]]
-        .resample(freq)
-        .sum()
-        .reset_index()
-    )
+    result = df.set_index("date")[["conv_usd", "card_usd"]].resample(freq).sum().reset_index()
     # Drop trailing stub: last bucket starts on the very last input date
     if len(result) > 1 and not df.empty:
         last_input = df["date"].max()
@@ -352,11 +347,13 @@ def _agg_revenue(
         DataFrame with columns: date, total_rev.
     """
     rev = (
-        rev_df.copy() if not _empty(rev_df)
+        rev_df.copy()
+        if not _empty(rev_df)
         else pd.DataFrame(columns=["date", "fee_usd", "spread_usd"])
     )
     card_rev = (
-        card_rev_df.copy() if not _empty(card_rev_df)
+        card_rev_df.copy()
+        if not _empty(card_rev_df)
         else pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
     )
     rev["date"] = pd.to_datetime(rev["date"], errors="coerce")
@@ -370,8 +367,7 @@ def _agg_revenue(
             revenue[col] = 0.0
     card_fee = revenue["card_fee_usd"] if include_card_fees else 0.0
     revenue["total_rev"] = (
-        revenue["fee_usd"] + revenue["spread_usd"]
-        + card_fee + revenue["billing_usd"]
+        revenue["fee_usd"] + revenue["spread_usd"] + card_fee + revenue["billing_usd"]
     )
     return revenue[["date", "total_rev"]]
 
@@ -415,11 +411,13 @@ def _agg_volume(
     """
     freq_map = {"Weekly": "W-MON", "Monthly": "MS", "Yearly": "YS"}
     conv = (
-        conv_daily.copy() if not _empty(conv_daily)
+        conv_daily.copy()
+        if not _empty(conv_daily)
         else pd.DataFrame(columns=["date", "onramp", "offramp"])
     )
     card = (
-        card_daily.copy() if not _empty(card_daily)
+        card_daily.copy()
+        if not _empty(card_daily)
         else pd.DataFrame(columns=["date", "amount_usd"])
     )
     conv["date"] = pd.to_datetime(conv["date"], errors="coerce")
@@ -437,9 +435,7 @@ def _agg_volume(
     if fx_rate and fx_rate > 0:
         conv["conv_usd"] = brl / fx_rate
     else:
-        _log.warning(
-            "_agg_volume: fx_rate=%s is zero or invalid; BRL volume zeroed", fx_rate
-        )
+        _log.warning("_agg_volume: fx_rate=%s is zero or invalid; BRL volume zeroed", fx_rate)
         conv["conv_usd"] = pd.Series(0.0, index=conv.index)
     vol = (
         conv[["date", "conv_usd"]]
@@ -485,11 +481,45 @@ def _compute_take_rate(
     return merged[out_cols].sort_values("date").reset_index(drop=True)
 
 
-def _fig_take_rate(df: pd.DataFrame) -> go.Figure | None:
+def _take_rate_kpis(
+    df: pd.DataFrame,
+) -> tuple[float | None, float | None]:
+    """Compute overall and last-30-day volume-weighted average take rate.
+
+    Args:
+        df: DataFrame with columns date, take_rate_pct, total_rev, total_vol.
+
+    Returns:
+        Tuple (avg_pct, l30_pct). Either value is None when the relevant slice
+        has zero total volume or is absent.
+    """
+    if _empty(df) or "total_rev" not in df.columns or "total_vol" not in df.columns:
+        return None, None
+
+    def _wavg(rows: pd.DataFrame) -> float | None:
+        total_vol = rows["total_vol"].sum()
+        if total_vol == 0:
+            return None
+        return float(rows["total_rev"].sum() / total_vol * 100)
+
+    avg_pct = _wavg(df)
+    max_date = df["date"].max()
+    l30 = df[df["date"] >= max_date - pd.Timedelta(days=30)]
+    l30_pct = _wavg(l30) if not l30.empty else None
+    return avg_pct, l30_pct
+
+
+def _fig_take_rate(
+    df: pd.DataFrame,
+    avg_pct: float | None = None,
+    l30_pct: float | None = None,
+) -> go.Figure | None:
     """Line chart showing take rate (%) over time.
 
     Args:
         df: DataFrame with columns date (datetime) and take_rate_pct (float).
+        avg_pct: Overall volume-weighted avg take rate for the annotation box.
+        l30_pct: Last-30-day volume-weighted avg take rate for the annotation box.
 
     Returns:
         Plotly Figure or None if df is empty or has no non-null values.
@@ -508,6 +538,28 @@ def _fig_take_rate(df: pd.DataFrame) -> go.Figure | None:
             hovertemplate="<b>Take Rate</b>: %{y:.2f}%<extra></extra>",
         )
     )
+    lines = []
+    if avg_pct is not None:
+        lines.append(f"Avg  {avg_pct:.2f}%")
+    if l30_pct is not None:
+        lines.append(f"L30  {l30_pct:.2f}%")
+    if lines:
+        fig.add_annotation(
+            text="<br>".join(lines),
+            xref="paper",
+            yref="paper",
+            x=0.99,
+            y=0.97,
+            xanchor="right",
+            yanchor="top",
+            showarrow=False,
+            align="right",
+            font=dict(size=13),
+            bgcolor="rgba(30,30,30,0.6)",
+            bordercolor="rgba(255,255,255,0.15)",
+            borderwidth=1,
+            borderpad=6,
+        )
     layout = panel("Take Rate (%)")
     layout["yaxis"]["title"] = "%"
     layout["yaxis"]["ticksuffix"] = "%"
@@ -890,9 +942,7 @@ class OverviewSection:
             if granularity == "Weekly":
                 rev = _resample_revenue(rev, "Weekly") if not _empty(rev) else rev
                 card_rev = (
-                    _resample_revenue(card_rev, "Weekly")
-                    if not _empty(card_rev)
-                    else card_rev
+                    _resample_revenue(card_rev, "Weekly") if not _empty(card_rev) else card_rev
                 )
         elif granularity == "Monthly":
             rev = _get(self._r, "revenue_monthly")
@@ -969,7 +1019,10 @@ class OverviewSection:
         card_daily = _get(self._r, "card_daily")
 
         df = _compute_take_rate(
-            rev, card_rev, conv_daily, card_daily,
+            rev,
+            card_rev,
+            conv_daily,
+            card_daily,
             fx_rate=fx_rate,
             granularity=granularity,
         )
