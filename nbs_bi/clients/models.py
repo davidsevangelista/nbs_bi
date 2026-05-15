@@ -473,7 +473,7 @@ class ClientModel:
         usdc_rev = monthly.get(
             "conversion_revenue_usdc", pd.Series(0.0, index=monthly.index)
         ).fillna(0.0)
-        monthly["revenue_usd"] = monthly["conversion_revenue_brl"] / fx + usdc_rev
+        monthly["revenue_usd"] = monthly["conversion_revenue_brl"].fillna(0.0) / fx + usdc_rev
         monthly["month"] = pd.to_datetime(monthly["month"])
 
         # Merge all additional revenue streams

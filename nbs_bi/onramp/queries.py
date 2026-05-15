@@ -309,6 +309,39 @@ def _scale_currency(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Canonical revenue computation
+# ---------------------------------------------------------------------------
+
+
+def conv_revenue_usd(df: pd.DataFrame) -> pd.Series:
+    """Compute per-row conversion revenue in USD from a scaled conversion DataFrame.
+
+    Handles the NULL asymmetry in ``conversion_quotes``: onramp rows have
+    ``fee_amount_usdc = NULL``; offramp rows have ``fee_amount_brl = NULL``.
+    NaN columns are treated as zero so neither direction contaminates the other.
+
+    Columns expected (in real units after ``_scale_currency``):
+        fee_amount_brl, spread_revenue_brl  — BRL, divided by exchange_rate
+        fee_amount_usdc, spread_revenue_usdc — already USD
+        exchange_rate                        — BRL per USDC
+
+    Args:
+        df: DataFrame with the columns listed above.
+
+    Returns:
+        Series of per-row revenue in USD, same index as *df*.
+        Zero exchange_rate produces NaN (division by zero).
+    """
+    rate = pd.to_numeric(df["exchange_rate"], errors="coerce").replace(0, float("nan"))
+    return (
+        df["fee_amount_brl"].fillna(0.0) / rate
+        + df["spread_revenue_brl"].fillna(0.0) / rate
+        + df["fee_amount_usdc"].fillna(0.0)
+        + df["spread_revenue_usdc"].fillna(0.0)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
 
@@ -728,13 +761,7 @@ class OnrampQueries:
                 .dt.tz_convert("America/Sao_Paulo")
                 .dt.date
             )
-            rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(0, float("nan"))
-            conv_df["_conv_usd"] = (
-                conv_df["fee_amount_brl"].fillna(0.0) / rate
-                + conv_df["fee_amount_usdc"].fillna(0.0)
-                + conv_df["spread_revenue_brl"].fillna(0.0) / rate
-                + conv_df["spread_revenue_usdc"].fillna(0.0)
-            )
+            conv_df["_conv_usd"] = conv_revenue_usd(conv_df)
             conv_daily = (
                 conv_df.groupby("_date")["_conv_usd"]
                 .sum()

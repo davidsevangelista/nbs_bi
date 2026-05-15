@@ -462,3 +462,48 @@ def test_cohort_avg_dau_empty_when_no_daily_activity():
     model = ClientModel("2026-01-01", "2026-04-13", _queries=mock)
     result = model.cohort_avg_dau()
     assert result.empty
+
+
+# ---------------------------------------------------------------------------
+# NaN-propagation bug: offramp-only months (SQL NULL BRL cols)
+# ---------------------------------------------------------------------------
+
+
+def _make_conversion_monthly_with_offramp_only() -> pd.DataFrame:
+    """Simulates what _CONVERSION_MONTHLY_SQL currently returns for offramp-only
+    user-months: conversion_revenue_brl = NaN (SQL NULL + NULL = NULL),
+    conversion_revenue_usdc has a real value."""
+    return pd.DataFrame(
+        {
+            "user_id": ["user_0000-xxxx", "user_0000-xxxx"],
+            "month": pd.to_datetime(["2026-01", "2026-02"]),
+            "conversion_revenue_brl": [float("nan"), float("nan")],
+            "conversion_revenue_usdc": [5.0, 3.0],
+        }
+    )
+
+
+def test_monthly_ltv_offramp_only_month_revenue_not_nan() -> None:
+    """NaN conversion_revenue_brl (offramp-only SQL NULL) must not propagate to revenue_usd."""
+    mock = _make_queries_mock()
+    mock.conversion_monthly.return_value = _make_conversion_monthly_with_offramp_only()
+    model = ClientModel("2026-01-01", "2026-04-13", _queries=mock)
+    df = model._build_monthly_ltv()
+    assert not df.empty
+    assert not df["revenue_usd"].isna().any(), "revenue_usd contains NaN from NaN BRL propagation"
+
+
+def test_monthly_ltv_offramp_only_usdc_revenue_included() -> None:
+    """USDC revenue from offramp-only months must contribute to the cumulative LTV."""
+    mock = _make_queries_mock(fx=5.0)
+    mock.conversion_monthly.return_value = _make_conversion_monthly_with_offramp_only()
+    model = ClientModel("2026-01-01", "2026-04-13", _queries=mock)
+    df = model._build_monthly_ltv()
+    # user_0000 has usdc_rev = 5 + 3 = 8.0 USD total (BRL NaN → 0)
+    # gross_revenue_usd for each month must be the USDC value (5.0 and 3.0)
+    u0 = df[df["user_id"].str.startswith("user_0000")]
+    assert not u0.empty
+    total_gross = u0["gross_revenue_usd"].sum()
+    assert total_gross == pytest.approx(8.0, rel=1e-3), (
+        f"Expected 8.0 USD gross from USDC revenue, got {total_gross}"
+    )

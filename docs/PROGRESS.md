@@ -66,7 +66,8 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] Implement `queries.py` — `OnrampQueries`: DB connection, fixed SQL, BRL/USDC scaling, Parquet cache; 7 active-user query methods (PIX in/out, card txs, card fees, billing charges, swaps, payouts)
 - [x] Implement `models.py` — `OnrampModel`: KPIs, volume by period, FX stats, position + PnL, top users, user behavior, spread stats, revenue by direction, new vs returning; tz-aware datetime normalised to UTC-naive in `_clean()`; `volume_brl` NaN bug fixed
 - [x] Implement `report.py` — `OnrampReport`: full pipeline; daily active users union of all 7 revenue-generating sources
-- [x] Unit tests (23+ tests, all green, no DB required)
+- [x] `queries.py` — `conv_revenue_usd(df)`: canonical per-row revenue function; handles onramp/offramp NULL asymmetry; replaces 4 inline computation sites across `report.py`, `queries.py`, `reporting/revenue_analysis.py`
+- [x] Unit tests (31+ tests, all green, no DB required)
 - [ ] Smoke test against production DB
 - [ ] Validate KPIs against contabil_pipeline dashboard for same period
 
@@ -108,7 +109,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 ## Phase 7 — Client Revenue & Behaviour (`nbs_bi.clients`)
 
 - [x] Define spec (see [specs/clients.md](specs/clients.md))
-- [x] `clients/queries.py` — 11 SQL queries, Parquet cache; `_COHORT_BASE_SQL` uses 4-channel attribution: `mkt_ads` (NEOBANKLESS/GOOGLE codes after 2026-04-14), `direct_referral` (other referral codes), `founder` (founders table), `organic` (all else)
+- [x] `clients/queries.py` — 11 SQL queries, Parquet cache; `_COHORT_BASE_SQL` uses 4-channel attribution: `mkt_ads` (NEOBANKLESS/GOOGLE codes after 2026-04-14), `direct_referral` (other referral codes), `founder` (founders table), `organic` (all else); `_CONVERSION_MONTHLY_SQL` fixed with `COALESCE` to prevent NULL propagation from offramp-only user-months ($5,503 USDC previously lost from cohort LTV)
 - [x] `clients/models.py` — `ClientModel`: master join, unified USD LTV, product adoption, cohort LTV, activation funnel, CAC breakeven; active-user denominator fix; `cohort_total_profit()` and `cohort_monthly_profit()` added
 - [x] `clients/segments.py` — `ClientSegments`: champion/active/at-risk/dormant
 - [x] `clients/report.py` — `ClientReport.build()` dict
@@ -117,12 +118,13 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
   - `_cost_per_txn_from_invoices()` + `_cogs_for_cohort_txns()`: per-transaction card COGS from Rain invoice history; fallback to nearest period when no exact match
   - `cumulative_profit()`: contribution margin = revenue − card program COGS (Meta Ads spend excluded — tracked separately); cumulative breakdowns for all 6 revenue/cost streams + txn count + conversion count
   - Referral filter: all 4 SQL cohort CTEs accept `:referral_code` param; empty string = no filter (short-circuit `'' = ''`); `referral_code_options()` fetches distinct codes from DB
-- [x] Unit tests (130+ tests across all modules, fixture-based, no DB)
+- [x] `clients/models.py` — `_build_monthly_ltv()`: `.fillna(0.0)` on `conversion_revenue_brl` prevents NaN from propagating to `revenue_usd` when SQL returns NULL for offramp-only months
+- [x] Unit tests (140+ tests across all modules, fixture-based, no DB)
 - [x] Smoke test against production DB
 
 ---
 
-## Current State — 2026-05-02 (v2.5.1)
+## Current State — 2026-05-15 (v2.5.2)
 
 ### What's been built
 
@@ -133,7 +135,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - `invoice_total_usd` field stored in each actuals JSON; `nbs-invoices --force` re-parses all PDFs to populate it.
 - Known gap: `CardFeeRates` model accounts for ~$6,357 of the March invoice but Rain billed $7,857.40; ~$1,500 is unmodelled ("Outros"). Visible in the Evolução stacked-driver chart.
 
-**Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention. Revenue USD computed by converting `fee_amount_brl + spread_revenue_brl` at per-tx `exchange_rate`.
+**Phase 3 — Onramp** (`nbs_bi.onramp`): `OnrampQueries` + `OnrampModel` + `OnrampReport` cover conversions, PIX flows, FX stats, daily active users (7 sources), top users with attribution, monthly revenue by direction, cohort retention. Revenue USD computed via canonical `conv_revenue_usd()` function — handles onramp/offramp NULL asymmetry, replaces 4 previously divergent inline computations.
 
 **Phase 6 — Reporting** (`nbs_bi.reporting`): 6-tab Streamlit dashboard titled "NBS Data Analytics", deployed and accessible at `nbs-data-analytics.streamlit.app`:
 - Tab 1 — Overview: 2 KPI rows (Conversions: count, volume BRL, revenue USD; Cards: txns, volume USD, revenue USD from card fees + billing); revenue trend, volume, daily active users, activation funnel; 7-day stacked bar shows `$X,XXX` total label above each bar
@@ -183,7 +185,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 - `sklearn` absent locally → `CardCostSimulator` lazy-loaded so analytics imports always work
 - `streamlit` absent locally → `reporting/cards.py` has an import-time shim so figure-builder tests collect without the UI runtime
-- 6 pre-existing test failures: `test_simulator.py` (4, missing `sklearn`), `test_campaigns.py` (1, referral DB error mock), `test_marketing.py` (1, zero-cohort division shape assertion) — non-blocking; 204 tests pass
+- 5 pre-existing test failures: `test_simulator.py` (4, missing `sklearn`), `test_campaigns.py` (1, referral DB error mock) — non-blocking; 216 tests pass
 
 ---
 

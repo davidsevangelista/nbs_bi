@@ -7,6 +7,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.2] — 2026-05-15
+
+Canonical revenue function + NaN-propagation fix in cohort LTV.
+
+### Added
+- `nbs_bi/onramp/queries.py` — `conv_revenue_usd(df)`: single canonical function for per-row conversion revenue in USD; handles NULL asymmetry (onramp rows have `fee_amount_usdc = NULL`, offramp rows have `fee_amount_brl = NULL`) by filling NaN with 0 before dividing by `exchange_rate`; zero rate produces NaN (explicit division-by-zero signal)
+- `tests/onramp/test_queries.py` — 8 unit tests covering onramp BRL path, offramp USDC path, mixed DataFrame, NaN isolation, zero rate, and zero revenue
+
+### Fixed
+- `nbs_bi/clients/queries.py` — `_CONVERSION_MONTHLY_SQL`: `SUM(fee_amount_brl + spread_revenue_brl)` → `SUM(COALESCE(fee_amount_brl,0) + COALESCE(spread_revenue_brl,0))` (and same for USDC columns); prevents offramp-only user-months from returning SQL NULL → Python NaN → $5,503.63 USDC revenue silently lost in cohort LTV
+- `nbs_bi/clients/models.py` — `_build_monthly_ltv()`: added `.fillna(0.0)` on `conversion_revenue_brl` before dividing by FX rate as belt-and-suspenders guard against NaN propagation
+
+### Changed
+- `nbs_bi/onramp/report.py` — `_build_summary()`: `revenue_usd` and `revenue_usd_l30` now computed via `conv_revenue_usd()` instead of inline per-tx rate arithmetic
+- `nbs_bi/onramp/queries.py` — `daily_revenue_by_product()`: `_conv_usd` column now computed via `conv_revenue_usd()` instead of inline arithmetic
+- `nbs_bi/reporting/revenue_analysis.py` — `RevenueAnalysisSection.load()`: conversion `rev_usd` column now computed via `conv_revenue_usd()` instead of inline arithmetic
+
 ## [2.5.1] — 2026-05-02
 
 Marketing-Ads tab: all six charts now share the same `analysis_start` / `analysis_end` date window.

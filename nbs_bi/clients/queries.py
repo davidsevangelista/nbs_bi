@@ -107,8 +107,10 @@ _CONVERSION_MONTHLY_SQL = """
 SELECT
     user_id::TEXT                                                        AS user_id,
     DATE_TRUNC('month', created_at)::DATE                                AS month,
-    SUM(fee_amount_brl + spread_revenue_brl)::FLOAT                     AS conversion_revenue_brl,
-    SUM(fee_amount_usdc + spread_revenue_usdc)::FLOAT / 1000000.0       AS conversion_revenue_usdc
+    SUM(COALESCE(fee_amount_brl, 0) + COALESCE(spread_revenue_brl, 0))::FLOAT
+        AS conversion_revenue_brl,
+    SUM(COALESCE(fee_amount_usdc, 0) + COALESCE(spread_revenue_usdc, 0))::FLOAT / 1000000.0
+        AS conversion_revenue_usdc
 FROM conversion_quotes
 WHERE used = TRUE
   AND created_at >= :start

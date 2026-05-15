@@ -15,7 +15,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from sqlalchemy import text
 
-from nbs_bi.onramp.queries import OnrampQueries, _to_exclusive_end
+from nbs_bi.onramp.queries import OnrampQueries, _to_exclusive_end, conv_revenue_usd
 from nbs_bi.reporting.theme import GRID, PLOT_BG, TEXT, TEXT_MUTED, panel
 
 logger = logging.getLogger(__name__)
@@ -107,15 +107,7 @@ class RevenueAnalysisSection:
         if conv_raw.empty:
             conv_df = pd.DataFrame(columns=["created_at", "rev_usd", "source"])
         else:
-            rate = pd.to_numeric(conv_raw["exchange_rate"], errors="coerce").replace(
-                0, float("nan")
-            )
-            conv_raw["rev_usd"] = (
-                conv_raw["fee_amount_brl"].fillna(0) / rate
-                + conv_raw["fee_amount_usdc"].fillna(0)
-                + conv_raw["spread_revenue_brl"].fillna(0) / rate
-                + conv_raw["spread_revenue_usdc"].fillna(0)
-            )
+            conv_raw["rev_usd"] = conv_revenue_usd(conv_raw)
             conv_df = conv_raw[["created_at", "rev_usd"]].assign(source="conversion")
 
         with oq._engine_lazy.connect() as conn:

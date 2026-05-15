@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from nbs_bi.onramp.models import OnrampModel
-from nbs_bi.onramp.queries import OnrampQueries
+from nbs_bi.onramp.queries import OnrampQueries, conv_revenue_usd
 
 logger = logging.getLogger(__name__)
 
@@ -222,21 +222,7 @@ class OnrampReport:
                         vol_on_l30 = float((brl_on_l30 / rate_l30[on_l30]).sum())
                         vol_off_l30 = float((brl_off_l30 / rate_l30[~on_l30]).sum())
                     volume_usd_l30 = vol_on_l30 + vol_off_l30
-                    rev_brl_l30 = l30_df.get("fee_amount_brl", pd.Series(0.0)).fillna(
-                        0.0
-                    ) + l30_df.get("spread_revenue_brl", pd.Series(0.0)).fillna(0.0)
-                    rev_usdc_l30 = l30_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(
-                        0.0
-                    ) + l30_df.get("spread_revenue_usdc", pd.Series(0.0)).fillna(0.0)
-                    if "exchange_rate" in l30_df.columns:
-                        rate_l30 = pd.to_numeric(l30_df["exchange_rate"], errors="coerce").replace(
-                            0, float("nan")
-                        )
-                        revenue_usd_l30 = float((rev_brl_l30 / rate_l30).sum()) + float(
-                            rev_usdc_l30.sum()
-                        )
-                    else:
-                        revenue_usd_l30 = float(rev_usdc_l30.sum())
+                    revenue_usd_l30 = float(conv_revenue_usd(l30_df).sum())
 
         rows = [
             ("PIX IN (dep)", pix_in, "BRL deposits via PIX"),
@@ -259,14 +245,7 @@ class OnrampReport:
         ]
 
         if not conv_df.empty and "exchange_rate" in conv_df.columns:
-            rev_brl = conv_df.get("fee_amount_brl", pd.Series(0.0)).fillna(0.0) + conv_df.get(
-                "spread_revenue_brl", pd.Series(0.0)
-            ).fillna(0.0)
-            rev_usdc = conv_df.get("fee_amount_usdc", pd.Series(0.0)).fillna(0.0) + conv_df.get(
-                "spread_revenue_usdc", pd.Series(0.0)
-            ).fillna(0.0)
-            rate = pd.to_numeric(conv_df["exchange_rate"], errors="coerce").replace(0, float("nan"))
-            revenue_usd = float((rev_brl / rate).sum()) + float(rev_usdc.sum())
+            revenue_usd = float(conv_revenue_usd(conv_df).sum())
         else:
             revenue_usd = revenue_usdc
         rows.append(("Total revenue USD", revenue_usd, "BRL fees at per-tx rate + USDC fees"))
