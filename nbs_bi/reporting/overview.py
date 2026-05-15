@@ -337,8 +337,14 @@ def _agg_revenue(
     Returns:
         DataFrame with columns: date, total_rev.
     """
-    rev = rev_df.copy() if not _empty(rev_df) else pd.DataFrame(columns=["date", "fee_usd", "spread_usd"])
-    card_rev = card_rev_df.copy() if not _empty(card_rev_df) else pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
+    rev = (
+        rev_df.copy() if not _empty(rev_df)
+        else pd.DataFrame(columns=["date", "fee_usd", "spread_usd"])
+    )
+    card_rev = (
+        card_rev_df.copy() if not _empty(card_rev_df)
+        else pd.DataFrame(columns=["date", "card_fee_usd", "billing_usd"])
+    )
     rev["date"] = pd.to_datetime(rev["date"], errors="coerce")
     card_rev["date"] = pd.to_datetime(card_rev["date"], errors="coerce")
     if granularity != "Daily":
@@ -373,8 +379,14 @@ def _agg_volume(
         DataFrame with columns: date, total_vol.
     """
     freq_map = {"Weekly": "W-MON", "Monthly": "MS", "Yearly": "YS"}
-    conv = conv_daily.copy() if not _empty(conv_daily) else pd.DataFrame(columns=["date", "onramp", "offramp"])
-    card = card_daily.copy() if not _empty(card_daily) else pd.DataFrame(columns=["date", "amount_usd"])
+    conv = (
+        conv_daily.copy() if not _empty(conv_daily)
+        else pd.DataFrame(columns=["date", "onramp", "offramp"])
+    )
+    card = (
+        card_daily.copy() if not _empty(card_daily)
+        else pd.DataFrame(columns=["date", "amount_usd"])
+    )
     conv["date"] = pd.to_datetime(conv["date"], errors="coerce")
     card["date"] = pd.to_datetime(card["date"], errors="coerce")
     for col in ("onramp", "offramp"):
@@ -395,7 +407,11 @@ def _agg_volume(
             "_agg_volume: fx_rate=%s is zero or invalid; BRL volume zeroed", fx_rate
         )
         conv["conv_usd"] = pd.Series(0.0, index=conv.index)
-    vol = conv[["date", "conv_usd"]].merge(card[["date", "amount_usd"]], on="date", how="outer").fillna(0.0)
+    vol = (
+        conv[["date", "conv_usd"]]
+        .merge(card[["date", "amount_usd"]], on="date", how="outer")
+        .fillna(0.0)
+    )
     vol["total_vol"] = vol["conv_usd"] + vol["amount_usd"]
     return vol[["date", "total_vol"]]
 
