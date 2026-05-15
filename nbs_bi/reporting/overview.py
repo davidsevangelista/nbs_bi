@@ -683,7 +683,7 @@ class OverviewSection:
         brl_onramp = float(_kpi(summary, "Onramp volume BRL") or 0.0)
         brl_offramp = float(_kpi(summary, "Offramp volume BRL") or 0.0)
         brl_total = brl_onramp + brl_offramp
-        fx_rate = vol_usd / brl_total if brl_total > 0 else 1.0
+        fx_rate = brl_total / vol_usd if vol_usd > 0 else 1.0
 
         granularity = st.radio(
             "Granularity",
