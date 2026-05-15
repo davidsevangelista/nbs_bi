@@ -655,82 +655,6 @@ def _fig_campaign_daily(daily: pd.DataFrame) -> go.Figure | None:
     return fig
 
 
-def _fig_daily_revenue_vs_spend(
-    cum_rev_df: pd.DataFrame,
-    spend_agg: pd.DataFrame,
-) -> go.Figure | None:
-    """Stacked bars: daily revenue by product line + total ad spend on right axis."""
-    rev_cols = [
-        ("daily_rev_conversion_usd", "Conversion", TEAL),
-        ("daily_rev_card_fees_usd", "Card Fees", AMBER),
-        ("daily_rev_billing_usd", "Billing", VIOLET),
-    ]
-    available = [(c, label, color) for c, label, color in rev_cols if c in cum_rev_df.columns]
-    if not available:
-        return None
-
-    rev = cum_rev_df[["date"] + [c for c, _, _ in available]].copy()
-    rev["date"] = pd.to_datetime(rev["date"]).dt.normalize()
-
-    spend = spend_agg[["date", "daily_spend_usd"]].copy()
-    spend["date"] = pd.to_datetime(spend["date"]).dt.normalize()
-
-    merged = rev.merge(spend, on="date", how="outer").sort_values("date").fillna(0.0)
-    merged["total_rev_usd"] = sum(merged[c] for c, _, _ in available)
-    merged["rev_rolling_7d"] = merged["total_rev_usd"].rolling(7, min_periods=1).mean()
-    _t = [[v] for v in merged["total_rev_usd"]]
-
-    fig = go.Figure()
-    for col, lbl, color in available:
-        fig.add_trace(
-            go.Bar(
-                x=merged["date"].astype(str),
-                y=merged[col],
-                name=lbl,
-                marker_color=color,
-                customdata=_t,
-                hovertemplate=f"<b>{lbl}</b>: $%{{y:,.2f}}<br><b>Total</b>: $%{{customdata[0]:,.2f}}<extra></extra>",
-            )
-        )
-
-    fig.add_trace(
-        go.Scatter(
-            x=merged["date"].astype(str),
-            y=merged["rev_rolling_7d"],
-            name="7-Day Avg Revenue",
-            mode="lines",
-            line=dict(color="#ffffff", width=2),
-        )
-    )
-
-    has_spend = merged["daily_spend_usd"].gt(0).any()
-    if has_spend:
-        fig.add_trace(
-            go.Scatter(
-                x=merged["date"].astype(str),
-                y=merged["daily_spend_usd"],
-                name="Total Ad Spend (USD)",
-                mode="lines+markers",
-                line=dict(color=ROSE, width=2, dash="dot"),
-                yaxis="y2",
-            )
-        )
-
-    layout = panel("Daily Revenue vs Ad Spend")
-    layout["barmode"] = "stack"
-    layout["yaxis"]["title"] = "Revenue (USD)"
-    layout["xaxis"]["title"] = "Date"
-    if has_spend:
-        layout["yaxis2"] = dict(
-            title="Ad Spend (USD)",
-            overlaying="y",
-            side="right",
-            gridcolor="rgba(0,0,0,0)",
-        )
-    fig.update_layout(**layout)
-    return fig
-
-
 def _fig_daily_rev_all_vs_cohort(
     all_users_df: pd.DataFrame,
     cohort_df: pd.DataFrame,
@@ -1523,11 +1447,6 @@ class MetaAdsSection:
             fig4 = _fig_campaign_daily(daily)
             if fig4:
                 st.plotly_chart(fig4, width="stretch")
-
-        if all_users_rev_df is not None and not all_users_rev_df.empty and not spend_df.empty:
-            fig_rev_spend = _fig_daily_revenue_vs_spend(all_users_rev_df, spend_df)
-            if fig_rev_spend:
-                st.plotly_chart(fig_rev_spend, width="stretch")
 
         if all_users_rev_df is not None and not all_users_rev_df.empty and not spend_df.empty:
             fig_all = _fig_daily_rev_all_vs_cohort(
