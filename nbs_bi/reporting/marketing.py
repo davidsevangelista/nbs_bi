@@ -560,7 +560,7 @@ def _fig_revenue_breakdown(cum_profit_df: pd.DataFrame) -> go.Figure | None:
 
 
 def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
-    """Bar chart: full-cohort CAC vs incremental CAC per campaign."""
+    """Bar chart: CAC (spend / transacting users) per campaign."""
     if summary.empty or "cac_full" not in summary.columns:
         return None
     fig = go.Figure()
@@ -574,20 +574,7 @@ def _fig_campaign_cac(summary: pd.DataFrame) -> go.Figure | None:
             textposition="outside",
         )
     )
-    valid = summary["cac_incremental"].notna()
-    if valid.any():
-        fig.add_trace(
-            go.Bar(
-                x=summary.loc[valid, "campaign_id"],
-                y=summary.loc[valid, "cac_incremental"],
-                name="CAC (incremental est.)",
-                marker_color=VIOLET,
-                text=summary.loc[valid, "cac_incremental"].apply(lambda v: f"${v:.2f}"),
-                textposition="outside",
-            )
-        )
     layout = panel("Customer Acquisition Cost (USD)")
-    layout["barmode"] = "group"
     layout["yaxis"]["title"] = "CAC (USD / User)"
     fig.update_layout(**layout)
     return fig
@@ -1518,7 +1505,6 @@ class MetaAdsSection:
             "total_spend_usd",
             "total_revenue_usd",
             "cac_full",
-            "cac_incremental",
             "avg_rev_per_transacting_user",
         ]:
             if col in display.columns:
@@ -1528,9 +1514,5 @@ class MetaAdsSection:
         if "transacting_rate" in display.columns:
             display["transacting_rate"] = display["transacting_rate"].apply(
                 lambda v: f"{v * 100:.1f}%" if pd.notna(v) else "n/a"
-            )
-        if "incremental_users_est" in display.columns:
-            display["incremental_users_est"] = display["incremental_users_est"].apply(
-                lambda v: int(v) if pd.notna(v) else "n/a"
             )
         st.dataframe(display, width="stretch", hide_index=True)
