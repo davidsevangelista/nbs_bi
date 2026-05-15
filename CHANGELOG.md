@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.3] — 2026-05-15
+
+Overview tab: combined volume chart (USD) with granularity toggle.
+
+### Added
+- `nbs_bi/reporting/overview.py` — `_resample_combined(df, granularity)`: resamples merged conv+card DataFrame to Daily / Weekly / Monthly buckets
+- `nbs_bi/reporting/overview.py` — `_fig_combined_volume(conv_daily, card_daily, fx_rate, granularity)`: stacked bar chart showing conversion volume (BRL→USD at period median rate) + card spend (USD)
+- `tests/reporting/test_overview.py` — 11 unit tests covering resampling, figure structure, FX conversion, and empty-data edge cases
+
+### Changed
+- `nbs_bi/reporting/overview.py` — `_render_volume()` replaced by `_render_combined_volume()`: adds dedicated Daily/Weekly/Monthly granularity radio (key `"overview_vol_gran"`) and renders the new combined chart
+
 ## [2.5.2] — 2026-05-15
 
 Canonical revenue function + NaN-propagation fix in cohort LTV.
