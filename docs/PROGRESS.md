@@ -98,6 +98,7 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 - [x] `reporting/dashboard.py` — Streamlit entry point: **6 tabs** (Overview, Revenue Analysis, Conversions, Cards, Clients, Marketing - Ads); no sidebar panel; date range computed inline; invoice total auto-loaded from latest parsed JSON; NBS logo favicon; sidebar collapsed; title "NBS Data Analytics"
 - [x] `reporting/revenue_analysis.py` — `RevenueAnalysisSection`: 24×7 (hour × day-of-week, BRT) Plotly heatmap aggregating 3 revenue streams (conversions, card_annual_fees, billing_charges); Viridis colorscale; peak-hour white line overlay; per-day avg USD annotations above columns; month + source dropdown filters; second chart — "Peak Revenue Hour by Day of Week" with per-month colour-faded scatter lines + yellow ±1h highlight bands; month checkbox panel on the left via `st.columns([1, 8])`
 - [x] `reporting/overview.py` — combined volume chart (USD): conversion + card spend stacked bar with Daily/Weekly/Monthly toggle; replaces fixed monthly BRL chart
+- [x] `reporting/overview.py` — take rate % line chart (daily/weekly/monthly/yearly) — 2026-05-15
 - [x] `use_container_width=True` → `width="stretch"` everywhere (Streamlit deprecation)
 - [x] Dark NBS green theme: Plotly charts, `theme.py` constants, and `overview.py` CSS all aligned to dark shell (`#0D1117` bg / `#161B22` plot bg / `#00E676` accent)
 - [x] Full English translation: Cards tab and Conversions (Ramp) tab; activation funnels use `go.Funnel` (correct top-to-bottom direction)

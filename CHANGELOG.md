@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Overview tab: take rate % line chart as fourth full-width row, with Daily/Weekly/Monthly/Yearly granularity toggle (`_render_take_rate`)
+- `_compute_take_rate` pure function: computes total revenue ÷ total volume per period, drops zero-volume periods
+- `_fig_take_rate` pure function: single `go.Scatter` line chart with % y-axis
+- `_agg_revenue` and `_agg_volume` helpers extracted from `_compute_take_rate` for 50-line compliance
+
 ## [2.5.3] — 2026-05-15
 
 Overview tab: combined volume chart (USD) with granularity toggle.
