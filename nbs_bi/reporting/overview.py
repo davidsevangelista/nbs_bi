@@ -338,6 +338,7 @@ def _agg_revenue(
     rev_df: pd.DataFrame,
     card_rev_df: pd.DataFrame,
     granularity: str,
+    include_card_fees: bool = True,
 ) -> pd.DataFrame:
     """Aggregate conversion + card/billing revenue per period.
 
@@ -345,6 +346,7 @@ def _agg_revenue(
         rev_df: Daily conversion revenue with columns date, fee_usd, spread_usd.
         card_rev_df: Daily card/billing revenue with columns date, card_fee_usd, billing_usd.
         granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
+        include_card_fees: When False, card_fee_usd is excluded from total_rev.
 
     Returns:
         DataFrame with columns: date, total_rev.
@@ -366,9 +368,10 @@ def _agg_revenue(
     for col in ("fee_usd", "spread_usd", "card_fee_usd", "billing_usd"):
         if col not in revenue.columns:
             revenue[col] = 0.0
+    card_fee = revenue["card_fee_usd"] if include_card_fees else 0.0
     revenue["total_rev"] = (
         revenue["fee_usd"] + revenue["spread_usd"]
-        + revenue["card_fee_usd"] + revenue["billing_usd"]
+        + card_fee + revenue["billing_usd"]
     )
     return revenue[["date", "total_rev"]]
 
@@ -454,6 +457,7 @@ def _compute_take_rate(
     card_daily: pd.DataFrame,
     fx_rate: float,
     granularity: str,
+    include_card_fees: bool = True,
 ) -> pd.DataFrame:
     """Compute take rate (%) per period: total revenue / total volume * 100.
 
@@ -464,19 +468,21 @@ def _compute_take_rate(
         card_daily: Daily card spend with columns date, amount_usd.
         fx_rate: Period BRL/USD rate. Zero or negative means no FX available.
         granularity: One of 'Daily', 'Weekly', 'Monthly', 'Yearly'.
+        include_card_fees: When False, card_fee_usd is excluded from revenue.
 
     Returns:
-        DataFrame with columns [date, take_rate_pct]. Periods with zero volume
-        are dropped. Returns empty DataFrame if inputs are all empty.
+        DataFrame with columns [date, take_rate_pct, total_rev, total_vol]. Periods
+        with zero volume are dropped. Returns empty DataFrame if inputs are all empty.
     """
-    revenue = _agg_revenue(rev_df, card_rev_df, granularity)
+    out_cols = ["date", "take_rate_pct", "total_rev", "total_vol"]
+    revenue = _agg_revenue(rev_df, card_rev_df, granularity, include_card_fees)
     vol = _agg_volume(conv_daily, card_daily, fx_rate, granularity)
     merged = revenue.merge(vol, on="date", how="outer").fillna(0.0)
     merged = merged[merged["total_vol"] > 0].copy()
     if merged.empty:
-        return pd.DataFrame(columns=["date", "take_rate_pct"])
+        return pd.DataFrame(columns=out_cols)
     merged["take_rate_pct"] = merged["total_rev"] / merged["total_vol"] * 100
-    return merged[["date", "take_rate_pct"]].sort_values("date").reset_index(drop=True)
+    return merged[out_cols].sort_values("date").reset_index(drop=True)
 
 
 def _fig_take_rate(df: pd.DataFrame) -> go.Figure | None:
