@@ -1187,6 +1187,13 @@ class MetaAdsSection:
             else spend_df[spend_df["platform"] == selected_platform]
         ) if "platform" in spend_df.columns else spend_df
 
+        include_kyc_in_roas = st.checkbox(
+            "Include KYC cost in ROAS",
+            value=False,
+            key="roas_include_kyc",
+            help="Adds $2.07/user KYC verification cost to the ad spend denominator.",
+        )
+
         # Rebuild analyzer scoped to the selected window/platform.
         analyzer = CampaignAnalyzer(spend_agg, db_url=self._analytics_db_url or self._db_url)
         campaigns: list[dict] = analyzer.campaigns
@@ -1201,6 +1208,8 @@ class MetaAdsSection:
         # Cumulative spend (spend_df + campaigns) keeps full history.
         latest_id = summary["campaign_id"].iloc[-1]
         summary = summary[summary["campaign_id"] == latest_id].reset_index(drop=True)
+        if include_kyc_in_roas:
+            summary = _apply_kyc_roas_adjustment(summary)
         if not daily.empty and "campaign_id" in daily.columns:
             _d = pd.to_datetime(daily["date"]).dt.date
             daily = daily[(_d >= start_date) & (_d <= end_date)].reset_index(drop=True)
@@ -1273,7 +1282,11 @@ class MetaAdsSection:
         )
 
         self._render_kpis(
-            summary, cum_profit_df, kyc_done=kyc_done, spend_breakdown=spend_breakdown
+            summary,
+            cum_profit_df,
+            kyc_done=kyc_done,
+            spend_breakdown=spend_breakdown,
+            include_kyc_in_roas=include_kyc_in_roas,
         )
         if not summary.empty:
             fig_funnel = _fig_campaign_funnel(funnel)
