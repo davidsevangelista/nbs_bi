@@ -14,6 +14,7 @@ import pytest
 
 from nbs_bi.reporting.marketing import (
     MetaAdsSection,
+    _apply_kyc_roas_adjustment,
     _build_channel_comparison,
     _build_cumulative_spend,
     _fig_cumulative_profit,
@@ -467,3 +468,40 @@ def test_metaads_section_uses_analytics_db_url_for_channel():
     assert section._analytics_db_url == "postgresql://test"
     assert section._invoice_total == 150.0
     assert section._acquisition is None
+
+
+# ---------------------------------------------------------------------------
+# _apply_kyc_roas_adjustment (Task 1)
+# ---------------------------------------------------------------------------
+
+
+def test_apply_kyc_roas_adjustment_recomputes_roas(campaign_summary):
+    """roas = total_revenue / (total_spend + cohort_users * _KYC_COST_USD)."""
+    from nbs_bi.clients.models import _KYC_COST_USD
+
+    result = _apply_kyc_roas_adjustment(campaign_summary)
+
+    for i, row in campaign_summary.iterrows():
+        adj_denom = row["total_spend_usd"] + row["cohort_users"] * _KYC_COST_USD
+        expected = round(row["total_revenue_usd"] / adj_denom, 4)
+        assert result.loc[i, "roas"] == pytest.approx(expected, abs=1e-4)
+
+
+def test_apply_kyc_roas_adjustment_does_not_mutate_input(campaign_summary):
+    """Original summary DataFrame must not be modified in place."""
+    original_roas = campaign_summary["roas"].copy()
+    _apply_kyc_roas_adjustment(campaign_summary)
+    pd.testing.assert_series_equal(campaign_summary["roas"], original_roas)
+
+
+def test_apply_kyc_roas_adjustment_zero_denom_is_nan():
+    """When total_spend and cohort_users are both 0, roas becomes NaN."""
+    summary = pd.DataFrame([{
+        "campaign_id": "c1",
+        "total_spend_usd": 0.0,
+        "cohort_users": 0,
+        "total_revenue_usd": 100.0,
+        "roas": float("nan"),
+    }])
+    result = _apply_kyc_roas_adjustment(summary)
+    assert pd.isna(result["roas"].iloc[0])

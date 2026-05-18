@@ -216,6 +216,29 @@ def _build_channel_comparison(
     return pd.concat([meta_df, acq], ignore_index=True)
 
 
+def _apply_kyc_roas_adjustment(summary: pd.DataFrame) -> pd.DataFrame:
+    """Return summary with roas recomputed to include KYC costs in the denominator.
+
+    Uses ``cohort_users`` as the KYC count proxy (conservative upper-bound — not
+    every signup completes KYC, but no per-campaign KYC count is available in
+    ``roi_summary()`` without an extra DB query).
+
+    Args:
+        summary: Output of ``CampaignAnalyzer.roi_summary()``.
+
+    Returns:
+        Copy of summary with ``roas`` column set to
+        ``total_revenue_usd / (total_spend_usd + cohort_users × _KYC_COST_USD)``.
+        Rows where the adjusted denominator is zero have ``roas = NaN``.
+    """
+    from nbs_bi.clients.models import _KYC_COST_USD
+
+    df = summary.copy()
+    adj_spend = df["total_spend_usd"] + df["cohort_users"] * _KYC_COST_USD
+    df["roas"] = (df["total_revenue_usd"] / adj_spend.replace(0, np.nan)).round(4)
+    return df
+
+
 # ---------------------------------------------------------------------------
 # Figure builders
 # ---------------------------------------------------------------------------
