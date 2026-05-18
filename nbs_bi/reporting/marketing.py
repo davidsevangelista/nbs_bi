@@ -1500,6 +1500,7 @@ class MetaAdsSection:
         cum_profit_df: pd.DataFrame | None = None,
         kyc_done: int = 0,
         spend_breakdown: dict[str, float] | None = None,
+        include_kyc_in_roas: bool = False,
     ) -> None:
         """Render KPI strip including net profit when profit data is available.
 
@@ -1511,15 +1512,18 @@ class MetaAdsSection:
                 used to compute KYC cost component of CAC.
             spend_breakdown: Per-platform spend totals for the selected window,
                 e.g. ``{"meta": 450.0, "google": 310.0}``.
+            include_kyc_in_roas: When True, adds ``kyc_done × $2.07`` to the
+                ROAS denominator. Uses the DB-queried ``kyc_done`` count for
+                accuracy (vs ``cohort_users`` used in ``_apply_kyc_roas_adjustment``).
         """
         from nbs_bi.clients.models import _KYC_COST_USD
 
         total_spend = float(summary["total_spend_usd"].sum())
         total_rev = float(summary["total_revenue_usd"].sum())
         transacting = int(summary["transacting_users"].sum())
-        overall_roas = total_rev / total_spend if total_spend > 0 else 0.0
-
         kyc_cost = kyc_done * _KYC_COST_USD
+        roas_denom = total_spend + (kyc_cost if include_kyc_in_roas else 0.0)
+        overall_roas = total_rev / roas_denom if roas_denom > 0 else 0.0
         cac_active = (total_spend + kyc_cost) / transacting if transacting > 0 else float("nan")
 
         has_profit = (
