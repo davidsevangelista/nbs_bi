@@ -476,6 +476,7 @@
 | `spread_revenue_brl` | bigint | ÷ 100 | NBS spread captured BRL |
 | `spread_revenue_usdc` | bigint | ÷ 1,000,000 | NBS spread captured USDC |
 | `expires_at` | timestamptz | | Quote expiry |
+| `created_at` | timestamptz | | Quote creation timestamp |
 | `used` | boolean | | `TRUE` = executed quote |
 | `conversion_request_id` | uuid | | FK → `conversion_requests.id` |
 | `processing_mode` | varchar | | `instant`, `standard` |
