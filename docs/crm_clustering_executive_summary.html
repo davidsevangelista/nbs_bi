@@ -88,8 +88,8 @@
 
   <div class="kpi-row">
     <div class="kpi"><div class="value">16,491</div><div class="label">Registered users</div></div>
-    <div class="kpi"><div class="value">12,402</div><div class="label">Users clustered</div></div>
-    <div class="kpi"><div class="value">6,761</div><div class="label">Pushable users (active token)</div></div>
+    <div class="kpi"><div class="value">0</div><div class="label">Users in CRM export</div></div>
+    <div class="kpi"><div class="value">0</div><div class="label">With active push token</div></div>
     <div class="kpi"><div class="value">8</div><div class="label">Behavioral segments</div></div>
   </div>
 
@@ -113,7 +113,7 @@
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Outlier quarantine — HDBSCAN</strong>
-      <span>4,089 users (24.8%) were removed before clustering — extreme profiles (very high spenders, bots, automated wallets) that would distort cluster centroids. Excluded from the push export.</span>
+      <span>0 users (24.8%) were removed before clustering — extreme profiles (very high spenders, bots, automated wallets) that would distort cluster centroids. Excluded from the push export.</span>
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>K selection — silhouette score, Davies-Bouldin index, inertia elbow</strong>
@@ -125,7 +125,7 @@
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Export — CSV with per-segment Brazilian Portuguese push copy</strong>
-      <span>6,761 pushable users (active device token + delivery rules applied) exported with segment name, cluster ID, kyc_level, and ready-to-send push copy (title + body) for three time-of-day slots in Brazilian Portuguese. Users with kyc_level ≤ 1 receive a KYC completion CTA regardless of cluster.</span>
+      <span>0 pushable users (active device token + delivery rules applied) exported with segment name, cluster ID, kyc_level, and ready-to-send push copy (title + body) for three time-of-day slots in Brazilian Portuguese. Users with kyc_level ≤ 1 receive a KYC completion CTA regardless of cluster.</span>
     </div></div>
   </div>
 
@@ -147,23 +147,23 @@
       <tr><th>Segment</th><th>Users (total)</th><th>Pushable</th><th>Avg revenue (BRL)</th><th>Days since active</th><th>Revenue tier</th></tr>
     </thead>
     <tbody>
-      <tr><td><strong>Power Onramper</strong></td><td>5,852 <span style="color:var(--muted);font-size:11px">(47.2%)</span></td><td>5,236</td><td>R$ 0.00</td><td>78 days</td><td><span class="badge badge-gray">None</span></td></tr>
-      <tr><td><strong>Stalled Pre Kyc</strong></td><td>4,790 <span style="color:var(--muted);font-size:11px">(38.6%)</span></td><td>165</td><td>R$ 0.00</td><td>665 days</td><td><span class="badge badge-gray">None</span></td></tr>
-      <tr><td><strong>Dormant</strong></td><td>690 <span style="color:var(--muted);font-size:11px">(5.6%)</span></td><td>355</td><td>R$ 2.76</td><td>54 days</td><td><span class="badge badge-low">Low</span></td></tr>
-      <tr><td><strong>Card Spender</strong></td><td>445 <span style="color:var(--muted);font-size:11px">(3.6%)</span></td><td>418</td><td>R$ 10.70</td><td>27 days</td><td><span class="badge badge-med">Medium</span></td></tr>
-      <tr><td><strong>Explorer Ai</strong></td><td>387 <span style="color:var(--muted);font-size:11px">(3.1%)</span></td><td>359</td><td>R$ 6.34</td><td>44 days</td><td><span class="badge badge-med">Medium</span></td></tr>
-      <tr><td><strong>Occasional Onramer</strong></td><td>173 <span style="color:var(--muted);font-size:11px">(1.4%)</span></td><td>167</td><td>R$ 24.77</td><td>16 days</td><td><span class="badge badge-high">High</span></td></tr>
-      <tr><td><strong>Defi Trader</strong></td><td>27 <span style="color:var(--muted);font-size:11px">(0.2%)</span></td><td>25</td><td>R$ 139.48</td><td>21 days</td><td><span class="badge badge-high">Highest</span></td></tr>
-      <tr><td><strong>Segment 7 <em style="font-size:12px;color:var(--muted)">(unnamed — review heatmap)</em></strong></td><td>38 <span style="color:var(--muted);font-size:11px">(0.3%)</span></td><td>36</td><td>R$ 0.00</td><td>0 days</td><td><span class="badge badge-gray">None</span></td></tr>
+      <tr><td><strong>Power Onramper</strong></td><td>5,852 <span style="color:var(--muted);font-size:11px">(47.2%)</span></td><td>0</td><td>R$ 0.00</td><td>78 days</td><td><span class="badge badge-gray">None</span></td></tr>
+      <tr><td><strong>Stalled Pre Kyc</strong></td><td>4,790 <span style="color:var(--muted);font-size:11px">(38.6%)</span></td><td>0</td><td>R$ 0.00</td><td>665 days</td><td><span class="badge badge-gray">None</span></td></tr>
+      <tr><td><strong>Dormant</strong></td><td>690 <span style="color:var(--muted);font-size:11px">(5.6%)</span></td><td>0</td><td>R$ 2.76</td><td>54 days</td><td><span class="badge badge-med">Medium</span></td></tr>
+      <tr><td><strong>Card Spender</strong></td><td>445 <span style="color:var(--muted);font-size:11px">(3.6%)</span></td><td>0</td><td>R$ 10.70</td><td>27 days</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td><strong>Explorer Ai</strong></td><td>387 <span style="color:var(--muted);font-size:11px">(3.1%)</span></td><td>0</td><td>R$ 6.34</td><td>44 days</td><td><span class="badge badge-med">Medium</span></td></tr>
+      <tr><td><strong>Occasional Onramer</strong></td><td>173 <span style="color:var(--muted);font-size:11px">(1.4%)</span></td><td>0</td><td>R$ 24.77</td><td>16 days</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td><strong>Defi Trader</strong></td><td>27 <span style="color:var(--muted);font-size:11px">(0.2%)</span></td><td>0</td><td>R$ 139.48</td><td>21 days</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td><strong>Segment 7 <em style="font-size:12px;color:var(--muted)">(unnamed — review heatmap)</em></strong></td><td>38 <span style="color:var(--muted);font-size:11px">(0.3%)</span></td><td>0</td><td>R$ 0.00</td><td>0 days</td><td><span class="badge badge-gray">None</span></td></tr>
     </tbody>
   </table>
 
   <h2>5. Segment Profiles &amp; Campaign Strategy</h2>
 
   <div class="card">
-    <h3>Defi Trader <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">Highest</span></span></h3>
+    <h3>Defi Trader <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">High</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">27 users &nbsp;·&nbsp; 25 pushable &nbsp;·&nbsp; avg R$139.48 revenue &nbsp;·&nbsp; 21 days since active &nbsp;·&nbsp; breadth 4.4/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">27 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$139.48 revenue &nbsp;·&nbsp; 21 days since active &nbsp;·&nbsp; breadth 4.4/6</p>
     <p>avg 10.1 onramp txns · avg 44.4 card txns · avg 15.2 swaps · avg 105 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Deepening swap engagement. DeFi-native language only — no BRL/USDC conversion pitch, no card offer.</p>
@@ -195,7 +195,7 @@
   <div class="card">
     <h3>Power Onramper <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-gray">None</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">5,852 users &nbsp;·&nbsp; 5,236 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 78 days since active &nbsp;·&nbsp; breadth 0.8/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">5,852 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 78 days since active &nbsp;·&nbsp; breadth 0.8/6</p>
     <p>avg 2 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Cross-selling DeFi swaps and card. VIP framing — never discount, never pitch KYC.</p>
@@ -225,9 +225,9 @@
   </div>
 
   <div class="card">
-    <h3>Card Spender <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-med">Medium</span></span></h3>
+    <h3>Card Spender <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">High</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">445 users &nbsp;·&nbsp; 418 pushable &nbsp;·&nbsp; avg R$10.70 revenue &nbsp;·&nbsp; 27 days since active &nbsp;·&nbsp; breadth 3.1/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">445 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$10.70 revenue &nbsp;·&nbsp; 27 days since active &nbsp;·&nbsp; breadth 3.1/6</p>
     <p>avg 2.2 onramp txns · avg 7.9 card txns · avg 22 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Onramp cross-sell. They trust the card — remove friction to first conversion.</p>
@@ -259,7 +259,7 @@
   <div class="card">
     <h3>Occasional Onramer <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">High</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">173 users &nbsp;·&nbsp; 167 pushable &nbsp;·&nbsp; avg R$24.77 revenue &nbsp;·&nbsp; 16 days since active &nbsp;·&nbsp; breadth 4.4/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">173 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$24.77 revenue &nbsp;·&nbsp; 16 days since active &nbsp;·&nbsp; breadth 4.4/6</p>
     <p>avg 6.3 onramp txns · avg 24.1 card txns · avg 4.0 swaps · avg 69 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> First or second onramp. Remove friction — do not pitch advanced products yet.</p>
@@ -291,7 +291,7 @@
   <div class="card">
     <h3>Stalled Pre Kyc <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-gray">None</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">4,790 users &nbsp;·&nbsp; 165 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 665 days since active &nbsp;·&nbsp; breadth 0.0/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">4,790 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 665 days since active &nbsp;·&nbsp; breadth 0.0/6</p>
     <p>No financial activity recorded</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> KYC funnel completion. Minimal copy, single CTA. High proportion of dead push tokens — only send to confirmed active tokens.</p>
@@ -321,9 +321,9 @@
   </div>
 
   <div class="card">
-    <h3>Dormant <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-low">Low</span></span></h3>
+    <h3>Dormant <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-med">Medium</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">690 users &nbsp;·&nbsp; 355 pushable &nbsp;·&nbsp; avg R$2.76 revenue &nbsp;·&nbsp; 54 days since active &nbsp;·&nbsp; breadth 2.9/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">690 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$2.76 revenue &nbsp;·&nbsp; 54 days since active &nbsp;·&nbsp; breadth 2.9/6</p>
     <p>avg 1.6 onramp txns · avg 0.2 card txns · avg 18 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Win-back. Maximum one send per quarter. Skip if notification_read_rate = 0 over last 90 days.</p>
@@ -355,7 +355,7 @@
   <div class="card">
     <h3>Explorer Ai <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-med">Medium</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">387 users &nbsp;·&nbsp; 359 pushable &nbsp;·&nbsp; avg R$6.34 revenue &nbsp;·&nbsp; 44 days since active &nbsp;·&nbsp; breadth 3.7/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">387 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$6.34 revenue &nbsp;·&nbsp; 44 days since active &nbsp;·&nbsp; breadth 3.7/6</p>
     <p>avg 2.6 onramp txns · avg 0.1 card txns · avg 3.4 swaps · avg 29 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> First conversion activation. They know the product — remove friction, do not educate.</p>
@@ -387,7 +387,7 @@
   <div class="card">
     <h3>Segment 7 <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-gray">None</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">38 users &nbsp;·&nbsp; 36 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 0 days since active &nbsp;·&nbsp; breadth 0.0/6</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">38 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 0 days since active &nbsp;·&nbsp; breadth 0.0/6</p>
     <p>No financial activity recorded</p>
     <div class="callout callout-amber" style="margin-top:12px"><strong>Unnamed cluster.</strong> Review the notebook heatmap, assign a name in <code>SEGMENT_NAMES</code>, and add campaign copy to <code>MESSAGES</code>.</div>
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Cluster não nomeado — revisar heatmap e definir estratégia de campanha.</p>
@@ -410,7 +410,7 @@
     <li><strong>Curse of dimensionality.</strong> In high-dimensional spaces, Euclidean distances lose discriminative power. Reducing to 12 components restores meaningful geometry.</li>
   </ul>
 
-  <h2>8. The 4,089 Quarantined Users</h2>
+  <h2>8. The 0 Quarantined Users</h2>
   <p>
     24.8% of users were removed before clustering. HDBSCAN flags users whose behavioral profile does not fit into any density region shared by at least 15 other users — typically extreme spenders, DeFi power users with automated transaction counts, or internal test accounts. These users are excluded from the push export and should be reviewed manually.
   </p>

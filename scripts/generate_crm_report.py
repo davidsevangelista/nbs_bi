@@ -72,12 +72,12 @@ def extract_metrics(nb: dict) -> dict:
         out = _cell_text_outputs(users_cell)
         m["total_users"] = _int(out, r"Users:\s*([\d,]+)")
 
-    # Clean population & quarantined
-    clean_cell = _find_cell(cells, containing="Clean population:")
+    # Clustering population
+    clean_cell = _find_cell(cells, containing="Users entering clustering:")
     if clean_cell:
         out = _cell_text_outputs(clean_cell)
-        m["clean_users"] = _int(out, r"Clean population:\s*([\d,]+)")
-        m["quarantined"] = _int(out, r"\(([\d,]+) quarantined\)")
+        m["clean_users"] = _int(out, r"Users entering clustering:\s*([\d,]+)")
+        m["quarantined"] = _int(out, r"flagged as statistical outliers:\s*([\d,]+)")
 
     # Outlier %
     outlier_cell = _find_cell(cells, containing="Outliers identified:")
@@ -203,25 +203,26 @@ def extract_metrics(nb: dict) -> dict:
                 seg_full[match.group(1)] = int(match.group(2).replace(",", ""))
     m["seg_full"] = seg_full
 
-    # Pushable segment distribution
-    push_cell = _find_cell(cells, containing="Pushable users after delivery rules")
+    # Push token count + export totals (new format: all users, is_pushable flag)
+    push_cell = _find_cell(cells, containing="Total users in export")
     seg_push: dict[str, int] = {}
-    pushable_total = None
     if push_cell:
         out = _cell_text_outputs(push_cell)
         m["push_token_users"] = _int(out, r"active push token:\s*([\d,]+)")
-        pushable_total = _int(out, r"Pushable users after delivery rules:\s*([\d,]+)")
-        m["pushable_total"] = pushable_total
+        m["pushable_total"]   = _int(out, r"pushable \(active token\):\s*([\d,]+)")
+        m["export_total"]     = _int(out, r"Total users in export:\s*([\d,]+)")
+        m["skip_push_count"]  = _int(out, r"dormant skip_push flag:\s*([\d,]+)")
+        # Segment distribution from the value_counts at the bottom
         for line in out.splitlines():
             match = re.match(r"^(\w+)\s+([\d,]+)", line.strip())
             if match and match.group(1) not in (
-                "Users", "Pushable", "segment_name", "Name"
+                "Users", "Total", "pushable", "no", "dormant", "segment_name", "Name"
             ):
                 seg_push[match.group(1)] = int(match.group(2).replace(",", ""))
     m["seg_push"] = seg_push
 
     # KYC override count
-    kyc_cell = _find_cell(cells, containing="KYC level 0")
+    kyc_cell = _find_cell(cells, containing="KYC level")
     if kyc_cell:
         out = _cell_text_outputs(kyc_cell)
         m["kyc_override_count"] = _int(out, r"KYC level[^:]+:\s*([\d,]+)")
@@ -265,15 +266,20 @@ def extract_metrics(nb: dict) -> dict:
 
 # ── Revenue tier helper ───────────────────────────────────────────────────────
 
-def _revenue_tier(avg_revenue: float) -> tuple[str, str]:
-    """Return (badge_class, label) based on avg spread revenue."""
-    if avg_revenue >= 50:
+def _revenue_tier(avg_revenue: float, n_users: int = 1) -> tuple[str, str]:
+    """Return (badge_class, label) based on total revenue potential (avg × users).
+
+    Per-user avg alone is misleading: 27 DeFi traders at R$139 each = R$3,766 total,
+    while 175 FX converters at R$25 each = R$4,375 total. Scale matters.
+    """
+    total = avg_revenue * n_users
+    if total >= 10_000:
         return "badge-high", "Highest"
-    if avg_revenue >= 15:
+    if total >= 3_000:
         return "badge-high", "High"
-    if avg_revenue >= 5:
+    if total >= 500:
         return "badge-med", "Medium"
-    if avg_revenue > 0:
+    if total > 0:
         return "badge-low", "Low"
     return "badge-gray", "None"
 
@@ -360,7 +366,7 @@ def _seg_table_rows(
         n_push = seg_push.get(seg, 0)
         rev = revenue_map.get(seg, 0.0)
         days = days_map.get(seg, 0.0)
-        tier_cls, tier_label = _revenue_tier(rev)
+        tier_cls, tier_label = _revenue_tier(rev, n_full)
 
         display = seg.replace("_", " ").title()
         if seg.startswith("segment_"):
@@ -443,7 +449,7 @@ def _segment_profile_cards(
         ai = ai_map.get(seg, 0.0)
         breadth = breadth_map.get(seg, 0.0)
 
-        tier_cls, tier_label = _revenue_tier(rev)
+        tier_cls, tier_label = _revenue_tier(rev, n)
         tier_badge = _badge(tier_cls, tier_label)
 
         stats = (
@@ -472,7 +478,8 @@ def _segment_profile_cards(
     for seg in ordered:
         display = seg.replace("_", " ").title()
         rev = revenue_map.get(seg, 0.0)
-        tier_cls, tier_label = _revenue_tier(rev)
+        n_seg = seg_full.get(seg, 1)
+        tier_cls, tier_label = _revenue_tier(rev, n_seg)
         badge_html = _badge(tier_cls, tier_label)
         goal = GOALS.get(seg, "Cluster não nomeado — revisar heatmap e definir estratégia de campanha.")
 
@@ -579,6 +586,7 @@ def render_html(m: dict) -> str:
     total_users = m.get("total_users", 0) or 0
     clean_users = m.get("clean_users", 0) or 0
     quarantined = m.get("quarantined", 0) or 0
+    export_total = m.get("export_total", 0) or 0
     pushable    = m.get("pushable_total", 0) or 0
     best_k      = m.get("best_k", "?")
     month       = m.get("analysis_month", "unknown")
@@ -636,8 +644,8 @@ def render_html(m: dict) -> str:
 
   <div class="kpi-row">
     <div class="kpi"><div class="value">{total_users:,}</div><div class="label">Registered users</div></div>
-    <div class="kpi"><div class="value">{clean_users:,}</div><div class="label">Users clustered</div></div>
-    <div class="kpi"><div class="value">{pushable:,}</div><div class="label">Pushable users (active token)</div></div>
+    <div class="kpi"><div class="value">{export_total or clean_users:,}</div><div class="label">Users in CRM export</div></div>
+    <div class="kpi"><div class="value">{pushable:,}</div><div class="label">With active push token</div></div>
     <div class="kpi"><div class="value">{best_k}</div><div class="label">Behavioral segments</div></div>
   </div>
 
