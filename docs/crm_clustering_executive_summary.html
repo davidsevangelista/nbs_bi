@@ -674,7 +674,7 @@
   <!-- KYC override -->
   <h2>6. KYC-Level-0 Override</h2>
   <p>
-    Across all segments, <strong>2,771 pushable users have kyc_level = 0</strong>. Regardless of their cluster assignment, they receive a dedicated KYC completion CTA — the generic segment message is irrelevant to a user who has never verified. This override is applied in the CSV export: the backend reads <code>kyc_level</code> directly from the export and applies the appropriate copy.
+    Across all segments, users with <strong>kyc_level ≤ 1 (not yet fully verified)</strong> receive a dedicated KYC completion CTA regardless of their cluster assignment — the generic segment message is irrelevant to a user who has not completed verification. kyc_level = 2 means fully verified; those users always receive their segment copy. This override is applied in the CSV export: the backend reads <code>kyc_level</code> directly from the export and applies the appropriate copy.
   </p>
   <div class="callout callout-purple">
     <strong>Why as a delivery layer rule, not a cluster?</strong> kyc_level was removed from the clustering features entirely — in the NBS user base it is effectively binary (0 = never transacted, 2 = transacted), making it collinear with every activity feature. Including it in the feature matrix would double-count information already captured by <em>onboarding_completed</em>, <em>n_onramp_txns</em>, and the binary presence flags. It is retained as a metadata column in the export solely to drive this message override.
