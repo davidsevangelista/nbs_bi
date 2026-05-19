@@ -370,12 +370,12 @@ def _seg_table_rows(
 
         display = seg.replace("_", " ").title()
         if seg.startswith("segment_"):
-            display += ' <em style="font-size:12px;color:var(--muted)">(unnamed — review heatmap)</em>'
+            display += ' <em style="font-size:12px;color:#5a5a7a">(unnamed — review heatmap)</em>'
 
         rows.append(
             f"      <tr>"
             f"<td><strong>{display}</strong></td>"
-            f"<td>{n_full:,} <span style=\"color:var(--muted);font-size:11px\">({pct:.1f}%)</span></td>"
+            f"<td>{n_full:,} <span style=\"color:#5a5a7a;font-size:11px\">({pct:.1f}%)</span></td>"
             f"<td>{n_push:,}</td>"
             f"<td>R$ {rev:.2f}</td>"
             f"<td>{days:.0f} days</td>"
@@ -471,7 +471,7 @@ def _segment_profile_cards(
         detail = " · ".join(detail_parts) if detail_parts else "No financial activity recorded"
 
         return f"""
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">{stats}</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">{stats}</p>
     <p>{detail}</p>"""
 
     parts = []
@@ -509,44 +509,34 @@ def _segment_profile_cards(
 # ── HTML template ─────────────────────────────────────────────────────────────
 
 CSS = """
-  :root {
-    --ink:    #1a1a2e;
-    --muted:  #5a5a7a;
-    --accent: #4f46e5;
-    --green:  #059669;
-    --amber:  #d97706;
-    --red:    #dc2626;
-    --bg:     #f8f8fc;
-    --card:   #ffffff;
-    --border: #e4e4f0;
-  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.65;
+    background: #f8f8fc; color: #1a1a2e; font-size: 15px; line-height: 1.65;
   }
   .page { max-width: 960px; margin: 0 auto; padding: 48px 32px 80px; }
-  .doc-header { border-bottom: 2px solid var(--accent); padding-bottom: 24px; margin-bottom: 40px; }
-  .doc-header .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .doc-header { border-bottom: 2px solid #4f46e5; padding-bottom: 24px; margin-bottom: 40px; }
+  .doc-header .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #4f46e5; margin-bottom: 8px; }
   .doc-header h1 { font-size: 28px; font-weight: 700; letter-spacing: -.3px; line-height: 1.2; margin-bottom: 6px; }
-  .doc-header .meta { font-size: 13px; color: var(--muted); }
-  h2 { font-size: 19px; font-weight: 700; color: var(--ink); margin: 44px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-  h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 28px 0 10px; }
+  .doc-header .meta { font-size: 13px; color: #5a5a7a; }
+  h2 { font-size: 19px; font-weight: 700; color: #1a1a2e; margin: 44px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #e4e4f0; }
+  h3 { font-size: 15px; font-weight: 700; color: #1a1a2e; margin: 28px 0 10px; }
   p { margin-bottom: 12px; color: #2a2a3e; }
+  code { font-family: ui-monospace, "SF Mono", monospace; font-size: 12.5px; background: #f0f0f8; padding: 1px 5px; border-radius: 3px; }
   .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0 32px; }
-  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px 16px; }
-  .kpi .value { font-size: 26px; font-weight: 800; color: var(--accent); line-height: 1.1; }
-  .kpi .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; margin-bottom: 12px; }
+  .kpi { background: #ffffff; border: 1px solid #e4e4f0; border-radius: 8px; padding: 18px 16px; }
+  .kpi .value { font-size: 26px; font-weight: 800; color: #4f46e5; line-height: 1.1; }
+  .kpi .label { font-size: 12px; color: #5a5a7a; margin-top: 4px; }
+  .card { background: #ffffff; border: 1px solid #e4e4f0; border-radius: 10px; padding: 20px 22px; margin-bottom: 12px; }
   .steps { counter-reset: step; margin: 20px 0; }
-  .step { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .step { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid #e4e4f0; }
   .step:last-child { border-bottom: none; }
-  .step-num { counter-increment: step; width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .step-num { counter-increment: step; width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: #4f46e5; color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
   .step-body strong { display: block; font-size: 14px; margin-bottom: 3px; }
-  .step-body span { font-size: 13px; color: var(--muted); }
+  .step-body span { font-size: 13px; color: #5a5a7a; }
   .seg-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
-  .seg-table th { background: #f0f0f8; text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); }
-  .seg-table td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .seg-table th { background: #f0f0f8; text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5a5a7a; border-bottom: 2px solid #e4e4f0; }
+  .seg-table td { padding: 11px 12px; border-bottom: 1px solid #e4e4f0; vertical-align: top; }
   .seg-table tr:last-child td { border-bottom: none; }
   .seg-table tr:hover td { background: #f8f8fc; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -556,22 +546,27 @@ CSS = """
   .badge-info { background: #e0e7ff; color: #3730a3; }
   .badge-gray { background: #f1f1f6; color: #4a4a6a; }
   .metric-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
-  .metric-table th { padding: 8px 12px; background: #f0f0f8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; }
+  .metric-table th { padding: 8px 12px; background: #f0f0f8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #5a5a7a; text-align: right; }
   .metric-table th:first-child { text-align: left; }
-  .metric-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; }
+  .metric-table td { padding: 8px 12px; border-bottom: 1px solid #e4e4f0; text-align: right; }
   .metric-table td:first-child { text-align: left; font-weight: 600; }
-  .metric-table tr.selected td { background: #eef2ff; font-weight: 700; color: var(--accent); }
+  .metric-table tr.selected td { background: #eef2ff; font-weight: 700; color: #4f46e5; }
   .callout { padding: 14px 18px; border-radius: 8px; margin: 16px 0; font-size: 14px; }
-  .callout-green  { background: #ecfdf5; border-left: 4px solid var(--green);  color: #064e3b; }
-  .callout-amber  { background: #fffbeb; border-left: 4px solid var(--amber);  color: #78350f; }
-  .callout-purple { background: #eef2ff; border-left: 4px solid var(--accent); color: #312e81; }
+  .callout-green  { background: #ecfdf5; border-left: 4px solid #059669; color: #064e3b; }
+  .callout-amber  { background: #fffbeb; border-left: 4px solid #d97706; color: #78350f; }
+  .callout-purple { background: #eef2ff; border-left: 4px solid #4f46e5; color: #312e81; }
+  .feat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 20px; }
+  .feat-table th { background: #f0f0f8; text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5a5a7a; border-bottom: 2px solid #e4e4f0; }
+  .feat-table td { padding: 8px 12px; border-bottom: 1px solid #e4e4f0; vertical-align: top; }
+  .feat-table td:first-child { font-weight: 600; color: #1a1a2e; white-space: nowrap; }
+  .feat-group td { background: #f0f0f8; font-weight: 700; color: #4f46e5; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 6px 12px; }
   .msg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
-  .msg-card { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .msg-slot { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; background: #f0f0f8; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .msg-card { border: 1px solid #e4e4f0; border-radius: 8px; overflow: hidden; }
+  .msg-slot { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; background: #f0f0f8; color: #5a5a7a; padding: 6px 10px; border-bottom: 1px solid #e4e4f0; }
   .msg-content { padding: 10px; }
-  .msg-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; color: var(--ink); }
-  .msg-body  { font-size: 12px; color: var(--muted); line-height: 1.5; }
-  .doc-footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .msg-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #1a1a2e; }
+  .msg-body  { font-size: 12px; color: #5a5a7a; line-height: 1.5; }
+  .doc-footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid #e4e4f0; font-size: 12px; color: #5a5a7a; }
   ul { margin: 12px 0 12px 20px; color: #2a2a3e; }
   li { margin-bottom: 8px; }
   @media print {
@@ -657,7 +652,51 @@ def render_html(m: dict) -> str:
     This project replaces that coarse classification with an ML-derived segmentation — mapping each user to a behavioral archetype — so that push campaigns can be targeted by product usage pattern, recency, and revenue profile simultaneously.
   </p>
 
-  <h2>2. Approach</h2>
+  <h2>2. Feature Engineering</h2>
+  <p>One row per user. {n_features} numeric features extracted directly from the production DB — no PII, <code>user_id</code> is the only identifier. <code>kyc_level</code> is excluded from clustering inputs (it is binary in this user base: 0 = unverified, 2 = verified, collinear with all activity features) and kept as a metadata column for the KYC override rule.</p>
+  <table class="feat-table">
+    <thead><tr><th>Feature</th><th>What it measures</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr class="feat-group"><td colspan="3">Lifecycle</td></tr>
+      <tr><td><code>days_since_signup</code></td><td>Age of the account</td><td><code>users.created_at</code></td></tr>
+      <tr><td><code>days_since_last_active</code></td><td>Recency of last session (9,999 if never seen)</td><td><code>users.last_active_at</code></td></tr>
+      <tr><td><code>onboarding_completed</code></td><td>Whether the user finished the onboarding flow (0/1)</td><td><code>user_profiles</code></td></tr>
+      <tr><td><code>is_founder</code></td><td>Member of the founders program (0/1)</td><td><code>founders</code></td></tr>
+      <tr><td><code>founder_network_size</code></td><td>Number of referred users (0 if not a founder)</td><td><code>founders</code></td></tr>
+      <tr><td><code>account_type_business</code></td><td>Business vs personal account (0/1)</td><td><code>users.account_type</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Onramp / Offramp</td></tr>
+      <tr><td><code>n_onramp_txns</code></td><td>Count of completed BRL → USDC conversions</td><td><code>conversion_quotes</code> (used=TRUE)</td></tr>
+      <tr><td><code>n_offramp_txns</code></td><td>Count of completed USDC → BRL conversions</td><td><code>conversion_quotes</code> (used=TRUE)</td></tr>
+      <tr><td><code>total_onramp_brl</code></td><td>Total BRL converted in (centavos ÷ 100)</td><td><code>conversion_quotes.from_amount_brl</code></td></tr>
+      <tr><td><code>total_spread_revenue_brl</code></td><td>Spread + fee revenue generated for NBS (BRL)</td><td><code>conversion_quotes</code></td></tr>
+      <tr><td><code>pct_instant_mode</code></td><td>Fraction of conversions using instant processing</td><td><code>conversion_quotes.processing_mode</code></td></tr>
+      <tr><td><code>days_since_last_conversion</code></td><td>Recency of last onramp or offramp (9,999 if none)</td><td><code>conversion_quotes.created_at</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Cards</td></tr>
+      <tr><td><code>n_card_txns</code></td><td>Completed card spend transactions</td><td><code>card_transactions</code></td></tr>
+      <tr><td><code>total_card_spend_usd</code></td><td>Total card spend in USD (micros ÷ 100)</td><td><code>card_transactions.amount</code></td></tr>
+      <tr><td><code>has_card</code></td><td>Has at least one active card (0/1)</td><td><code>cards</code></td></tr>
+      <tr><td><code>paid_annual_fee</code></td><td>Paid the card annual fee (0/1) — commitment signal</td><td><code>card_annual_fees</code></td></tr>
+      <tr><td><code>days_since_last_card_spend</code></td><td>Recency of last card transaction (9,999 if none)</td><td><code>card_transactions.authorized_at</code></td></tr>
+      <tr class="feat-group"><td colspan="3">DeFi / Solana</td></tr>
+      <tr><td><code>n_swaps</code></td><td>Total Jupiter swap transactions</td><td><code>swap_transactions</code></td></tr>
+      <tr><td><code>total_swap_volume_usdc</code></td><td>Total swap input volume in USDC (micros ÷ 1,000,000)</td><td><code>swap_transactions.input_amount</code></td></tr>
+      <tr><td><code>n_unique_tokens</code></td><td>Distinct token mints traded — proxy for DeFi sophistication</td><td><code>swap_transactions</code></td></tr>
+      <tr><td><code>n_solana_txns</code></td><td>Sponsored Solana transactions (gas-free ops)</td><td><code>solana_sponsored_transactions</code></td></tr>
+      <tr><td><code>days_since_last_swap</code></td><td>Recency of last swap (9,999 if none)</td><td><code>swap_transactions.timestamp</code></td></tr>
+      <tr class="feat-group"><td colspan="3">International Payouts</td></tr>
+      <tr><td><code>n_international_payouts</code></td><td>Completed cross-border payouts</td><td><code>unblockpay_payouts</code></td></tr>
+      <tr><td><code>total_international_usdc</code></td><td>Total payout volume in USDC</td><td><code>unblockpay_payouts.amount</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Engagement</td></tr>
+      <tr><td><code>n_ai_sessions</code></td><td>AI assistant sessions — in-app exploration proxy</td><td><code>ai_sessions</code></td></tr>
+      <tr><td><code>notification_read_rate</code></td><td>Fraction of push notifications opened</td><td><code>notification_events</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Composite (derived in Python)</td></tr>
+      <tr><td><code>product_breadth_score</code></td><td>Count of distinct product areas used (0–6): onramp, offramp, card, swaps, AI, international payouts</td><td>Derived</td></tr>
+      <tr><td><code>revenue_generated_brl</code></td><td>Alias for <code>total_spread_revenue_brl</code> — primary revenue signal</td><td>Derived</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:#5a5a7a">All <code>days_since_*</code> features are set to 9,999 for users with no activity in that product area (genuine non-usage, not missing data). Monetary values: BRL stored as centavos (÷100), USDC stored as micros (÷1,000,000).</p>
+
+  <h2>3. Approach</h2>
   <div class="steps">
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Feature extraction — {n_features} behavioral signals per user</strong>
@@ -685,7 +724,7 @@ def render_html(m: dict) -> str:
     </div></div>
   </div>
 
-  <h2>3. Cluster Count Selection</h2>
+  <h2>4. Cluster Count Selection</h2>
   <table class="metric-table">
     <thead>
       <tr><th>k</th><th>Silhouette ↑</th><th>Davies-Bouldin ↓</th><th>Inertia</th><th>Assessment</th></tr>
@@ -697,7 +736,7 @@ def render_html(m: dict) -> str:
   <div class="callout {stab_callout_cls}">{stab_callout_msg}</div>
   <div class="callout callout-amber">{gmm_callout}</div>
 
-  <h2>4. User Segments</h2>
+  <h2>5. User Segments</h2>
   <table class="seg-table">
     <thead>
       <tr><th>Segment</th><th>Users (total)</th><th>Pushable</th><th>Avg revenue (BRL)</th><th>Days since active</th><th>Revenue tier</th></tr>
@@ -707,10 +746,10 @@ def render_html(m: dict) -> str:
     </tbody>
   </table>
 
-  <h2>5. Segment Profiles &amp; Campaign Strategy</h2>
+  <h2>6. Segment Profiles &amp; Campaign Strategy</h2>
 {_segment_profile_cards(seg_full, seg_push, messages, cluster_means, segment_names)}
 
-  <h2>6. KYC Override Rule</h2>
+  <h2>7. KYC Override Rule</h2>
   <p>
     Users with <strong>kyc_level ≤ 1 (not yet fully verified)</strong> receive a dedicated KYC completion CTA regardless of their cluster assignment — the generic segment message is irrelevant to a user who has not completed verification. kyc_level = 2 means fully verified; those users always receive their segment copy.
   </p>
@@ -718,7 +757,7 @@ def render_html(m: dict) -> str:
     <strong>Why as a delivery-layer rule, not a cluster?</strong> kyc_level was removed from clustering features — it is effectively binary in this user base (0 or 2), collinear with <em>onboarding_completed</em> and every activity feature. Including it would double-count information already captured by presence flags and transaction counts. It is retained as a metadata column in the export solely to drive this override.
   </div>
 
-  <h2>7. Why PCA Before K-Means</h2>
+  <h2>8. Why PCA Before K-Means</h2>
   <p>The {n_features} input features were reduced to <strong>{pca_comp} principal components retaining {pca_var:.1f}% of total variance</strong> before clustering. This is required for K-Means to work correctly on this data:</p>
   <ul>
     <li><strong>Correlated features inflate distance.</strong> <em>n_onramp_txns</em> and <em>total_onramp_brl</em> are highly correlated — without PCA, both count in the Euclidean distance, effectively double-weighting onramp behaviour.</li>
@@ -726,7 +765,7 @@ def render_html(m: dict) -> str:
     <li><strong>Curse of dimensionality.</strong> In high-dimensional spaces, Euclidean distances lose discriminative power. Reducing to {pca_comp} components restores meaningful geometry.</li>
   </ul>
 
-  <h2>8. Outlier Flags — <code>is_outlier</code></h2>
+  <h2>9. Outlier Flags — <code>is_outlier</code></h2>
   <p>
     {quarantined:,} users ({outlier_pct:.1f}%) are flagged as statistical outliers by HDBSCAN — their behavioral profile does not share a density region with at least 15 other users. Typical profiles: extreme-volume onrampers, DeFi power users with automated swap counts, possible internal test accounts.
   </p>
@@ -734,7 +773,7 @@ def render_html(m: dict) -> str:
     These users <strong>are included in clustering and in the export.</strong> The <code>is_outlier=1</code> flag lets the backend apply extra caution — e.g. manual review before sending, or excluding from automated bulk campaigns — without losing them from the CRM dataset entirely. Previous versions removed them, which caused kyc_level=2 high-value users to disappear from the export.
   </p>
 
-  <h2>9. Monthly Refresh Protocol</h2>
+  <h2>10. Monthly Refresh Protocol</h2>
   <p>
     Clustering artifacts (scaler, PCA, K-Means model, segment name mapping) are saved to <code>data/processed/</code> versioned by month. New users can be scored without re-fitting: apply saved scaler → PCA → <code>km.predict()</code>.
   </p>

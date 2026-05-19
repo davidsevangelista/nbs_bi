@@ -7,6 +7,54 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-05-19
+
+CRM report polish: feature table in HTML, CSS cleanup, cluster interpretation guide in notebook, `full_name` in export.
+
+### Added
+- `notebooks/crm_user_clustering.ipynb` — Cell 31: "Como determinar o significado de cada cluster" — step-by-step guide explaining how to read `profile_mean`, compute per-cluster feature deviations, interpret the heatmap, and update `SEGMENT_NAMES` after each re-fit
+- `scripts/generate_crm_report.py` — Section 2 "Feature Engineering" added to HTML output: full table of all 27 features organized by group (Lifecycle, Onramp/Offramp, Cards, DeFi/Solana, International Payouts, Engagement, Composite) with description and DB source for each
+- `docs/crm_user_clustering_methodology.md` — plain-language methodology explainer for sharing with stakeholders (what was built, how clusters are built, how to read cluster meaning, segment archetypes table, delivery flags, monthly refresh)
+
+### Changed
+- `scripts/generate_crm_report.py` — CSS `:root { --xxx: yyy; }` custom property block removed; all `var(--xxx)` references replaced with hardcoded hex values throughout CSS string and inline style attributes (29 replacements)
+- `scripts/generate_crm_report.py` — HTML sections renumbered: Problem (1), Feature Engineering (2, new), Approach (3), Cluster Count (4), User Segments (5), Segment Profiles (6), KYC Override (7), Why PCA (8), Outlier Flags (9), Monthly Refresh (10)
+- `notebooks/crm_user_clustering.ipynb` — `full_name` (`users.full_name`) added to CRM export: SQL SELECT (Cell 3), `df_clean` column slice (Cell 38), and `export_cols` list (Cell 39); CSV column order: `user_id, full_name, cluster_id, segment_name, …`
+
+### Fixed
+- `notebooks/crm_user_clustering.ipynb` — `KeyError: ['full_name'] not in index` on CSV export: column was added to SQL and `export_cols` but not to the intermediate `df_clean[[...]]` slice in Cell 38
+
+## [2.6.0] — 2026-05-19
+
+CRM user clustering: behavioral segmentation of the full NBS user base for push notification campaigns.
+
+### Added
+- `notebooks/crm_user_clustering.ipynb` — full ML pipeline: 8 SQL feature queries, 37-feature matrix, log1p + StandardScaler + PCA preprocessing, HDBSCAN outlier flagging, K-Means (k=8) clustering, GMM cross-validation, UMAP visualization, segment profiling, and CRM export
+- `scripts/generate_crm_report.py` — parses notebook cell outputs and generates `docs/crm_clustering_executive_summary.html` with KPI strip, methodology, K-selection diagnostics, segment table, per-segment profile cards with pt-BR push messages, KYC override note, and monthly refresh protocol
+- `docs/crm_clustering_executive_summary.html` — executive summary of the clustering methodology and results
+- `docs/crm_user_clustering_methodology.md` — plain-language methodology explainer for sharing with stakeholders
+- `data/processed/crm_segments_<YYYY-MM>.csv` — per-user export: `user_id, cluster_id, segment_name, kyc_level, is_pushable, skip_push, is_outlier` + pt-BR push message columns (gitignored)
+- joblib artifacts: `crm_scaler_<YYYY-MM>.pkl`, `crm_pca_<YYYY-MM>.pkl`, `crm_kmeans_<YYYY-MM>.pkl` for incremental monthly scoring (gitignored)
+- `crm` optional dependency group in `pyproject.toml`: `umap-learn>=0.5`, `hdbscan>=0.8`, `seaborn>=0.13`
+
+### Changed
+- HDBSCAN role changed from quarantine (removes users) to flag-only (`is_outlier` column); all users enter K-Means, giving ~16k-row export instead of ~6.9k
+- `device_tokens` join changed from inner to left join; `is_pushable` flag replaces hard exclusion so users without active tokens remain in export
+- `kyc_level` removed from clustering features (effectively binary {0,2} in production — collinear with all activity features); kept as metadata column for KYC override logic
+- Revenue tier uses total segment potential (`avg_revenue × n_users`) instead of per-user average
+- Push messages translated to Brazilian Portuguese (pt-BR) for all 7 segment archetypes × 3 time slots
+
+### Fixed
+- `card_transactions` SQL: added `WHERE user_id IS NOT NULL` to prevent NULL-keyed aggregation row causing `AssertionError: Duplicate user_ids in card_txns`
+- `SEGMENT_NAMES` auto-padded with `segment_N` placeholders when `BEST_K` exceeds number of named archetypes
+- Generic pt-BR fallback messages auto-populated for unnamed `segment_N` clusters to prevent `AssertionError: MESSAGES keys must match SEGMENT_NAMES values`
+- KYC verification CTA (`skip_push` override) correctly applied to `kyc_level <= 1`, not only level 0
+- Report generator `_revenue_tier()` call sites fixed: `n_full` → correct local variable (`n_seg` / `n`)
+- Cluster means parser updated to handle pandas wide-table wrapping (blank-line-separated multi-section output)
+- Push metrics extraction and clean-population extraction updated to match new notebook output strings
+
+## [Unreleased — take rate charts, pending release]
+
 ### Added
 - Overview take rate chart: checkbox to include/exclude card annual fees from the revenue numerator (default: included)
 - Overview take rate chart: volume-weighted Avg and L30 KPI annotation in top-right corner of the chart

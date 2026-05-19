@@ -257,6 +257,62 @@ Reference: Rain Invoice NKEMEJLO-0008, February 2026 ($6,693.58 USD)
 
 ---
 
+## Phase 8 — CRM User Clustering (`notebooks/crm_user_clustering.ipynb`)
+
+Reference spec: `docs/superpowers/specs/2026-05-18-crm-user-clustering-design.md`
+
+### Notebook pipeline
+- [x] Section 0 — Setup & DB connection
+- [x] Section 1 — Data extraction (8 SQL queries: lifecycle, onramp, cards, swaps, Solana, payouts, AI sessions, notifications)
+- [x] Section 2 — Feature matrix assembly (~37 features per user, 16k rows)
+- [x] Section 3 — Preprocessing: zero-fill, has_X binary flags, log1p, StandardScaler, PCA(90% variance → 12 components)
+- [x] Section 4 — HDBSCAN outlier detection (flag-only — `is_outlier` column added; users not removed)
+- [x] Section 5 — K selection: elbow + silhouette + Davies-Bouldin for k=4–12; BEST_K = 8
+- [x] Section 6 — K-Means (k=8, k-means++, n_init=20) + GMM cross-validation (ARI = 0.694) + seed stability (min ARI = 0.986)
+- [x] Section 7 — Cluster profiling: centroid means, heatmap, per-segment narrative
+- [x] Section 8 — UMAP 2D visualization (flag only, not used for clustering)
+- [x] Section 9 — Push notification messages (Brazilian Portuguese) + CRM export with delivery flags
+
+### Features and fixes
+- [x] `kyc_level` removed from clustering features (binary in practice: 0 or 2 — collinear with all activity features)
+- [x] KYC override: users with `kyc_level <= 1` receive KYC completion CTA regardless of cluster assignment
+- [x] `is_pushable` flag (left join with `device_tokens WHERE is_active = TRUE`) — no users excluded from export
+- [x] `skip_push` flag for dormant users with `notification_read_rate = 0`
+- [x] HDBSCAN changed from quarantine to flag-only so all 16k users enter K-Means
+- [x] Auto-pad `SEGMENT_NAMES` for k > 7 with `segment_N` placeholders
+- [x] Auto-populate generic pt-BR fallback messages for unnamed segments with warning
+- [x] Revenue tier computed as `avg_revenue × n_users` (total segment potential), not per-user avg
+- [x] joblib artifacts saved: `crm_scaler_<YYYY-MM>.pkl`, `crm_pca_<YYYY-MM>.pkl`, `crm_kmeans_<YYYY-MM>.pkl`
+- [x] `crm` optional dependency group added to `pyproject.toml` (`umap-learn`, `hdbscan`, `seaborn`)
+
+### Export
+- [x] `data/processed/crm_segments_<YYYY-MM>.csv` — all clustered users; columns: `user_id, cluster_id, segment_name, kyc_level, is_pushable, skip_push, is_outlier, title_morning, body_morning, title_afternoon, body_afternoon, title_evening, body_evening`
+- [x] Push messages in Brazilian Portuguese for 7 archetypes × 3 time slots (07–09h, 12–14h, 19–21h)
+
+### Documentation and tooling
+- [x] `scripts/generate_crm_report.py` — generates `docs/crm_clustering_executive_summary.html` from notebook cell outputs; CSS custom properties removed (no `var(--xxx)`); Section 2 "Feature Engineering" added with full 27-feature table grouped by category
+- [x] `docs/crm_clustering_executive_summary.html` — 10-section executive summary: Problem, Feature Engineering, Approach, Cluster Count Selection, User Segments, Segment Profiles, KYC Override, Why PCA, Outlier Flags, Monthly Refresh
+- [x] `docs/crm_user_clustering_methodology.md` — plain-language methodology explainer for sharing with stakeholders and dev team
+- [x] Notebook Cell 31 — "Como determinar o significado de cada cluster": 4-step guide (read profile_mean table, compute deviations, read heatmap patterns, assign name in SEGMENT_NAMES)
+
+### Export
+- [x] `full_name` column added: SQL SELECT (Cell 3: `u.full_name`), df_clean slice (Cell 38), `export_cols` (Cell 39); CSV order: `user_id, full_name, cluster_id, segment_name, …`
+
+### Pending (Phase 8)
+- [ ] Re-run notebook with all 16k users to get fresh outputs and valid CSV (last run: stale — based on previous pipeline)
+- [ ] Re-run `scripts/generate_crm_report.py` after re-run to update HTML with fresh numbers
+- [ ] Name `segment_7` (445 users, kyc=2, avg card_txns=7.85, avg ai_sessions=21.83, avg rev R$10.70): review heatmap, update `SEGMENT_NAMES`, add pt-BR copy to `MESSAGES`
+- [ ] Consider renaming `power_onramper` → `fx_converter` in `SEGMENT_NAMES`
+- [ ] Clear notebook output cells before committing (PII: `full_name` now appears in `.head(3)` output of Cell 39)
+
+### Phase 9 — CRM Delivery (not started)
+- [ ] Backend notification API contract (endpoint, payload, auth)
+- [ ] `nbs_bi.crm` Python delivery module
+- [ ] Monthly re-clustering scheduler
+- [ ] Email/SMS fallback for Segment 7 zero-push-engagement users
+
+---
+
 ## Backlog
 
 ### Dashboard performance (identified 2026-04-24)

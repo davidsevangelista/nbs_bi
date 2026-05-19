@@ -5,44 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NBS CRM User Clustering — Executive Summary (2026-05)</title>
 <style>
-  :root {
-    --ink:    #1a1a2e;
-    --muted:  #5a5a7a;
-    --accent: #4f46e5;
-    --green:  #059669;
-    --amber:  #d97706;
-    --red:    #dc2626;
-    --bg:     #f8f8fc;
-    --card:   #ffffff;
-    --border: #e4e4f0;
-  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.65;
+    background: #f8f8fc; color: #1a1a2e; font-size: 15px; line-height: 1.65;
   }
   .page { max-width: 960px; margin: 0 auto; padding: 48px 32px 80px; }
-  .doc-header { border-bottom: 2px solid var(--accent); padding-bottom: 24px; margin-bottom: 40px; }
-  .doc-header .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .doc-header { border-bottom: 2px solid #4f46e5; padding-bottom: 24px; margin-bottom: 40px; }
+  .doc-header .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #4f46e5; margin-bottom: 8px; }
   .doc-header h1 { font-size: 28px; font-weight: 700; letter-spacing: -.3px; line-height: 1.2; margin-bottom: 6px; }
-  .doc-header .meta { font-size: 13px; color: var(--muted); }
-  h2 { font-size: 19px; font-weight: 700; color: var(--ink); margin: 44px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-  h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 28px 0 10px; }
+  .doc-header .meta { font-size: 13px; color: #5a5a7a; }
+  h2 { font-size: 19px; font-weight: 700; color: #1a1a2e; margin: 44px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #e4e4f0; }
+  h3 { font-size: 15px; font-weight: 700; color: #1a1a2e; margin: 28px 0 10px; }
   p { margin-bottom: 12px; color: #2a2a3e; }
+  code { font-family: ui-monospace, "SF Mono", monospace; font-size: 12.5px; background: #f0f0f8; padding: 1px 5px; border-radius: 3px; }
   .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0 32px; }
-  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px 16px; }
-  .kpi .value { font-size: 26px; font-weight: 800; color: var(--accent); line-height: 1.1; }
-  .kpi .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; margin-bottom: 12px; }
+  .kpi { background: #ffffff; border: 1px solid #e4e4f0; border-radius: 8px; padding: 18px 16px; }
+  .kpi .value { font-size: 26px; font-weight: 800; color: #4f46e5; line-height: 1.1; }
+  .kpi .label { font-size: 12px; color: #5a5a7a; margin-top: 4px; }
+  .card { background: #ffffff; border: 1px solid #e4e4f0; border-radius: 10px; padding: 20px 22px; margin-bottom: 12px; }
   .steps { counter-reset: step; margin: 20px 0; }
-  .step { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .step { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid #e4e4f0; }
   .step:last-child { border-bottom: none; }
-  .step-num { counter-increment: step; width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .step-num { counter-increment: step; width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: #4f46e5; color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
   .step-body strong { display: block; font-size: 14px; margin-bottom: 3px; }
-  .step-body span { font-size: 13px; color: var(--muted); }
+  .step-body span { font-size: 13px; color: #5a5a7a; }
   .seg-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
-  .seg-table th { background: #f0f0f8; text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); }
-  .seg-table td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .seg-table th { background: #f0f0f8; text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5a5a7a; border-bottom: 2px solid #e4e4f0; }
+  .seg-table td { padding: 11px 12px; border-bottom: 1px solid #e4e4f0; vertical-align: top; }
   .seg-table tr:last-child td { border-bottom: none; }
   .seg-table tr:hover td { background: #f8f8fc; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -52,22 +42,27 @@
   .badge-info { background: #e0e7ff; color: #3730a3; }
   .badge-gray { background: #f1f1f6; color: #4a4a6a; }
   .metric-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
-  .metric-table th { padding: 8px 12px; background: #f0f0f8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: right; }
+  .metric-table th { padding: 8px 12px; background: #f0f0f8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #5a5a7a; text-align: right; }
   .metric-table th:first-child { text-align: left; }
-  .metric-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; }
+  .metric-table td { padding: 8px 12px; border-bottom: 1px solid #e4e4f0; text-align: right; }
   .metric-table td:first-child { text-align: left; font-weight: 600; }
-  .metric-table tr.selected td { background: #eef2ff; font-weight: 700; color: var(--accent); }
+  .metric-table tr.selected td { background: #eef2ff; font-weight: 700; color: #4f46e5; }
   .callout { padding: 14px 18px; border-radius: 8px; margin: 16px 0; font-size: 14px; }
-  .callout-green  { background: #ecfdf5; border-left: 4px solid var(--green);  color: #064e3b; }
-  .callout-amber  { background: #fffbeb; border-left: 4px solid var(--amber);  color: #78350f; }
-  .callout-purple { background: #eef2ff; border-left: 4px solid var(--accent); color: #312e81; }
+  .callout-green  { background: #ecfdf5; border-left: 4px solid #059669; color: #064e3b; }
+  .callout-amber  { background: #fffbeb; border-left: 4px solid #d97706; color: #78350f; }
+  .callout-purple { background: #eef2ff; border-left: 4px solid #4f46e5; color: #312e81; }
+  .feat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 20px; }
+  .feat-table th { background: #f0f0f8; text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5a5a7a; border-bottom: 2px solid #e4e4f0; }
+  .feat-table td { padding: 8px 12px; border-bottom: 1px solid #e4e4f0; vertical-align: top; }
+  .feat-table td:first-child { font-weight: 600; color: #1a1a2e; white-space: nowrap; }
+  .feat-group td { background: #f0f0f8; font-weight: 700; color: #4f46e5; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 6px 12px; }
   .msg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
-  .msg-card { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .msg-slot { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; background: #f0f0f8; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .msg-card { border: 1px solid #e4e4f0; border-radius: 8px; overflow: hidden; }
+  .msg-slot { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; background: #f0f0f8; color: #5a5a7a; padding: 6px 10px; border-bottom: 1px solid #e4e4f0; }
   .msg-content { padding: 10px; }
-  .msg-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; color: var(--ink); }
-  .msg-body  { font-size: 12px; color: var(--muted); line-height: 1.5; }
-  .doc-footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .msg-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; color: #1a1a2e; }
+  .msg-body  { font-size: 12px; color: #5a5a7a; line-height: 1.5; }
+  .doc-footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid #e4e4f0; font-size: 12px; color: #5a5a7a; }
   ul { margin: 12px 0 12px 20px; color: #2a2a3e; }
   li { margin-bottom: 8px; }
   @media print {
@@ -87,21 +82,65 @@
   </div>
 
   <div class="kpi-row">
-    <div class="kpi"><div class="value">16,492</div><div class="label">Registered users</div></div>
-    <div class="kpi"><div class="value">16,492</div><div class="label">Users in CRM export</div></div>
-    <div class="kpi"><div class="value">10,605</div><div class="label">With active push token</div></div>
+    <div class="kpi"><div class="value">16,499</div><div class="label">Registered users</div></div>
+    <div class="kpi"><div class="value">16,499</div><div class="label">Users in CRM export</div></div>
+    <div class="kpi"><div class="value">10,609</div><div class="label">With active push token</div></div>
     <div class="kpi"><div class="value">7</div><div class="label">Behavioral segments</div></div>
   </div>
 
   <h2>1. Problem</h2>
   <p>
-    NBS has 16,492 registered users with radically different behavioral profiles: some are high-volume onrampers generating meaningful spread revenue, others are DeFi traders who never converted BRL, others registered and never opened the app again. The existing segmentation (champion / active / at_risk / dormant) classifies users only by <em>recency and revenue</em> — it cannot distinguish <em>how</em> users use the product.
+    NBS has 16,499 registered users with radically different behavioral profiles: some are high-volume onrampers generating meaningful spread revenue, others are DeFi traders who never converted BRL, others registered and never opened the app again. The existing segmentation (champion / active / at_risk / dormant) classifies users only by <em>recency and revenue</em> — it cannot distinguish <em>how</em> users use the product.
   </p>
   <p>
     This project replaces that coarse classification with an ML-derived segmentation — mapping each user to a behavioral archetype — so that push campaigns can be targeted by product usage pattern, recency, and revenue profile simultaneously.
   </p>
 
-  <h2>2. Approach</h2>
+  <h2>2. Feature Engineering</h2>
+  <p>One row per user. 37 numeric features extracted directly from the production DB — no PII, <code>user_id</code> is the only identifier. <code>kyc_level</code> is excluded from clustering inputs (it is binary in this user base: 0 = unverified, 2 = verified, collinear with all activity features) and kept as a metadata column for the KYC override rule.</p>
+  <table class="feat-table">
+    <thead><tr><th>Feature</th><th>What it measures</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr class="feat-group"><td colspan="3">Lifecycle</td></tr>
+      <tr><td><code>days_since_signup</code></td><td>Age of the account</td><td><code>users.created_at</code></td></tr>
+      <tr><td><code>days_since_last_active</code></td><td>Recency of last session (9,999 if never seen)</td><td><code>users.last_active_at</code></td></tr>
+      <tr><td><code>onboarding_completed</code></td><td>Whether the user finished the onboarding flow (0/1)</td><td><code>user_profiles</code></td></tr>
+      <tr><td><code>is_founder</code></td><td>Member of the founders program (0/1)</td><td><code>founders</code></td></tr>
+      <tr><td><code>founder_network_size</code></td><td>Number of referred users (0 if not a founder)</td><td><code>founders</code></td></tr>
+      <tr><td><code>account_type_business</code></td><td>Business vs personal account (0/1)</td><td><code>users.account_type</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Onramp / Offramp</td></tr>
+      <tr><td><code>n_onramp_txns</code></td><td>Count of completed BRL → USDC conversions</td><td><code>conversion_quotes</code> (used=TRUE)</td></tr>
+      <tr><td><code>n_offramp_txns</code></td><td>Count of completed USDC → BRL conversions</td><td><code>conversion_quotes</code> (used=TRUE)</td></tr>
+      <tr><td><code>total_onramp_brl</code></td><td>Total BRL converted in (centavos ÷ 100)</td><td><code>conversion_quotes.from_amount_brl</code></td></tr>
+      <tr><td><code>total_spread_revenue_brl</code></td><td>Spread + fee revenue generated for NBS (BRL)</td><td><code>conversion_quotes</code></td></tr>
+      <tr><td><code>pct_instant_mode</code></td><td>Fraction of conversions using instant processing</td><td><code>conversion_quotes.processing_mode</code></td></tr>
+      <tr><td><code>days_since_last_conversion</code></td><td>Recency of last onramp or offramp (9,999 if none)</td><td><code>conversion_quotes.created_at</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Cards</td></tr>
+      <tr><td><code>n_card_txns</code></td><td>Completed card spend transactions</td><td><code>card_transactions</code></td></tr>
+      <tr><td><code>total_card_spend_usd</code></td><td>Total card spend in USD (micros ÷ 100)</td><td><code>card_transactions.amount</code></td></tr>
+      <tr><td><code>has_card</code></td><td>Has at least one active card (0/1)</td><td><code>cards</code></td></tr>
+      <tr><td><code>paid_annual_fee</code></td><td>Paid the card annual fee (0/1) — commitment signal</td><td><code>card_annual_fees</code></td></tr>
+      <tr><td><code>days_since_last_card_spend</code></td><td>Recency of last card transaction (9,999 if none)</td><td><code>card_transactions.authorized_at</code></td></tr>
+      <tr class="feat-group"><td colspan="3">DeFi / Solana</td></tr>
+      <tr><td><code>n_swaps</code></td><td>Total Jupiter swap transactions</td><td><code>swap_transactions</code></td></tr>
+      <tr><td><code>total_swap_volume_usdc</code></td><td>Total swap input volume in USDC (micros ÷ 1,000,000)</td><td><code>swap_transactions.input_amount</code></td></tr>
+      <tr><td><code>n_unique_tokens</code></td><td>Distinct token mints traded — proxy for DeFi sophistication</td><td><code>swap_transactions</code></td></tr>
+      <tr><td><code>n_solana_txns</code></td><td>Sponsored Solana transactions (gas-free ops)</td><td><code>solana_sponsored_transactions</code></td></tr>
+      <tr><td><code>days_since_last_swap</code></td><td>Recency of last swap (9,999 if none)</td><td><code>swap_transactions.timestamp</code></td></tr>
+      <tr class="feat-group"><td colspan="3">International Payouts</td></tr>
+      <tr><td><code>n_international_payouts</code></td><td>Completed cross-border payouts</td><td><code>unblockpay_payouts</code></td></tr>
+      <tr><td><code>total_international_usdc</code></td><td>Total payout volume in USDC</td><td><code>unblockpay_payouts.amount</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Engagement</td></tr>
+      <tr><td><code>n_ai_sessions</code></td><td>AI assistant sessions — in-app exploration proxy</td><td><code>ai_sessions</code></td></tr>
+      <tr><td><code>notification_read_rate</code></td><td>Fraction of push notifications opened</td><td><code>notification_events</code></td></tr>
+      <tr class="feat-group"><td colspan="3">Composite (derived in Python)</td></tr>
+      <tr><td><code>product_breadth_score</code></td><td>Count of distinct product areas used (0–6): onramp, offramp, card, swaps, AI, international payouts</td><td>Derived</td></tr>
+      <tr><td><code>revenue_generated_brl</code></td><td>Alias for <code>total_spread_revenue_brl</code> — primary revenue signal</td><td>Derived</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:#5a5a7a">All <code>days_since_*</code> features are set to 9,999 for users with no activity in that product area (genuine non-usage, not missing data). Monetary values: BRL stored as centavos (÷100), USDC stored as micros (÷1,000,000).</p>
+
+  <h2>3. Approach</h2>
   <div class="steps">
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Feature extraction — 37 behavioral signals per user</strong>
@@ -109,11 +148,11 @@
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Preprocessing — log transform → StandardScaler → PCA</strong>
-      <span>Financial data follows power-law distributions. log1p compresses the tail without losing zeros. StandardScaler normalises scale across features. PCA retains 90.4% of variance in 12 components, eliminating correlated signals and preventing high-variance features from dominating the distance metric.</span>
+      <span>Financial data follows power-law distributions. log1p compresses the tail without losing zeros. StandardScaler normalises scale across features. PCA retains 90.3% of variance in 12 components, eliminating correlated signals and preventing high-variance features from dominating the distance metric.</span>
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Outlier detection — HDBSCAN (flag only, no removal)</strong>
-      <span>HDBSCAN identifies 4,179 users (25.3%) whose behavioral profile sits in low-density regions of the PCA space. These are flagged as <code>is_outlier=1</code> in the export but <strong>remain in the clustering</strong> — removing them would exclude high-volume kyc_level=2 users who are precisely the most valuable segment. PCA compression makes K-Means robust enough to handle them without distortion.</span>
+      <span>HDBSCAN identifies 4,064 users (24.6%) whose behavioral profile sits in low-density regions of the PCA space. These are flagged as <code>is_outlier=1</code> in the export but <strong>remain in the clustering</strong> — removing them would exclude high-volume kyc_level=2 users who are precisely the most valuable segment. PCA compression makes K-Means robust enough to handle them without distortion.</span>
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>K selection — silhouette score, Davies-Bouldin index, inertia elbow</strong>
@@ -121,15 +160,15 @@
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Final clustering — K-Means + GMM validation + seed stability</strong>
-      <span>K-Means (k = 7, 20 restarts with k-means++ initialisation). Cross-validated against GMM (ARI = 0.664). Stability confirmed across 5 seeds — min pairwise ARI = 0.981.</span>
+      <span>K-Means (k = 7, 20 restarts with k-means++ initialisation). Cross-validated against GMM (ARI = 0.543). Stability confirmed across 5 seeds — min pairwise ARI = 0.981.</span>
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Export — CSV with per-segment Brazilian Portuguese push copy</strong>
-      <span>All 16,492 clustered users exported with segment name, cluster ID, kyc_level, and push copy (title + body) for three time-of-day slots in Brazilian Portuguese. Three delivery metadata flags are included so the backend controls targeting: <code>is_pushable</code> (has active device token), <code>skip_push</code> (dormant with zero notification engagement — use email/SMS in Phase 2), <code>is_outlier</code> (extreme profile — review before sending). Users with kyc_level ≤ 1 receive a KYC completion CTA regardless of cluster.</span>
+      <span>All 16,499 clustered users exported with segment name, cluster ID, kyc_level, and push copy (title + body) for three time-of-day slots in Brazilian Portuguese. Three delivery metadata flags are included so the backend controls targeting: <code>is_pushable</code> (has active device token), <code>skip_push</code> (dormant with zero notification engagement — use email/SMS in Phase 2), <code>is_outlier</code> (extreme profile — review before sending). Users with kyc_level ≤ 1 receive a KYC completion CTA regardless of cluster.</span>
     </div></div>
   </div>
 
-  <h2>3. Cluster Count Selection</h2>
+  <h2>4. Cluster Count Selection</h2>
   <table class="metric-table">
     <thead>
       <tr><th>k</th><th>Silhouette ↑</th><th>Davies-Bouldin ↓</th><th>Inertia</th><th>Assessment</th></tr>
@@ -139,31 +178,31 @@
     </tbody>
   </table>
   <div class="callout callout-green"><strong>Stability check passed:</strong> Min pairwise ARI across 5 seeds = <strong>0.981</strong>. Cluster assignments are essentially deterministic — users will not drift between segments due to random initialisation on monthly re-runs.</div>
-  <div class="callout callout-amber"><strong>GMM cross-validation:</strong> ARI between K-Means and GMM = 0.664. Below the 0.85 robust threshold. This reflects genuine overlap between adjacent behavioral segments — the cluster structure is stable and useful for campaigns; the overlap is a property of the user base, not an algorithmic failure.</div>
+  <div class="callout callout-amber"><strong>GMM cross-validation:</strong> ARI between K-Means and GMM = 0.543. Below the 0.85 robust threshold. This reflects genuine overlap between adjacent behavioral segments — the cluster structure is stable and useful for campaigns; the overlap is a property of the user base, not an algorithmic failure.</div>
 
-  <h2>4. User Segments</h2>
+  <h2>5. User Segments</h2>
   <table class="seg-table">
     <thead>
       <tr><th>Segment</th><th>Users (total)</th><th>Pushable</th><th>Avg revenue (BRL)</th><th>Days since active</th><th>Revenue tier</th></tr>
     </thead>
     <tbody>
-      <tr><td><strong>Stalled Pre Kyc</strong></td><td>8,716 <span style="color:var(--muted);font-size:11px">(52.8%)</span></td><td>8,716</td><td>R$ 0.00</td><td>78 days</td><td><span class="badge badge-gray">None</span></td></tr>
-      <tr><td><strong>Explorer Ai</strong></td><td>5,140 <span style="color:var(--muted);font-size:11px">(31.2%)</span></td><td>5,140</td><td>R$ 0.00</td><td>652 days</td><td><span class="badge badge-gray">None</span></td></tr>
-      <tr><td><strong>Card Spender</strong></td><td>1,305 <span style="color:var(--muted);font-size:11px">(7.9%)</span></td><td>1,305</td><td>R$ 10.28</td><td>48 days</td><td><span class="badge badge-high">Highest</span></td></tr>
-      <tr><td><strong>Occasional Onramer</strong></td><td>781 <span style="color:var(--muted);font-size:11px">(4.7%)</span></td><td>781</td><td>R$ 39.07</td><td>26 days</td><td><span class="badge badge-high">Highest</span></td></tr>
-      <tr><td><strong>Power Onramper</strong></td><td>474 <span style="color:var(--muted);font-size:11px">(2.9%)</span></td><td>474</td><td>R$ 56.48</td><td>17 days</td><td><span class="badge badge-high">Highest</span></td></tr>
-      <tr><td><strong>Dormant</strong></td><td>49 <span style="color:var(--muted);font-size:11px">(0.3%)</span></td><td>0</td><td>R$ 54.45</td><td>43 days</td><td><span class="badge badge-med">Medium</span></td></tr>
-      <tr><td><strong>Defi Trader</strong></td><td>27 <span style="color:var(--muted);font-size:11px">(0.2%)</span></td><td>27</td><td>R$ 139.48</td><td>22 days</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td><strong>Stalled Pre Kyc</strong></td><td>8,713 <span style="color:#5a5a7a;font-size:11px">(52.8%)</span></td><td>8,713</td><td>R$ 0.00</td><td>77 days</td><td><span class="badge badge-gray">None</span></td></tr>
+      <tr><td><strong>Dormant</strong></td><td>5,142 <span style="color:#5a5a7a;font-size:11px">(31.2%)</span></td><td>0</td><td>R$ 0.00</td><td>652 days</td><td><span class="badge badge-gray">None</span></td></tr>
+      <tr><td><strong>Occasional Onramer</strong></td><td>1,386 <span style="color:#5a5a7a;font-size:11px">(8.4%)</span></td><td>1,386</td><td>R$ 10.07</td><td>45 days</td><td><span class="badge badge-high">Highest</span></td></tr>
+      <tr><td><strong>Defi Trader</strong></td><td>596 <span style="color:#5a5a7a;font-size:11px">(3.6%)</span></td><td>596</td><td>R$ 19.56</td><td>37 days</td><td><span class="badge badge-high">Highest</span></td></tr>
+      <tr><td><strong>Power Onramper</strong></td><td>583 <span style="color:#5a5a7a;font-size:11px">(3.5%)</span></td><td>583</td><td>R$ 77.33</td><td>13 days</td><td><span class="badge badge-high">Highest</span></td></tr>
+      <tr><td><strong>Card Spender</strong></td><td>52 <span style="color:#5a5a7a;font-size:11px">(0.3%)</span></td><td>52</td><td>R$ 51.30</td><td>40 days</td><td><span class="badge badge-med">Medium</span></td></tr>
+      <tr><td><strong>Explorer Ai</strong></td><td>27 <span style="color:#5a5a7a;font-size:11px">(0.2%)</span></td><td>27</td><td>R$ 139.48</td><td>22 days</td><td><span class="badge badge-high">High</span></td></tr>
     </tbody>
   </table>
 
-  <h2>5. Segment Profiles &amp; Campaign Strategy</h2>
+  <h2>6. Segment Profiles &amp; Campaign Strategy</h2>
 
   <div class="card">
-    <h3>Defi Trader <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">High</span></span></h3>
+    <h3>Defi Trader <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">Highest</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">27 users &nbsp;·&nbsp; 27 pushable &nbsp;·&nbsp; avg R$139.48 revenue &nbsp;·&nbsp; 22 days since active &nbsp;·&nbsp; breadth 4.4/6</p>
-    <p>avg 10.1 onramp txns · avg 44.4 card txns · avg 15.2 swaps · avg 105 AI sessions</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">596 users &nbsp;·&nbsp; 596 pushable &nbsp;·&nbsp; avg R$19.56 revenue &nbsp;·&nbsp; 37 days since active &nbsp;·&nbsp; breadth 3.8/6</p>
+    <p>avg 3.5 onramp txns · avg 1.2 card txns · avg 7.3 swaps · avg 50 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Deepening swap engagement. DeFi-native language only — no BRL/USDC conversion pitch, no card offer.</p>
     <div class="msg-grid">
@@ -194,8 +233,8 @@
   <div class="card">
     <h3>Power Onramper <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">Highest</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">474 users &nbsp;·&nbsp; 474 pushable &nbsp;·&nbsp; avg R$56.48 revenue &nbsp;·&nbsp; 17 days since active &nbsp;·&nbsp; breadth 3.2/6</p>
-    <p>avg 5.4 onramp txns · avg 26.6 card txns · avg 0.0 swaps · avg 44 AI sessions</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">583 users &nbsp;·&nbsp; 583 pushable &nbsp;·&nbsp; avg R$77.33 revenue &nbsp;·&nbsp; 13 days since active &nbsp;·&nbsp; breadth 3.8/6</p>
+    <p>avg 10.0 onramp txns · avg 43.5 card txns · avg 5.0 swaps · avg 88 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Cross-selling DeFi swaps and card. VIP framing — never discount, never pitch KYC.</p>
     <div class="msg-grid">
@@ -224,10 +263,10 @@
   </div>
 
   <div class="card">
-    <h3>Card Spender <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">Highest</span></span></h3>
+    <h3>Card Spender <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-med">Medium</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">1,305 users &nbsp;·&nbsp; 1,305 pushable &nbsp;·&nbsp; avg R$10.28 revenue &nbsp;·&nbsp; 48 days since active &nbsp;·&nbsp; breadth 2.9/6</p>
-    <p>avg 1.9 onramp txns · avg 0.1 card txns · avg 0.1 swaps · avg 20 AI sessions</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">52 users &nbsp;·&nbsp; 52 pushable &nbsp;·&nbsp; avg R$51.30 revenue &nbsp;·&nbsp; 40 days since active &nbsp;·&nbsp; breadth 1.2/6</p>
+    <p>avg 2.2 onramp txns · avg 0.2 swaps · avg 2 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Onramp cross-sell. They trust the card — remove friction to first conversion.</p>
     <div class="msg-grid">
@@ -258,8 +297,8 @@
   <div class="card">
     <h3>Occasional Onramer <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">Highest</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">781 users &nbsp;·&nbsp; 781 pushable &nbsp;·&nbsp; avg R$39.07 revenue &nbsp;·&nbsp; 26 days since active &nbsp;·&nbsp; breadth 4.1/6</p>
-    <p>avg 7.2 onramp txns · avg 18.4 card txns · avg 9.1 swaps · avg 82 AI sessions</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">1,386 users &nbsp;·&nbsp; 1,386 pushable &nbsp;·&nbsp; avg R$10.07 revenue &nbsp;·&nbsp; 45 days since active &nbsp;·&nbsp; breadth 2.9/6</p>
+    <p>avg 1.9 onramp txns · avg 0.6 card txns · avg 22 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> First or second onramp. Remove friction — do not pitch advanced products yet.</p>
     <div class="msg-grid">
@@ -290,7 +329,7 @@
   <div class="card">
     <h3>Stalled Pre Kyc <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-gray">None</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">8,716 users &nbsp;·&nbsp; 8,716 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 78 days since active &nbsp;·&nbsp; breadth 0.9/6</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">8,713 users &nbsp;·&nbsp; 8,713 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 77 days since active &nbsp;·&nbsp; breadth 0.9/6</p>
     <p>avg 0.0 card txns · avg 3 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> KYC funnel completion. Minimal copy, single CTA. High proportion of dead push tokens — only send to confirmed active tokens.</p>
@@ -320,10 +359,10 @@
   </div>
 
   <div class="card">
-    <h3>Dormant <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-med">Medium</span></span></h3>
+    <h3>Dormant <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-gray">None</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">49 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$54.45 revenue &nbsp;·&nbsp; 43 days since active &nbsp;·&nbsp; breadth 1.2/6</p>
-    <p>avg 2.4 onramp txns · avg 0.2 swaps · avg 2 AI sessions</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">5,142 users &nbsp;·&nbsp; 0 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 652 days since active &nbsp;·&nbsp; breadth 0.0/6</p>
+    <p>No financial activity recorded</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> Win-back. Maximum one send per quarter. Skip if notification_read_rate = 0 over last 90 days.</p>
     <div class="msg-grid">
@@ -352,10 +391,10 @@
   </div>
 
   <div class="card">
-    <h3>Explorer Ai <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-gray">None</span></span></h3>
+    <h3>Explorer Ai <span style="vertical-align:middle;margin-left:8px"><span class="badge badge-high">High</span></span></h3>
     
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">5,140 users &nbsp;·&nbsp; 5,140 pushable &nbsp;·&nbsp; avg R$0.00 revenue &nbsp;·&nbsp; 652 days since active &nbsp;·&nbsp; breadth 0.0/6</p>
-    <p>No financial activity recorded</p>
+    <p style="font-size:12px;color:#5a5a7a;margin-bottom:6px">27 users &nbsp;·&nbsp; 27 pushable &nbsp;·&nbsp; avg R$139.48 revenue &nbsp;·&nbsp; 22 days since active &nbsp;·&nbsp; breadth 4.4/6</p>
+    <p>avg 10.1 onramp txns · avg 44.4 card txns · avg 15.2 swaps · avg 105 AI sessions</p>
     
     <p style="margin-top:12px"><strong>Campaign goal:</strong> First conversion activation. They know the product — remove friction, do not educate.</p>
     <div class="msg-grid">
@@ -383,7 +422,7 @@
     </div>
   </div>
 
-  <h2>6. KYC Override Rule</h2>
+  <h2>7. KYC Override Rule</h2>
   <p>
     Users with <strong>kyc_level ≤ 1 (not yet fully verified)</strong> receive a dedicated KYC completion CTA regardless of their cluster assignment — the generic segment message is irrelevant to a user who has not completed verification. kyc_level = 2 means fully verified; those users always receive their segment copy.
   </p>
@@ -391,23 +430,23 @@
     <strong>Why as a delivery-layer rule, not a cluster?</strong> kyc_level was removed from clustering features — it is effectively binary in this user base (0 or 2), collinear with <em>onboarding_completed</em> and every activity feature. Including it would double-count information already captured by presence flags and transaction counts. It is retained as a metadata column in the export solely to drive this override.
   </div>
 
-  <h2>7. Why PCA Before K-Means</h2>
-  <p>The 37 input features were reduced to <strong>12 principal components retaining 90.4% of total variance</strong> before clustering. This is required for K-Means to work correctly on this data:</p>
+  <h2>8. Why PCA Before K-Means</h2>
+  <p>The 37 input features were reduced to <strong>12 principal components retaining 90.3% of total variance</strong> before clustering. This is required for K-Means to work correctly on this data:</p>
   <ul>
     <li><strong>Correlated features inflate distance.</strong> <em>n_onramp_txns</em> and <em>total_onramp_brl</em> are highly correlated — without PCA, both count in the Euclidean distance, effectively double-weighting onramp behaviour.</li>
     <li><strong>High-variance features dominate.</strong> Even after StandardScaler, residual correlation causes dominant features to overwhelm low-variance but meaningful signals like <em>has_card</em> or <em>n_unique_tokens</em>.</li>
     <li><strong>Curse of dimensionality.</strong> In high-dimensional spaces, Euclidean distances lose discriminative power. Reducing to 12 components restores meaningful geometry.</li>
   </ul>
 
-  <h2>8. Outlier Flags — <code>is_outlier</code></h2>
+  <h2>9. Outlier Flags — <code>is_outlier</code></h2>
   <p>
-    4,179 users (25.3%) are flagged as statistical outliers by HDBSCAN — their behavioral profile does not share a density region with at least 15 other users. Typical profiles: extreme-volume onrampers, DeFi power users with automated swap counts, possible internal test accounts.
+    4,064 users (24.6%) are flagged as statistical outliers by HDBSCAN — their behavioral profile does not share a density region with at least 15 other users. Typical profiles: extreme-volume onrampers, DeFi power users with automated swap counts, possible internal test accounts.
   </p>
   <p>
     These users <strong>are included in clustering and in the export.</strong> The <code>is_outlier=1</code> flag lets the backend apply extra caution — e.g. manual review before sending, or excluding from automated bulk campaigns — without losing them from the CRM dataset entirely. Previous versions removed them, which caused kyc_level=2 high-value users to disappear from the export.
   </p>
 
-  <h2>9. Monthly Refresh Protocol</h2>
+  <h2>10. Monthly Refresh Protocol</h2>
   <p>
     Clustering artifacts (scaler, PCA, K-Means model, segment name mapping) are saved to <code>data/processed/</code> versioned by month. New users can be scored without re-fitting: apply saved scaler → PCA → <code>km.predict()</code>.
   </p>
