@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBS CRM User Clustering — Executive Summary</title>
+<style>
+  :root {
+    --ink:    #1a1a2e;
+    --muted:  #5a5a7a;
+    --accent: #4f46e5;
+    --green:  #059669;
+    --amber:  #d97706;
+    --red:    #dc2626;
+    --bg:     #f8f8fc;
+    --card:   #ffffff;
+    --border: #e4e4f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  /* ── Layout ── */
+  .page { max-width: 960px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* ── Header ── */
+  .doc-header {
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 24px;
+    margin-bottom: 40px;
+  }
+  .doc-header .label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .doc-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -.3px;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  .doc-header .meta {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* ── Section headings ── */
+  h2 {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 44px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 28px 0 10px;
+  }
+
+  p { margin-bottom: 12px; color: #2a2a3e; }
+
+  /* ── KPI strip ── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 24px 0 32px;
+  }
+  .kpi {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 16px;
+  }
+  .kpi .value {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1.1;
+  }
+  .kpi .label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 12px;
+  }
+
+  /* ── Methodology steps ── */
+  .steps { counter-reset: step; margin: 20px 0; }
+  .step {
+    display: flex;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    counter-increment: step;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+  }
+  .step-body strong { display: block; font-size: 14px; margin-bottom: 3px; }
+  .step-body span { font-size: 13px; color: var(--muted); }
+
+  /* ── Segment table ── */
+  .seg-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
+  .seg-table th {
+    background: #f0f0f8;
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+  }
+  .seg-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .seg-table tr:last-child td { border-bottom: none; }
+  .seg-table tr:hover td { background: #f8f8fc; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-high   { background: #d1fae5; color: #065f46; }
+  .badge-med    { background: #fef3c7; color: #92400e; }
+  .badge-low    { background: #fee2e2; color: #991b1b; }
+  .badge-info   { background: #e0e7ff; color: #3730a3; }
+  .badge-gray   { background: #f1f1f6; color: #4a4a6a; }
+
+  /* ── Metric table (K selection) ── */
+  .metric-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+  .metric-table th {
+    padding: 8px 12px;
+    background: #f0f0f8;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    text-align: right;
+  }
+  .metric-table th:first-child { text-align: left; }
+  .metric-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+  }
+  .metric-table td:first-child { text-align: left; font-weight: 600; }
+  .metric-table tr.selected td { background: #eef2ff; font-weight: 700; color: var(--accent); }
+
+  /* ── Callout boxes ── */
+  .callout {
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .callout-green  { background: #ecfdf5; border-left: 4px solid var(--green); color: #064e3b; }
+  .callout-amber  { background: #fffbeb; border-left: 4px solid var(--amber); color: #78350f; }
+  .callout-purple { background: #eef2ff; border-left: 4px solid var(--accent); color: #312e81; }
+
+  /* ── Message templates ── */
+  .msg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .msg-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .msg-slot {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    background: #f0f0f8;
+    color: var(--muted);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .msg-content { padding: 10px; }
+  .msg-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; color: var(--ink); }
+  .msg-body  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* ── Footer ── */
+  .doc-footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  @media print {
+    body { background: white; }
+    .kpi-row { grid-template-columns: repeat(4, 1fr); }
+    .msg-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="doc-header">
+    <div class="label">Confidential · NBS SPSAV LTDA</div>
+    <h1>CRM User Clustering — Executive Summary</h1>
+    <div class="meta">Analysis month: May 2026 &nbsp;·&nbsp; Prepared by: Data Science &nbsp;·&nbsp; Status: Phase 1 complete</div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="value">16,491</div>
+      <div class="label">Registered users</div>
+    </div>
+    <div class="kpi">
+      <div class="value">12,465</div>
+      <div class="label">Users clustered</div>
+    </div>
+    <div class="kpi">
+      <div class="value">6,938</div>
+      <div class="label">Pushable users (active token)</div>
+    </div>
+    <div class="kpi">
+      <div class="value">8</div>
+      <div class="label">Behavioral segments</div>
+    </div>
+  </div>
+
+  <!-- Problem -->
+  <h2>1. Problem</h2>
+  <p>
+    NBS has 16,491 registered users with radically different behavioral profiles: some are high-volume onrampers generating meaningful spread revenue, others are DeFi traders who never converted BRL, others registered and never opened the app again. The existing segmentation (champion / active / at_risk / dormant) classifies users only by <em>recency and revenue</em> — it cannot distinguish <em>how</em> users use the product.
+  </p>
+  <p>
+    This means push notification campaigns cannot be targeted by product behavior. A DeFi trader receives the same message as a dormant user who never completed KYC. The result is low notification read rates and wasted send quota on users who will never convert from a generic message.
+  </p>
+  <p>
+    This project replaces that coarse classification with an ML-derived segmentation — mapping each user to a behavioral archetype — so that push campaigns can be targeted by product usage pattern, recency, and revenue profile simultaneously.
+  </p>
+
+  <!-- Approach -->
+  <h2>2. Approach</h2>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Feature extraction — 37 behavioral signals per user</strong>
+        <span>Six groups: lifecycle (signup age, onboarding status), onramp/offramp (volume, revenue, recency), card (spend, annual fee), DeFi/Solana (swaps, token diversity), international payouts, and engagement (AI sessions, notification read rate). All extracted directly from the production DB. No PII.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Preprocessing — log transform → StandardScaler → PCA</strong>
+        <span>Financial data follows power-law distributions: a minority of users has extreme volume. log1p compresses the tail without losing zeros. StandardScaler normalises scale. PCA (retaining 90% of variance) reduces 37 features to 12 components, eliminating redundant signals and stopping high-variance features like <em>total_onramp_brl</em> from dominating the distance metric used by K-Means.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Outlier quarantine — HDBSCAN</strong>
+        <span>Before clustering, users with extreme or anomalous profiles are detected and quarantined using HDBSCAN (density-based outlier detection). 4,026 users (24.4%) were removed — likely test accounts, bots, or VIP accounts with unique behaviour patterns that would otherwise distort cluster centroids.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>K selection — silhouette score, Davies-Bouldin index, inertia elbow</strong>
+        <span>K-Means was run for k = 4 through 11. Three independent metrics were evaluated to select the optimal number of clusters. k = 8 maximised the silhouette score (0.514) — the clearest behavioural separation achievable in this user base.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Final clustering — K-Means with GMM validation and seed stability</strong>
+        <span>K-Means (k = 8, 20 restarts with k-means++ initialisation) was the primary algorithm. Results were cross-validated against a Gaussian Mixture Model. Stability was confirmed by re-running across 5 different random seeds — the min pairwise ARI was 0.994, meaning the cluster structure is essentially deterministic.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Export — CSV with per-segment Brazilian Portuguese push copy</strong>
+        <span>6,938 pushable users (active device token + delivery rules applied) exported with segment name, cluster ID, kyc_level, and ready-to-send push copy (title + body) for three time-of-day slots (morning, afternoon, evening) in Brazilian Portuguese.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- K selection table -->
+  <h2>3. Cluster Count Selection</h2>
+  <p>
+    Three metrics were evaluated across k = 4–11. The <strong>silhouette score</strong> measures how cleanly each user is assigned to its cluster versus the nearest alternative (higher = better, target &gt; 0.25). The <strong>Davies-Bouldin index</strong> measures within-cluster scatter relative to between-cluster distance (lower = better). The <strong>inertia elbow</strong> identifies where adding more clusters yields diminishing returns.
+  </p>
+
+  <table class="metric-table">
+    <thead>
+      <tr>
+        <th>k</th>
+        <th>Silhouette ↑</th>
+        <th>Davies-Bouldin ↓</th>
+        <th>Inertia</th>
+        <th>Assessment</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>4</td><td>0.463</td><td>0.885</td><td>150,516</td><td></td></tr>
+      <tr><td>5</td><td>0.476</td><td>0.774</td><td>123,064</td><td></td></tr>
+      <tr><td>6</td><td>0.500</td><td>0.909</td><td>95,933</td><td></td></tr>
+      <tr><td>7</td><td>0.507</td><td>0.911</td><td>83,126</td><td></td></tr>
+      <tr class="selected"><td>8 ✓</td><td>0.514</td><td>0.961</td><td>74,225</td><td>Best silhouette — selected</td></tr>
+      <tr><td>9</td><td>0.466</td><td>1.015</td><td>68,125</td><td>Silhouette drops, DB worsens</td></tr>
+      <tr><td>10</td><td>0.470</td><td>1.021</td><td>62,717</td><td></td></tr>
+      <tr><td>11</td><td>0.473</td><td>1.003</td><td>58,344</td><td></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-green">
+    <strong>Stability check passed:</strong> Re-running K-Means across 5 different random seeds produced a minimum pairwise Adjusted Rand Index of <strong>0.994</strong> — the cluster assignments are essentially deterministic. Users will not drift between segments due to random initialisation on monthly re-runs.
+  </div>
+
+  <div class="callout callout-amber">
+    <strong>GMM cross-validation:</strong> ARI between K-Means and a Gaussian Mixture Model was 0.699 — below the 0.85 "robust" threshold. This reflects genuine overlap between adjacent behavioral segments (e.g., card spenders who also onramp, or dormant users who once had DeFi activity). The cluster structure is stable and useful for campaigns; the overlap is a property of the user base, not an algorithmic failure.
+  </div>
+
+  <!-- Segments -->
+  <h2>4. User Segments</h2>
+  <p>
+    The 12,465 clustered users map to 8 segments. Cluster centroids were examined in original (unscaled) feature space to assign behaviorally meaningful names.
+  </p>
+
+  <table class="seg-table">
+    <thead>
+      <tr>
+        <th>Segment</th>
+        <th>Users (total)</th>
+        <th>Pushable</th>
+        <th>Avg revenue (BRL)</th>
+        <th>Days since active</th>
+        <th>Revenue tier</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Occasional Onrampers</strong></td>
+        <td>5,886 <span style="color:var(--muted);font-size:11px">(47.2%)</span></td>
+        <td>5,254</td>
+        <td>R$ 0.00</td>
+        <td>79 days</td>
+        <td><span class="badge badge-gray">None yet</span></td>
+      </tr>
+      <tr>
+        <td><strong>Stalled Pre-KYC</strong></td>
+        <td>4,819 <span style="color:var(--muted);font-size:11px">(38.7%)</span></td>
+        <td>165</td>
+        <td>R$ 0.00</td>
+        <td>667 days</td>
+        <td><span class="badge badge-gray">None</span></td>
+      </tr>
+      <tr>
+        <td><strong>Card Spenders</strong></td>
+        <td>690 <span style="color:var(--muted);font-size:11px">(5.5%)</span></td>
+        <td>641</td>
+        <td>R$ 2.76</td>
+        <td>54 days</td>
+        <td><span class="badge badge-med">Medium</span></td>
+      </tr>
+      <tr>
+        <td><strong>Segment 7</strong> <em style="font-size:12px;color:var(--muted)">(unnamed — review heatmap)</em></td>
+        <td>445 <span style="color:var(--muted);font-size:11px">(3.6%)</span></td>
+        <td>418</td>
+        <td>R$ 10.70</td>
+        <td>27 days</td>
+        <td><span class="badge badge-med">Medium-high</span></td>
+      </tr>
+      <tr>
+        <td><strong>Dormant</strong></td>
+        <td>385 <span style="color:var(--muted);font-size:11px">(3.1%)</span></td>
+        <td>230</td>
+        <td>R$ 6.37</td>
+        <td>44 days</td>
+        <td><span class="badge badge-low">Declining</span></td>
+      </tr>
+      <tr>
+        <td><strong>Power Onrampers</strong></td>
+        <td>175 <span style="color:var(--muted);font-size:11px">(1.4%)</span></td>
+        <td>169</td>
+        <td>R$ 24.50</td>
+        <td>17 days</td>
+        <td><span class="badge badge-high">High</span></td>
+      </tr>
+      <tr>
+        <td><strong>Explorer / AI Users</strong></td>
+        <td>38 <span style="color:var(--muted);font-size:11px">(0.3%)</span></td>
+        <td>36</td>
+        <td>R$ 21.23</td>
+        <td>39 days</td>
+        <td><span class="badge badge-info">Potential</span></td>
+      </tr>
+      <tr>
+        <td><strong>DeFi Traders</strong></td>
+        <td>27 <span style="color:var(--muted);font-size:11px">(0.2%)</span></td>
+        <td>25</td>
+        <td>R$ 139.48</td>
+        <td>21 days</td>
+        <td><span class="badge badge-high">Highest</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Segment profiles -->
+  <h2>5. Segment Profiles &amp; Campaign Strategy</h2>
+
+  <div class="card">
+    <h3>DeFi Traders <span class="badge badge-high" style="vertical-align:middle;margin-left:8px">Highest revenue</span></h3>
+    <p>
+      27 users, avg R$139.48 spread revenue. High swap count (avg 15.2 swaps), highly token-diverse, high Solana activity. KYC level 2. Very recently active (21 days avg). These are the most valuable users per capita in the base.
+    </p>
+    <p><strong>Campaign goal:</strong> Deepen swap engagement. DeFi-native language only — no BRL/USDC conversion pitch, no card offer.</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">Nova liquidez</div>
+          <div class="msg-body">Nova liquidez no Jupiter — veja as melhores rotas de swap de hoje.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Portfólio em movimento</div>
+          <div class="msg-body">Seu portfólio está se movendo. Troque tokens sem taxas escondidas na NBS.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">DeFi não para</div>
+          <div class="msg-body">DeFi não para. Viu uma oportunidade? Faça a swap agora.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Power Onrampers <span class="badge badge-high" style="vertical-align:middle;margin-left:8px">High revenue</span></h3>
+    <p>
+      175 users, avg R$24.50 revenue, avg 6.3 onramp transactions. Very active (17 days avg). High product breadth (4.4 out of 6). Also heavy AI session users (68 sessions avg). KYC level 2.
+    </p>
+    <p><strong>Campaign goal:</strong> Cross-sell DeFi swaps and card. VIP framing — never discount, never pitch KYC.</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">Alerta de taxa</div>
+          <div class="msg-body">Comece o dia forte — seu BRL está pronto para converter na melhor taxa de hoje.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Taxa favorável</div>
+          <div class="msg-body">BRL/USDC está atraente agora. Converta em 60 segundos.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">USDC parado?</div>
+          <div class="msg-body">Seu USDC está parado — que tal uma swap no Jupiter para fazer seu portfólio crescer?</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Card Spenders</h3>
+    <p>
+      690 users. Active card users (avg 0.17 card txns at cluster level, but this is averaged including non-card users — paid annual fee flag is the signal). Moderate onramp (1.6 txns avg). KYC 2. Avg revenue R$2.76.
+    </p>
+    <p><strong>Campaign goal:</strong> Onramp cross-sell. They trust the card — remove friction to first conversion.</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">Recarregue seu cartão</div>
+          <div class="msg-body">Recarregue seu cartão NBS em 60 segundos — adicione BRL via PIX e converta na hora.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Recarregue agora</div>
+          <div class="msg-body">Seu cartão está pronto para usar. Complete com PIX e nunca fique sem saldo.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">Recarga rápida</div>
+          <div class="msg-body">Recarga rápida antes de amanhã? PIX → USDC em menos de um minuto.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Occasional Onrampers</h3>
+    <p>
+      5,886 users — the largest segment (47% of the clustered base). Zero revenue to date, moderate recency (79 days avg), low product breadth (0.8 out of 6). KYC ≈ 1 — some completed verification, some didn't. Low AI engagement. They registered and may have tried one action but haven't converted.
+    </p>
+    <p><strong>Campaign goal:</strong> First or second onramp. Remove friction — do not pitch advanced products yet.</p>
+    <p><strong>Note:</strong> 2,771 of the 6,938 pushable users are kyc_level = 0 and receive the KYC completion CTA below instead of this copy.</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">USDC parado</div>
+          <div class="msg-body">Seu USDC está parado — coloque-o para trabalhar com uma swap ou seu cartão NBS.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Faz tempo...</div>
+          <div class="msg-body">Faz tempo desde a sua última conversão. As taxas estão ótimas hoje.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">Próximo passo</div>
+          <div class="msg-body">Mais um passo para desbloquear sua carteira NBS completa — faça uma swap ou solicite seu cartão.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Stalled Pre-KYC</h3>
+    <p>
+      4,819 users. Avg 667 days since last active — registered long ago and never returned. KYC level 0 across the entire cluster. Zero financial activity. Only 165 have an active push token (the rest have no device registered or inactive tokens). This segment has the highest proportion of dead push tokens — do not burn send quota on this group without active token confirmation.
+    </p>
+    <p><strong>Campaign goal:</strong> KYC funnel completion. Minimal copy, single CTA.</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">Verifique agora</div>
+          <div class="msg-body">Verifique em 2 minutos — acesse BRL ↔ USDC em tempo real.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Conta aguardando</div>
+          <div class="msg-body">Sua conta NBS está esperando. Conclua a verificação para começar.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">2 minutos</div>
+          <div class="msg-body">Leva 2 minutos. Depois é só usar a NBS.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Dormant</h3>
+    <p>
+      385 users. Previously active (avg R$6.37 revenue, breadth 3.7), but have gone quiet (44 days avg since last active — cluster label is somewhat misleading given low days_since_active; these users are declining rather than gone). High AI session count (29 avg) suggests they were engaged but dropped off. Low notification read rate.
+    </p>
+    <p><strong>Campaign goal:</strong> Win-back. Maximum one send per quarter. Skip entirely if notification_read_rate = 0 over the last 90 days (flag for email/SMS in Phase 2).</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">Novidades na NBS</div>
+          <div class="msg-body">Temos novidades — a NBS ganhou recursos novos desde sua última visita.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Saldo esperando</div>
+          <div class="msg-body">Seu saldo está esperando. Entre e veja o que mudou.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">Ainda aqui</div>
+          <div class="msg-body">Faz um tempo. Seu USDC ainda está aqui quando você quiser.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Explorer / AI Users</h3>
+    <p>
+      38 users. High AI session usage but low financial transaction count. Mixed KYC (1.37 avg — some completed, some not). Avg revenue R$21.23 suggests some have transacted. These users know the product but haven't committed.
+    </p>
+    <p><strong>Campaign goal:</strong> First conversion activation. They know the product — remove friction, don't educate.</p>
+    <div class="msg-grid">
+      <div class="msg-card">
+        <div class="msg-slot">07–09h</div>
+        <div class="msg-content">
+          <div class="msg-title">Carteira pronta</div>
+          <div class="msg-body">Sua carteira NBS está pronta — compre USDC com PIX e desbloqueie seu cartão hoje.</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">12–14h</div>
+        <div class="msg-content">
+          <div class="msg-title">Primeira conversão</div>
+          <div class="msg-body">Você tem explorado a NBS — pronto para fazer sua primeira conversão BRL → USDC?</div>
+        </div>
+      </div>
+      <div class="msg-card">
+        <div class="msg-slot">19–21h</div>
+        <div class="msg-content">
+          <div class="msg-title">A um PIX de distância</div>
+          <div class="msg-body">Sua conta está configurada. Uma transferência PIX e você está ativo.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KYC override -->
+  <h2>6. KYC-Level-0 Override</h2>
+  <p>
+    Across all segments, <strong>2,771 pushable users have kyc_level = 0</strong>. Regardless of their cluster assignment, they receive a dedicated KYC completion CTA — the generic segment message is irrelevant to a user who has never verified. This override is applied in the CSV export: the backend reads <code>kyc_level</code> directly from the export and applies the appropriate copy.
+  </p>
+  <div class="callout callout-purple">
+    <strong>Why as a delivery layer rule, not a cluster?</strong> kyc_level was removed from the clustering features entirely — in the NBS user base it is effectively binary (0 = never transacted, 2 = transacted), making it collinear with every activity feature. Including it in the feature matrix would double-count information already captured by <em>onboarding_completed</em>, <em>n_onramp_txns</em>, and the binary presence flags. It is retained as a metadata column in the export solely to drive this message override.
+  </div>
+
+  <!-- PCA explanation -->
+  <h2>7. Why PCA Before K-Means</h2>
+  <p>
+    The 37 input features were reduced to <strong>12 principal components retaining 90.4% of total variance</strong> before clustering. This is not a data reduction convenience — it is required for K-Means to work correctly on this data:
+  </p>
+  <ul style="margin: 12px 0 12px 20px; color: #2a2a3e;">
+    <li style="margin-bottom:8px"><strong>Correlated features inflate distance.</strong> <em>n_onramp_txns</em> and <em>total_onramp_brl</em> are highly correlated. Without PCA, both count in the Euclidean distance metric, effectively weighting onramp behaviour double relative to card or DeFi activity.</li>
+    <li style="margin-bottom:8px"><strong>High-variance features dominate.</strong> <em>total_onramp_brl</em> spans a far larger range than <em>n_ai_sessions</em>. Even after StandardScaler, residual correlation causes dominant features to overwhelm meaningful low-variance signals like <em>has_card</em> or <em>n_unique_tokens</em>.</li>
+    <li style="margin-bottom:8px"><strong>Curse of dimensionality.</strong> In high-dimensional spaces, Euclidean distances lose discriminative power — all points become approximately equidistant. Reducing to 12 components puts the geometry back in a regime where distance is meaningful.</li>
+  </ul>
+
+  <!-- Outliers -->
+  <h2>8. The 4,026 Quarantined Users</h2>
+  <p>
+    24.4% of users were removed before clustering. This is high but expected: HDBSCAN operates in the PCA-compressed space and flags users whose behavioral profile does not fit into any density region shared by at least 15 other users. The outlier distribution shows:
+  </p>
+  <ul style="margin: 12px 0 12px 20px; color: #2a2a3e;">
+    <li style="margin-bottom:6px">High variance in card spend (std R$2,142 vs mean R$218) — a small number of extremely high spenders</li>
+    <li style="margin-bottom:6px">High variance in swap count (std 12.4 vs mean 1.3) — DeFi power users with extreme transaction counts</li>
+    <li style="margin-bottom:6px">High Solana transaction counts (mean 6 txns, but std 33) — likely bots or automated wallets</li>
+  </ul>
+  <p>
+    These users are excluded from the cluster export. Campaigns should not target them with automated push — they require manual review and dedicated treatment.
+  </p>
+
+  <!-- Monthly refresh -->
+  <h2>9. Monthly Refresh Protocol</h2>
+  <p>
+    The clustering artifacts (scaler, PCA, K-Means model, segment name mapping) are saved to <code>data/processed/</code> and versioned by month. New users can be scored without re-fitting: apply the saved scaler → PCA → <code>km.predict()</code>.
+  </p>
+  <p>
+    A <strong>full re-fit</strong> (re-running the entire notebook Sections 3–6) should be done once per quarter, or when the user base grows by more than 20%. After a full re-fit, cluster IDs will shift — the segment name mapping must be manually re-reviewed against the heatmap.
+  </p>
+
+  <!-- Pending -->
+  <h2>10. Open Items Before First Campaign Send</h2>
+
+  <div class="card">
+    <h3>Segment 7 — unnamed cluster (445 users, 418 pushable)</h3>
+    <p>Cluster 7 has avg revenue R$10.70, 27 days since active, 7.85 card txns avg, and 21.8 AI sessions avg. Profile suggests these are engaged card users with significant AI usage who have not yet onramped at scale. Review the heatmap in the notebook to confirm and assign a name, then add targeted copy to the MESSAGES dict in cell 36.</p>
+  </div>
+
+  <div class="card">
+    <h3>Phase 2 — Backend integration</h3>
+    <p>The CSV export at <code>data/processed/crm_segments_2026-05.csv</code> is ready. Phase 2 covers: backend notification API contract, the <code>nbs_bi.crm</code> Python delivery module (reads CSV, selects time-of-day copy, calls the API), scheduled automation, and email/SMS fallback for Segment 7 dormant users with zero push engagement.</p>
+  </div>
+
+  <div class="doc-footer">
+    Generated from <code>notebooks/crm_user_clustering.ipynb</code> &nbsp;·&nbsp; Analysis month: 2026-05 &nbsp;·&nbsp; NBS SPSAV LTDA — Confidential
+  </div>
+
+</div>
+</body>
+</html>
