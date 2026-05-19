@@ -668,8 +668,8 @@ def render_html(m: dict) -> str:
       <span>Financial data follows power-law distributions. log1p compresses the tail without losing zeros. StandardScaler normalises scale across features. PCA retains {pca_var:.1f}% of variance in {pca_comp} components, eliminating correlated signals and preventing high-variance features from dominating the distance metric.</span>
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
-      <strong>Outlier quarantine — HDBSCAN</strong>
-      <span>{quarantined:,} users ({outlier_pct:.1f}%) were removed before clustering — extreme profiles (very high spenders, bots, automated wallets) that would distort cluster centroids. Excluded from the push export.</span>
+      <strong>Outlier detection — HDBSCAN (flag only, no removal)</strong>
+      <span>HDBSCAN identifies {quarantined:,} users ({outlier_pct:.1f}%) whose behavioral profile sits in low-density regions of the PCA space. These are flagged as <code>is_outlier=1</code> in the export but <strong>remain in the clustering</strong> — removing them would exclude high-volume kyc_level=2 users who are precisely the most valuable segment. PCA compression makes K-Means robust enough to handle them without distortion.</span>
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>K selection — silhouette score, Davies-Bouldin index, inertia elbow</strong>
@@ -681,7 +681,7 @@ def render_html(m: dict) -> str:
     </div></div>
     <div class="step"><div class="step-num"></div><div class="step-body">
       <strong>Export — CSV with per-segment Brazilian Portuguese push copy</strong>
-      <span>{pushable:,} pushable users (active device token + delivery rules applied) exported with segment name, cluster ID, kyc_level, and ready-to-send push copy (title + body) for three time-of-day slots in Brazilian Portuguese. Users with kyc_level ≤ 1 receive a KYC completion CTA regardless of cluster.</span>
+      <span>All {export_total or clean_users:,} clustered users exported with segment name, cluster ID, kyc_level, and push copy (title + body) for three time-of-day slots in Brazilian Portuguese. Three delivery metadata flags are included so the backend controls targeting: <code>is_pushable</code> (has active device token), <code>skip_push</code> (dormant with zero notification engagement — use email/SMS in Phase 2), <code>is_outlier</code> (extreme profile — review before sending). Users with kyc_level ≤ 1 receive a KYC completion CTA regardless of cluster.</span>
     </div></div>
   </div>
 
@@ -726,9 +726,12 @@ def render_html(m: dict) -> str:
     <li><strong>Curse of dimensionality.</strong> In high-dimensional spaces, Euclidean distances lose discriminative power. Reducing to {pca_comp} components restores meaningful geometry.</li>
   </ul>
 
-  <h2>8. The {quarantined:,} Quarantined Users</h2>
+  <h2>8. Outlier Flags — <code>is_outlier</code></h2>
   <p>
-    {outlier_pct:.1f}% of users were removed before clustering. HDBSCAN flags users whose behavioral profile does not fit into any density region shared by at least 15 other users — typically extreme spenders, DeFi power users with automated transaction counts, or internal test accounts. These users are excluded from the push export and should be reviewed manually.
+    {quarantined:,} users ({outlier_pct:.1f}%) are flagged as statistical outliers by HDBSCAN — their behavioral profile does not share a density region with at least 15 other users. Typical profiles: extreme-volume onrampers, DeFi power users with automated swap counts, possible internal test accounts.
+  </p>
+  <p>
+    These users <strong>are included in clustering and in the export.</strong> The <code>is_outlier=1</code> flag lets the backend apply extra caution — e.g. manual review before sending, or excluding from automated bulk campaigns — without losing them from the CRM dataset entirely. Previous versions removed them, which caused kyc_level=2 high-value users to disappear from the export.
   </p>
 
   <h2>9. Monthly Refresh Protocol</h2>
